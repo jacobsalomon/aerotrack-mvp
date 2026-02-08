@@ -19,22 +19,24 @@ import {
   TestTube,
   PackageCheck,
   ArrowRightLeft,
+  ArrowRight,
   Trash2,
   Search,
   ChevronRight,
   ChevronDown,
   AlertTriangle,
   FileText,
-  Clock,
   Hash,
   Scan,
   Loader2,
   ShieldAlert,
   Camera,
+  Video,
   Mic,
   Download,
   CheckCircle,
   Calendar,
+  MapPin,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -70,6 +72,7 @@ interface LifecycleEvent {
   date: string;
   facility: string;
   facilityType: string;
+  facilityCert: string | null;
   performer: string;
   performerCert: string | null;
   description: string;
@@ -203,6 +206,256 @@ const eventColors: Record<string, string> = {
   scrap: "bg-red-700 text-white",
 };
 
+// ── Trust & Facility Flow Constants ─────────────────
+
+// Icons for each facility type (reuses existing icon imports)
+const facilityTypeIcons: Record<string, React.ComponentType<{ className?: string }>> = {
+  oem: Factory,
+  airline: Plane,
+  mro: Wrench,
+  distributor: PackageCheck,
+  broker: ArrowRightLeft,
+};
+
+// Readable label for each facility type
+const facilityTypeLabels: Record<string, string> = {
+  oem: "OEM",
+  airline: "Airline",
+  mro: "MRO",
+  distributor: "Distributor",
+  broker: "Broker",
+};
+
+// Trust indicator colors — dot backgrounds
+const trustDotColors: Record<string, string> = {
+  verified: "bg-green-500",
+  partial: "bg-yellow-500",
+  gap: "bg-red-500",
+  unknown: "bg-gray-300",
+};
+
+// Trust indicator text colors
+const trustTextColors: Record<string, string> = {
+  verified: "text-green-700",
+  partial: "text-yellow-700",
+  gap: "text-red-700",
+  unknown: "text-gray-500",
+};
+
+// Trust labels for display
+const trustLabels: Record<string, string> = {
+  verified: "Verified",
+  partial: "Partial",
+  gap: "Gap",
+  unknown: "Unknown",
+};
+
+// ── Facility Stop Type ──────────────────────────────
+
+interface FacilityStop {
+  facility: string;       // Full facility name from event data
+  shortName: string;      // Abbreviated name for display
+  location: string;       // City/region extracted from name
+  facilityType: string;   // oem, airline, mro, distributor, broker
+  firstDate: string;      // ISO date of first event at this facility
+  lastDate: string;       // ISO date of last event at this facility
+  dateLabel: string;      // Compact date range like "'19–'22"
+  activityLabel: string;  // MFG, SVC, OH, DIST, etc.
+  events: LifecycleEvent[];
+  trust: "verified" | "partial" | "gap" | "unknown";
+  photoCount: number;
+  videoCount: number;
+  voiceCount: number;
+  docCount: number;
+  totalEvidence: number;
+  gapBefore: TraceGap | null; // Gap leading INTO this facility
+}
+
+// ── Facility Helper Functions ───────────────────────
+
+// Parse a facility name into a short display name and location.
+// e.g. "ACE Services, Singapore" → { shortName: "ACE Services", location: "Singapore" }
+// e.g. "Parker Aerospace — Hydraulic Systems Division" → { shortName: "Parker Aerospace", location: "" }
+function parseFacilityName(facility: string): { shortName: string; location: string } {
+  // Handle "Company — Division" format (strip the division)
+  const dashParts = facility.split(" — ");
+  const baseName = dashParts[0];
+
+  // Handle "Company, City" format
+  const commaParts = baseName.split(", ");
+  if (commaParts.length > 1) {
+    return { shortName: commaParts[0], location: commaParts.slice(1).join(", ") };
+  }
+
+  // Try to extract location from common patterns like "Company CityName MRO"
+  // For names like "United Airlines SFO Maintenance" → "United Airlines", "SFO"
+  const mroMatch = baseName.match(/^(.+?)\s+([\w]{3})\s+(Maintenance|MRO|TechOps)$/i);
+  if (mroMatch) {
+    return { shortName: `${mroMatch[1]} ${mroMatch[3]}`, location: mroMatch[2] };
+  }
+
+  return { shortName: baseName, location: "" };
+}
+
+// Determine what activity happened at a facility based on its event types.
+// Returns a short abbreviation for the facility flow chain.
+function getActivityLabel(events: LifecycleEvent[]): string {
+  const types = new Set(events.map(e => e.eventType));
+  if (types.has("manufacture")) return "MFG";
+  if (types.has("teardown") || types.has("repair") || types.has("reassembly")) return "OH";
+  if (types.has("receiving_inspection") && !types.has("repair")) return "INSP";
+  if (types.has("install")) return "SVC";
+  if (types.has("transfer")) return "DIST";
+  if (types.has("release_to_service")) return "RTS";
+  if (types.has("remove")) return "RMV";
+  if (types.has("retire") || types.has("scrap")) return "RTR";
+  return "SVC";
+}
+
+// Format a compact date range label for the facility flow chain.
+// e.g. "'19", "'19–'22", "'23+"
+function formatDateLabel(firstDate: string, lastDate: string, isActive: boolean): string {
+  const firstYear = new Date(firstDate).getFullYear().toString().slice(-2);
+  const lastYear = new Date(lastDate).getFullYear().toString().slice(-2);
+  if (isActive) return `'${firstYear}+`;
+  if (firstYear === lastYear) return `'${firstYear}`;
+  return `'${firstYear}–'${lastYear}`;
+}
+
+// Determine trust level for a facility stop based on documentation quality.
+// Green = well-documented with certs and hashes
+// Yellow = some documentation but incomplete
+// Red = documentation gap leads into this facility
+// Gray = minimal records
+function calculateFacilityTrust(
+  events: LifecycleEvent[],
+  hasGapBefore: boolean
+): "verified" | "partial" | "gap" | "unknown" {
+  // If there's a documentation gap before this facility, it's RED
+  if (hasGapBefore) return "gap";
+
+  let hasWorkOrder = false;
+  let hasCert = false;
+  let hasHash = false;
+  let hasEvidence = false;
+
+  for (const event of events) {
+    if (event.workOrderRef) hasWorkOrder = true;
+    if (event.performerCert || event.facilityCert) hasCert = true;
+    if (event.hash) hasHash = true;
+    if (event.evidence.length > 0) hasEvidence = true;
+  }
+
+  // Well-documented: has work orders or certs, plus hash for tamper evidence
+  if ((hasWorkOrder || hasCert) && hasHash) return "verified";
+  // Partial: some documentation exists
+  if (hasWorkOrder || hasCert || hasEvidence) return "partial";
+  // Unknown: minimal records
+  return "unknown";
+}
+
+// Build facility stops from chronologically sorted events.
+// Groups consecutive events at the same facility into "stops" —
+// each stop represents one visit to a facility.
+function buildFacilityStops(
+  sortedEvents: LifecycleEvent[],
+  gaps: TraceGap[],
+  componentStatus: string
+): FacilityStop[] {
+  if (sortedEvents.length === 0) return [];
+
+  const stops: FacilityStop[] = [];
+  let currentFacility = "";
+  let currentEvents: LifecycleEvent[] = [];
+
+  // Group consecutive events at the same facility
+  for (const event of sortedEvents) {
+    if (event.facility !== currentFacility) {
+      if (currentEvents.length > 0) {
+        stops.push(makeStop(currentEvents, false));
+      }
+      currentFacility = event.facility;
+      currentEvents = [event];
+    } else {
+      currentEvents.push(event);
+    }
+  }
+  // Don't forget the last group
+  if (currentEvents.length > 0) {
+    stops.push(makeStop(currentEvents, false));
+  }
+
+  // Determine which stops have documentation gaps before them
+  for (let i = 1; i < stops.length; i++) {
+    const gap = gaps.find(
+      g => g.lastFacility === stops[i - 1].facility &&
+           g.nextFacility === stops[i].facility
+    );
+    if (gap) {
+      stops[i].gapBefore = gap;
+      stops[i].trust = "gap"; // Override trust to red
+    }
+  }
+
+  // Mark the last stop as "active" if the part is in service
+  const isActive = componentStatus === "installed" || componentStatus === "serviceable";
+  if (stops.length > 0 && isActive) {
+    const last = stops[stops.length - 1];
+    last.dateLabel = formatDateLabel(last.firstDate, last.lastDate, true);
+  }
+
+  return stops;
+}
+
+// Internal helper: create a FacilityStop from a group of events at the same facility
+function makeStop(events: LifecycleEvent[], hasGapBefore: boolean): FacilityStop {
+  const { shortName, location } = parseFacilityName(events[0].facility);
+  const firstDate = events[0].date;
+  const lastDate = events[events.length - 1].date;
+
+  // Count evidence across all events at this facility
+  let photoCount = 0, videoCount = 0, voiceCount = 0, docCount = 0;
+  for (const event of events) {
+    for (const ev of event.evidence) {
+      if (ev.type === "photo") photoCount++;
+      else if (ev.type === "video") videoCount++;
+      else if (ev.type === "voice_note") voiceCount++;
+    }
+    docCount += event.generatedDocs.length;
+  }
+
+  return {
+    facility: events[0].facility,
+    shortName,
+    location,
+    facilityType: events[0].facilityType,
+    firstDate,
+    lastDate,
+    dateLabel: formatDateLabel(firstDate, lastDate, false),
+    activityLabel: getActivityLabel(events),
+    events,
+    trust: calculateFacilityTrust(events, hasGapBefore),
+    photoCount,
+    videoCount,
+    voiceCount,
+    docCount,
+    totalEvidence: photoCount + videoCount + voiceCount + docCount,
+    gapBefore: null,
+  };
+}
+
+// Generate simulated industry average trust dots for the "What If" comparison.
+// Most parts in the industry have terrible documentation — this shows the contrast.
+function getIndustryAverageDots(count: number): ("verified" | "partial" | "gap" | "unknown")[] {
+  const pattern: ("verified" | "partial" | "gap" | "unknown")[] = [];
+  for (let i = 0; i < count; i++) {
+    if (i === 0) pattern.push("verified"); // OEM manufacture is usually documented
+    else if (i % 3 === 0) pattern.push("partial");
+    else pattern.push("gap"); // Most stops have poor documentation
+  }
+  return pattern;
+}
+
 // ── Helper: detect who "owns" the part at a given event ──
 
 function getOwner(event: LifecycleEvent): string | null {
@@ -218,6 +471,8 @@ export default function PartDetailPage() {
   const [loading, setLoading] = useState(true);
   const [scanningExceptions, setScanningExceptions] = useState(false);
   const [expandedEvents, setExpandedEvents] = useState<Set<string>>(new Set());
+  const [expandedFacility, setExpandedFacility] = useState<number | null>(null);
+  const [showComparison, setShowComparison] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
 
   // Fetch component data and exceptions on mount
@@ -318,6 +573,22 @@ export default function PartDetailPage() {
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
   );
 
+  // Build facility stops for the Digital Thread visualization.
+  // Each stop = one visit to a facility, with trust indicators and evidence counts.
+  const facilityStops = buildFacilityStops(sortedEvents, trace.gaps, component.status);
+
+  // Build a map: after facility stop[i], is there a gap before stop[i+1]?
+  // Used by the Journey Map to draw red dashed connectors between facilities.
+  const gapBetweenStops = new Map<number, TraceGap>();
+  for (let i = 1; i < facilityStops.length; i++) {
+    if (facilityStops[i].gapBefore) {
+      gapBetweenStops.set(i - 1, facilityStops[i].gapBefore!);
+    }
+  }
+
+  // Industry average trust dots for the "What If" comparison mode
+  const industryDots = getIndustryAverageDots(facilityStops.length);
+
   // Build a map: after event[i], is there a documentation gap?
   const gapAfterEvent = new Map<number, TraceGap>();
   for (const gap of trace.gaps) {
@@ -338,347 +609,520 @@ export default function PartDetailPage() {
         <span className="text-slate-900 font-medium">{component.partNumber}</span>
       </div>
 
-      {/* Identity card */}
+      {/* ═══ DIGITAL THREAD HERO ═══ */}
+      {/* Replaces the old identity card with an expanded view showing        the part's story at a glance: identity, facility flow, trust score */}
       <Card className="mb-6">
         <CardContent className="pt-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
+          {/* ── Part Identity Row ── */}
+          <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
             <div>
-              <div className="flex items-center gap-3 mb-2">
-                <h1 className="text-2xl font-bold text-slate-900">
-                  {component.description}
-                </h1>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs font-semibold tracking-widest text-blue-600 uppercase">
+                  Digital Thread
+                </span>
                 <StatusBadge status={component.status} />
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-2 text-sm">
-                <div>
-                  <span className="text-slate-500">Part Number</span>
-                  <p className="font-mono font-medium">{component.partNumber}</p>
-                </div>
-                <div>
-                  <span className="text-slate-500">Serial Number</span>
-                  <p className="font-mono font-medium">{component.serialNumber}</p>
-                </div>
-                <div>
-                  <span className="text-slate-500">OEM</span>
-                  <p>{component.oem}</p>
-                  {component.oemDivision && (
-                    <p className="text-xs text-slate-400">{component.oemDivision}</p>
-                  )}
-                </div>
-                <div>
-                  <span className="text-slate-500">Manufactured</span>
-                  <p>{format(new Date(component.manufactureDate), "MMM d, yyyy")}</p>
-                  {component.manufacturePlant && (
-                    <p className="text-xs text-slate-400">{component.manufacturePlant}</p>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-6 text-center">
-              <div>
-                <p className="text-2xl font-bold text-blue-700">
-                  {component.totalHours.toLocaleString()}
+              <h1 className="text-2xl font-bold text-slate-900 mb-1">
+                {component.description}
+              </h1>
+              <p className="text-sm text-slate-500">
+                {component.partNumber} · S/N: {component.serialNumber} · {component.oem}
+                {component.oemDivision && ` — ${component.oemDivision}`}
+              </p>
+              {component.currentAircraft && (
+                <p className="text-sm text-slate-500 mt-0.5">
+                  Currently on <span className="font-medium text-slate-700">{component.currentAircraft}</span>
+                  {component.currentOperator && ` (${component.currentOperator})`}
                 </p>
-                <p className="text-xs text-slate-500">Total Hours</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-blue-700">
-                  {component.totalCycles.toLocaleString()}
+              )}
+              {component.currentLocation && !component.currentAircraft && (
+                <p className="text-sm text-slate-500 mt-0.5">
+                  Location: <span className="font-medium text-slate-700">{component.currentLocation}</span>
                 </p>
-                <p className="text-xs text-slate-500">Total Cycles</p>
-              </div>
-              {component.timeSinceOverhaul != null && (
-                <div>
-                  <p className="text-2xl font-bold text-slate-600">
-                    {component.timeSinceOverhaul.toLocaleString()}
-                  </p>
-                  <p className="text-xs text-slate-500">TSO (Hours)</p>
-                </div>
               )}
             </div>
+            {/* Action buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={scanForExceptions}
+                disabled={scanningExceptions}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors"
+              >
+                {scanningExceptions ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Scan className="h-3.5 w-3.5" />
+                )}
+                Verify
+              </button>
+              <button
+                onClick={exportTracePdf}
+                disabled={exportingPdf}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {exportingPdf ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" />
+                )}
+                Export PDF
+              </button>
+            </div>
           </div>
-          {component.currentAircraft && (
-            <div className="mt-3 text-sm text-slate-600">
-              Currently on{" "}
-              <span className="font-medium">{component.currentAircraft}</span>
-              {component.currentOperator && ` (${component.currentOperator})`}
+
+          {/* ── Facility Flow Chain ── */}
+          {/* Horizontal chain showing every facility the part has visited,
+              connected by arrows, with trust dots at each stop */}
+          <div className="bg-slate-50 rounded-xl p-4 mb-5">
+            <div className="flex flex-wrap items-start gap-2">
+              {facilityStops.map((stop, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  {/* Gap connector (red dashed) or arrow connector */}
+                  {i > 0 && (
+                    gapBetweenStops.has(i - 1) ? (
+                      <div className="flex flex-col items-center gap-0.5 pt-2 min-w-[60px]">
+                        <div className="w-full border-t-2 border-dashed border-red-400" />
+                        <AlertTriangle className="h-3 w-3 text-red-500" />
+                        <span className="text-[9px] font-bold text-red-600 whitespace-nowrap">
+                          {formatDuration(gapBetweenStops.get(i - 1)!.days)} GAP
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center pt-4">
+                        <ArrowRight className="h-4 w-4 text-slate-300 shrink-0" />
+                      </div>
+                    )
+                  )}
+
+                  {/* Facility bubble */}
+                  <div className="flex flex-col items-center text-center min-w-[90px]">
+                    <div className="px-3 py-2 bg-white rounded-lg border shadow-sm w-full">
+                      <span className="text-[9px] font-medium uppercase tracking-wider text-slate-400">
+                        {facilityTypeLabels[stop.facilityType] || stop.facilityType}
+                      </span>
+                      <p className="text-xs font-bold text-slate-800 leading-tight mt-0.5">
+                        {stop.shortName}
+                      </p>
+                      {stop.location && (
+                        <p className="text-[10px] text-slate-400 mt-0.5">{stop.location}</p>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-slate-500 mt-1">
+                      {stop.activityLabel} {stop.dateLabel}
+                    </span>
+                    <div
+                      className={`w-2.5 h-2.5 rounded-full mt-1 ${trustDotColors[stop.trust]}`}
+                      title={trustLabels[stop.trust]}
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
-          )}
-          {component.currentLocation && !component.currentAircraft && (
-            <div className="mt-3 text-sm text-slate-600">
-              Location:{" "}
-              <span className="font-medium">{component.currentLocation}</span>
+          </div>
+
+          {/* ── Trace Score + Progress Bar ── */}
+          <div className="flex items-center gap-4 mb-3">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-slate-600">Trace:</span>
+              <span className="text-2xl font-bold">{trace.score}%</span>
             </div>
-          )}
+            <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  trace.score > 95 ? "bg-green-500"
+                    : trace.score >= 80 ? "bg-yellow-500"
+                    : trace.score >= 60 ? "bg-orange-500"
+                    : "bg-red-500"
+                }`}
+                style={{ width: `${trace.score}%` }}
+              />
+            </div>
+            <Badge
+              className={`text-xs ${
+                trace.rating === "complete" ? "bg-green-100 text-green-800"
+                  : trace.rating === "good" ? "bg-yellow-100 text-yellow-800"
+                  : trace.rating === "fair" ? "bg-orange-100 text-orange-800"
+                  : "bg-red-100 text-red-800"
+              }`}
+            >
+              {trace.rating.charAt(0).toUpperCase() + trace.rating.slice(1)}
+            </Badge>
+          </div>
+
+          {/* ── "What If" Comparison Toggle ── */}
+          <div className="mb-4">
+            <button
+              onClick={() => setShowComparison(!showComparison)}
+              className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors"
+            >
+              {showComparison ? "Hide comparison" : "Compare with industry average"}
+            </button>
+            {showComparison && (
+              <div className="mt-2 p-3 bg-slate-50 rounded-lg border space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-600 w-32 shrink-0">This Component:</span>
+                  <div className="flex items-center gap-1">
+                    {facilityStops.map((s, i) => (
+                      <div key={i} className={`w-3 h-3 rounded-full ${trustDotColors[s.trust]}`} />
+                    ))}
+                  </div>
+                  <span className="text-xs font-bold ml-1">{trace.score}% documented</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-600 w-32 shrink-0">Industry Average:</span>
+                  <div className="flex items-center gap-1">
+                    {industryDots.map((trust, i) => (
+                      <div key={i} className={`w-3 h-3 rounded-full ${trustDotColors[trust]}`} />
+                    ))}
+                  </div>
+                  <span className="text-xs font-bold ml-1 text-red-600">~38% documented</span>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Most aerospace parts have poor documentation — AeroTrack changes that.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* ── Stats Grid ── */}
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-4 text-center">
+            <div>
+              <p className="text-lg font-bold text-blue-700">
+                {formatDuration(trace.totalDays)}
+              </p>
+              <p className="text-xs text-slate-500">Age</p>
+            </div>
+            <div>
+              <p className="text-lg font-bold text-blue-700">
+                {component.totalHours.toLocaleString()}
+              </p>
+              <p className="text-xs text-slate-500">Hours</p>
+            </div>
+            <div>
+              <p className="text-lg font-bold text-blue-700">
+                {component.totalCycles.toLocaleString()}
+              </p>
+              <p className="text-xs text-slate-500">Cycles</p>
+            </div>
+            <div>
+              <p className="text-lg font-bold text-slate-800">
+                {trace.totalEvents}
+              </p>
+              <p className="text-xs text-slate-500">Events</p>
+            </div>
+            <div>
+              <p className="text-lg font-bold text-slate-800">
+                {trace.totalDocuments}
+              </p>
+              <p className="text-xs text-slate-500">Documents</p>
+            </div>
+            <div>
+              <p className={`text-lg font-bold ${trace.gapCount > 0 ? "text-red-600" : "text-green-600"}`}>
+                {trace.gapCount}
+              </p>
+              <p className="text-xs text-slate-500">Gaps</p>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Exception badge + scan button */}
-      {(() => {
-        const openExceptions = exceptions.filter(
-          (e) => e.status === "open" || e.status === "investigating"
-        );
-        const critCount = openExceptions.filter(
-          (e) => e.severity === "critical"
-        ).length;
-        const warnCount = openExceptions.filter(
-          (e) => e.severity === "warning"
-        ).length;
-        return (
-          <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {openExceptions.length > 0 && (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg">
-                  <ShieldAlert className="h-4 w-4 text-red-600" />
-                  <span className="text-sm font-medium text-red-800">
-                    {openExceptions.length} Open Exception
-                    {openExceptions.length !== 1 ? "s" : ""}
-                    {critCount > 0 && ` (${critCount} Critical`}
-                    {critCount > 0 && warnCount > 0 && `, ${warnCount} Warning`}
-                    {critCount > 0 && ")"}
-                    {critCount === 0 &&
-                      warnCount > 0 &&
-                      ` (${warnCount} Warning)`}
-                  </span>
-                </div>
-              )}
-              {openExceptions.length === 0 && exceptions.length > 0 && (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-200 rounded-lg">
-                  <span className="text-sm font-medium text-green-800">
-                    No open exceptions
-                  </span>
-                </div>
-              )}
-            </div>
-            <button
-              onClick={scanForExceptions}
-              disabled={scanningExceptions}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors"
-            >
-              {scanningExceptions ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Scan className="h-3.5 w-3.5" />
-              )}
-              Scan for Issues
-            </button>
-          </div>
-        );
-      })()}
-
-      {/* Exceptions section */}
-      {exceptions.filter(
-        (e) => e.status === "open" || e.status === "investigating"
-      ).length > 0 && (
-        <div className="mb-6 space-y-3">
-          {exceptions
-            .filter(
-              (e) => e.status === "open" || e.status === "investigating"
-            )
-            .map((exception) => (
-              <Card
-                key={exception.id}
-                className={`border-l-4 ${
-                  exception.severity === "critical"
-                    ? "border-l-red-500 bg-red-50"
-                    : exception.severity === "warning"
-                    ? "border-l-yellow-500 bg-yellow-50"
-                    : "border-l-blue-500 bg-blue-50"
-                }`}
-              >
-                <CardContent className="pt-4 pb-4">
-                  <div className="flex items-start gap-3">
-                    <ShieldAlert
-                      className={`h-5 w-5 mt-0.5 ${
-                        exception.severity === "critical"
-                          ? "text-red-600"
-                          : exception.severity === "warning"
-                          ? "text-yellow-600"
-                          : "text-blue-600"
-                      }`}
-                    />
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-semibold text-sm">
-                          {exception.title}
-                        </p>
-                        <SeverityBadge severity={exception.severity} />
-                        <Badge variant="outline" className="text-xs">
-                          {exceptionTypeLabels[exception.exceptionType] ||
-                            exception.exceptionType}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-slate-600 mt-1">
-                        {exception.description}
-                      </p>
+      {/* ═══ FACILITY JOURNEY MAP ═══ */}
+      {/* Horizontal flow diagram showing the part's physical path through
+          the supply chain. Each facility is a clickable card that expands
+          to show all events and evidence captured there. */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="text-lg">Facility Journey</CardTitle>
+          <p className="text-sm text-slate-500">
+            Every company and shop this part has visited, with documentation quality at each stop
+          </p>
+        </CardHeader>
+        <CardContent>
+          {/* Horizontal flow of facility cards */}
+          <div className="flex overflow-x-auto gap-0 pb-4">
+            {facilityStops.map((stop, i) => {
+              const FIcon = facilityTypeIcons[stop.facilityType] || ClipboardCheck;
+              return (
+                <div key={i} className="flex items-stretch shrink-0">
+                  {/* Gap connector — red dashed line with warning */}
+                  {i > 0 && gapBetweenStops.has(i - 1) && (
+                    <div className="flex flex-col items-center justify-center min-w-[80px] px-2">
+                      <div className="border-t-2 border-dashed border-red-400 w-full" />
+                      <AlertTriangle className="h-4 w-4 text-red-500 my-1" />
+                      <span className="text-xs text-red-600 font-bold text-center whitespace-nowrap">
+                        {formatDuration(gapBetweenStops.get(i - 1)!.days)}
+                      </span>
+                      <span className="text-[10px] text-red-500">unaccounted</span>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-        </div>
-      )}
+                  )}
 
-      {/* Alerts */}
-      {openAlerts.length > 0 && (
-        <div className="mb-6 space-y-3">
-          {openAlerts.map((alert) => (
-            <Card
-              key={alert.id}
-              className={`border-l-4 ${
-                alert.severity === "critical"
-                  ? "border-l-red-500 bg-red-50"
-                  : alert.severity === "warning"
-                  ? "border-l-yellow-500 bg-yellow-50"
-                  : "border-l-blue-500 bg-blue-50"
-              }`}
-            >
-              <CardContent className="pt-4 pb-4">
-                <div className="flex items-start gap-3">
-                  <AlertTriangle
-                    className={`h-5 w-5 mt-0.5 ${
-                      alert.severity === "critical"
-                        ? "text-red-600"
-                        : alert.severity === "warning"
-                        ? "text-yellow-600"
-                        : "text-blue-600"
-                    }`}
-                  />
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="font-semibold text-sm">{alert.title}</p>
-                      <SeverityBadge severity={alert.severity} />
+                  {/* Arrow connector (normal, no gap) */}
+                  {i > 0 && !gapBetweenStops.has(i - 1) && (
+                    <div className="flex items-center px-1 shrink-0">
+                      <div className="w-6 h-px bg-slate-300" />
+                      <ArrowRight className="h-4 w-4 text-slate-300 -ml-1" />
                     </div>
-                    <p className="text-sm text-slate-600 mt-1">
-                      {alert.description}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+                  )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Timeline (2 columns) */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* ─── TRACE COMPLETENESS HEADER ─── */}
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-slate-900">
-                  Back-to-Birth Trace
-                </h2>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={scanForExceptions}
-                    disabled={scanningExceptions}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors"
-                  >
-                    {scanningExceptions ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Scan className="h-3.5 w-3.5" />
-                    )}
-                    Run Verification
-                  </button>
-                  <button
-                    onClick={exportTracePdf}
-                    disabled={exportingPdf}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                  >
-                    {exportingPdf ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Download className="h-3.5 w-3.5" />
-                    )}
-                    Export Trace Report (PDF)
-                  </button>
-                </div>
-              </div>
-
-              {/* Completeness score with progress bar */}
-              <div className="flex items-center gap-4 mb-3">
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium text-slate-600">
-                    Completeness:
-                  </span>
-                  <span className="text-2xl font-bold">{trace.score}%</span>
-                </div>
-                <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden">
+                  {/* Facility card */}
                   <div
-                    className={`h-full rounded-full transition-all ${
-                      trace.score > 95
-                        ? "bg-green-500"
-                        : trace.score >= 80
-                        ? "bg-yellow-500"
-                        : trace.score >= 60
-                        ? "bg-orange-500"
-                        : "bg-red-500"
+                    className={`min-w-[180px] max-w-[220px] border rounded-lg p-3 cursor-pointer transition-all ${
+                      expandedFacility === i
+                        ? "ring-2 ring-blue-500 bg-blue-50/50"
+                        : "hover:bg-slate-50"
                     }`}
-                    style={{ width: `${trace.score}%` }}
-                  />
-                </div>
-                <Badge
-                  className={`text-xs ${
-                    trace.rating === "complete"
-                      ? "bg-green-100 text-green-800"
-                      : trace.rating === "good"
-                      ? "bg-yellow-100 text-yellow-800"
-                      : trace.rating === "fair"
-                      ? "bg-orange-100 text-orange-800"
-                      : "bg-red-100 text-red-800"
-                  }`}
-                >
-                  {trace.rating.charAt(0).toUpperCase() + trace.rating.slice(1)}
-                </Badge>
-              </div>
-
-              {/* Stats row */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-slate-400" />
-                  <span className="text-slate-600">
-                    {formatDuration(trace.totalDays)} total lifecycle
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-slate-400" />
-                  <span className="text-slate-600">
-                    {trace.totalEvents} documented events
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <AlertTriangle
-                    className={`h-4 w-4 ${
-                      trace.gapCount > 0 ? "text-red-500" : "text-slate-400"
-                    }`}
-                  />
-                  <span
-                    className={
-                      trace.gapCount > 0
-                        ? "text-red-700 font-medium"
-                        : "text-slate-600"
+                    onClick={() =>
+                      setExpandedFacility(expandedFacility === i ? null : i)
                     }
                   >
-                    {trace.gapCount} gap{trace.gapCount !== 1 ? "s" : ""}{" "}
-                    identified
-                    {trace.gapCount > 0 && ` (${trace.totalGapDays} days)`}
-                  </span>
+                    {/* Type icon + label + trust dot */}
+                    <div className="flex items-center gap-2 mb-1">
+                      <FIcon className="h-4 w-4 text-slate-500" />
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">
+                        {facilityTypeLabels[stop.facilityType] || stop.facilityType}
+                      </span>
+                      <div
+                        className={`w-2.5 h-2.5 rounded-full ml-auto ${trustDotColors[stop.trust]}`}
+                      />
+                    </div>
+                    <p className="font-bold text-sm text-slate-800">
+                      {stop.shortName}
+                    </p>
+                    {stop.location && (
+                      <p className="text-xs text-slate-500">{stop.location}</p>
+                    )}
+                    <p className="text-xs text-slate-400 mt-1">
+                      {format(new Date(stop.firstDate), "MMM yyyy")}
+                      {stop.firstDate !== stop.lastDate &&
+                        ` — ${format(new Date(stop.lastDate), "MMM yyyy")}`}
+                    </p>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {stop.activityLabel} · {stop.events.length} event
+                      {stop.events.length !== 1 ? "s" : ""}
+                    </p>
+                    {/* Evidence summary counts */}
+                    {stop.totalEvidence > 0 && (
+                      <div className="flex items-center gap-2 mt-1.5 text-[10px] text-slate-500">
+                        {stop.photoCount > 0 && (
+                          <span className="flex items-center gap-0.5">
+                            <Camera className="h-3 w-3" /> {stop.photoCount}
+                          </span>
+                        )}
+                        {stop.videoCount > 0 && (
+                          <span className="flex items-center gap-0.5">
+                            <Video className="h-3 w-3" /> {stop.videoCount}
+                          </span>
+                        )}
+                        {stop.voiceCount > 0 && (
+                          <span className="flex items-center gap-0.5">
+                            <Mic className="h-3 w-3" /> {stop.voiceCount}
+                          </span>
+                        )}
+                        {stop.docCount > 0 && (
+                          <span className="flex items-center gap-0.5">
+                            <FileText className="h-3 w-3" /> {stop.docCount}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {/* Trust label */}
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <div
+                        className={`w-2 h-2 rounded-full ${trustDotColors[stop.trust]}`}
+                      />
+                      <span
+                        className={`text-[10px] font-medium ${trustTextColors[stop.trust]}`}
+                      >
+                        {trustLabels[stop.trust]}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-slate-400" />
-                  <span className="text-slate-600">
-                    {trace.totalDocuments} documents on file
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              );
+            })}
+          </div>
 
-          {/* ─── ENHANCED TIMELINE ─── */}
-          <Card>
+          {/* ── Expanded Facility Detail Panel ── */}
+          {/* When you click a facility card above, this panel shows all
+              events that happened there with evidence and documents */}
+          {expandedFacility !== null &&
+            facilityStops[expandedFacility] &&
+            (() => {
+              const stop = facilityStops[expandedFacility];
+              const durationDays = Math.ceil(
+                (new Date(stop.lastDate).getTime() -
+                  new Date(stop.firstDate).getTime()) /
+                  (1000 * 60 * 60 * 24)
+              );
+              return (
+                <div className="mt-4 p-4 bg-slate-50 rounded-lg border">
+                  {/* Facility header */}
+                  <div className="flex items-center gap-2 mb-1">
+                    <MapPin className="h-4 w-4 text-blue-500" />
+                    <h3 className="font-bold text-slate-800">
+                      {stop.facility}
+                    </h3>
+                    <div
+                      className={`w-2.5 h-2.5 rounded-full ${trustDotColors[stop.trust]}`}
+                    />
+                    <span
+                      className={`text-xs font-medium ${trustTextColors[stop.trust]}`}
+                    >
+                      {trustLabels[stop.trust]}
+                    </span>
+                  </div>
+                  <p className="text-sm text-slate-500 mb-4 ml-6">
+                    {format(new Date(stop.firstDate), "MMM d, yyyy")}
+                    {stop.firstDate !== stop.lastDate &&
+                      ` — ${format(new Date(stop.lastDate), "MMM d, yyyy")}`}
+                    {durationDays > 0 && ` (${formatDuration(durationDays)})`}
+                  </p>
+
+                  {/* Gap warning if there's a documentation gap before this facility */}
+                  {stop.gapBefore && (
+                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+                      <p className="text-sm text-red-700">
+                        <span className="font-bold">
+                          {formatDuration(stop.gapBefore.days)}
+                        </span>{" "}
+                        gap in documentation before this facility. Part arrived
+                        from {stop.gapBefore.lastFacility.split(",")[0]} with no
+                        transfer records.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Events at this facility */}
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 ml-6">
+                    Events at this facility
+                  </p>
+                  <div className="space-y-2 ml-6">
+                    {stop.events.map((event) => {
+                      const EvIcon =
+                        eventIcons[event.eventType] || ClipboardCheck;
+                      return (
+                        <div
+                          key={event.id}
+                          className="flex items-start gap-3 p-3 bg-white rounded-lg border"
+                        >
+                          <div
+                            className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
+                              eventColors[event.eventType] ||
+                              "bg-slate-500 text-white"
+                            }`}
+                          >
+                            <EvIcon className="h-3 w-3" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-bold">
+                                {eventLabels[event.eventType] ||
+                                  event.eventType.toUpperCase()}
+                              </span>
+                              <span className="text-xs text-slate-400">
+                                {format(
+                                  new Date(event.date),
+                                  "MMM d, yyyy"
+                                )}
+                              </span>
+                              {event.performer && (
+                                <span className="text-xs text-slate-400 ml-auto">
+                                  {event.performer}
+                                  {event.performerCert &&
+                                    ` (${event.performerCert})`}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-600 mt-0.5 line-clamp-2">
+                              {event.description}
+                            </p>
+                            {event.workOrderRef && (
+                              <p className="text-[10px] text-slate-400 mt-0.5 font-mono">
+                                WO: {event.workOrderRef}
+                              </p>
+                            )}
+                            {/* Evidence and generated doc counts */}
+                            {(event.evidence.length > 0 ||
+                              event.generatedDocs.length > 0) && (
+                              <div className="flex items-center gap-3 mt-1.5">
+                                {event.evidence.filter(
+                                  (e) => e.type === "photo"
+                                ).length > 0 && (
+                                  <span className="flex items-center gap-1 text-[10px] text-blue-500">
+                                    <Camera className="h-3 w-3" />{" "}
+                                    {
+                                      event.evidence.filter(
+                                        (e) => e.type === "photo"
+                                      ).length
+                                    }{" "}
+                                    photos
+                                  </span>
+                                )}
+                                {event.evidence.filter(
+                                  (e) => e.type === "video"
+                                ).length > 0 && (
+                                  <span className="flex items-center gap-1 text-[10px] text-rose-500">
+                                    <Video className="h-3 w-3" />{" "}
+                                    {
+                                      event.evidence.filter(
+                                        (e) => e.type === "video"
+                                      ).length
+                                    }{" "}
+                                    videos
+                                  </span>
+                                )}
+                                {event.evidence.filter(
+                                  (e) => e.type === "voice_note"
+                                ).length > 0 && (
+                                  <span className="flex items-center gap-1 text-[10px] text-purple-500">
+                                    <Mic className="h-3 w-3" />{" "}
+                                    {
+                                      event.evidence.filter(
+                                        (e) => e.type === "voice_note"
+                                      ).length
+                                    }{" "}
+                                    voice notes
+                                  </span>
+                                )}
+                                {event.generatedDocs.length > 0 && (
+                                  <span className="flex items-center gap-1 text-[10px] text-green-600">
+                                    <FileText className="h-3 w-3" />{" "}
+                                    {event.generatedDocs.length} docs
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            {/* Voice note transcription excerpt */}
+                            {event.evidence.find(
+                              (e) =>
+                                e.type === "voice_note" && e.transcription
+                            ) && (
+                              <p className="text-[10px] italic text-slate-500 mt-1">
+                                &ldquo;
+                                {event.evidence
+                                  .find(
+                                    (e) =>
+                                      e.type === "voice_note" &&
+                                      e.transcription
+                                  )!
+                                  .transcription!.substring(0, 120)}
+                                ...&rdquo;
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+        </CardContent>
+      </Card>
+
+      {/* ═══ BACK-TO-BIRTH TIMELINE ═══ */}
+      <Card className="mb-6">
             <CardHeader>
               <CardTitle className="text-lg">Lifecycle Timeline</CardTitle>
               <p className="text-sm text-slate-500">
@@ -735,6 +1179,9 @@ export default function PartDetailPage() {
                     // Count evidence by type
                     const photoCount = event.evidence.filter(
                       (e) => e.type === "photo"
+                    ).length;
+                    const videoCount = event.evidence.filter(
+                      (e) => e.type === "video"
                     ).length;
                     const voiceCount = event.evidence.filter(
                       (e) => e.type === "voice_note"
@@ -829,9 +1276,10 @@ export default function PartDetailPage() {
                               </div>
                             )}
 
-                            {/* Evidence counts (docs, photos, voice notes) */}
+                            {/* Evidence counts (docs, photos, videos, voice notes) */}
                             {(docCount > 0 ||
                               photoCount > 0 ||
+                              videoCount > 0 ||
                               voiceCount > 0) && (
                               <div className="flex items-center gap-3 mt-1.5">
                                 {docCount > 0 && (
@@ -846,6 +1294,13 @@ export default function PartDetailPage() {
                                     <Camera className="h-3 w-3" />
                                     {photoCount} photo
                                     {photoCount !== 1 ? "s" : ""}
+                                  </span>
+                                )}
+                                {videoCount > 0 && (
+                                  <span className="flex items-center gap-1 text-xs text-slate-500">
+                                    <Video className="h-3 w-3" />
+                                    {videoCount} video
+                                    {videoCount !== 1 ? "s" : ""}
                                   </span>
                                 )}
                                 {voiceCount > 0 && (
@@ -986,10 +1441,14 @@ export default function PartDetailPage() {
                                           {ev.type === "photo" && (
                                             <Camera className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
                                           )}
+                                          {ev.type === "video" && (
+                                            <Video className="h-4 w-4 text-rose-500 mt-0.5 shrink-0" />
+                                          )}
                                           {ev.type === "voice_note" && (
                                             <Mic className="h-4 w-4 text-purple-500 mt-0.5 shrink-0" />
                                           )}
                                           {ev.type !== "photo" &&
+                                            ev.type !== "video" &&
                                             ev.type !== "voice_note" && (
                                               <FileText className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
                                             )}
@@ -1148,130 +1607,175 @@ export default function PartDetailPage() {
               </div>
             </CardContent>
           </Card>
-        </div>
 
-        {/* Documents sidebar (1 column) */}
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Documents</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {component.documents.length === 0 ? (
-                <p className="text-sm text-slate-400 py-4 text-center">
-                  No documents
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {component.documents.map((doc) => (
-                    <div
-                      key={doc.id}
-                      className="flex items-start gap-3 p-3 rounded-lg border hover:bg-slate-50"
-                    >
-                      <FileText className="h-5 w-5 text-slate-400 mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-sm font-medium">{doc.title}</p>
-                        <Badge variant="outline" className="text-xs mt-1">
-                          {doc.docType.replace("_", " ")}
-                        </Badge>
-                        {doc.isLegacy && (
-                          <Badge
-                            variant="outline"
-                            className="text-xs mt-1 ml-1 bg-orange-50 text-orange-700"
-                          >
-                            Legacy (scanned)
-                          </Badge>
-                        )}
-                        {doc.aiSummary && (
-                          <p className="text-xs text-slate-500 mt-1">
-                            {doc.aiSummary}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+      {/* ═══ BOTTOM: EXCEPTIONS + DOCUMENTS SIDE BY SIDE ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left column: Exceptions & Alerts */}
+        <div className="space-y-4">
+          {/* Exception summary badge */}
+          {(() => {
+            const openExceptions = exceptions.filter(
+              (e) => e.status === "open" || e.status === "investigating"
+            );
+            const critCount = openExceptions.filter(
+              (e) => e.severity === "critical"
+            ).length;
+            const warnCount = openExceptions.filter(
+              (e) => e.severity === "warning"
+            ).length;
+
+            if (openExceptions.length > 0) {
+              return (
+                <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
+                  <ShieldAlert className="h-4 w-4 text-red-600" />
+                  <span className="text-sm font-medium text-red-800">
+                    {openExceptions.length} Open Exception
+                    {openExceptions.length !== 1 ? "s" : ""}
+                    {critCount > 0 && ` (${critCount} Critical`}
+                    {critCount > 0 && warnCount > 0 && `, ${warnCount} Warning`}
+                    {critCount > 0 && ")"}
+                    {critCount === 0 && warnCount > 0 && ` (${warnCount} Warning)`}
+                  </span>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+              );
+            }
+            if (exceptions.length > 0) {
+              return (
+                <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <span className="text-sm font-medium text-green-800">
+                    No open exceptions
+                  </span>
+                </div>
+              );
+            }
+            return null;
+          })()}
 
-          {/* Provenance chain */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Provenance Chain</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {Array.from(
-                  new Set(component.events.map((e) => e.facility))
-                ).map((facility, i) => {
-                  const events = component.events.filter(
-                    (e) => e.facility === facility
-                  );
-                  return (
-                    <div key={i} className="flex items-center gap-2 text-sm">
-                      <div className="w-2 h-2 rounded-full bg-blue-500" />
-                      <div>
-                        <p className="font-medium">{facility}</p>
-                        <p className="text-xs text-slate-400">
-                          {events.length} event
-                          {events.length > 1 ? "s" : ""} ·{" "}
-                          {format(new Date(events[0].date), "yyyy")}
-                          {events.length > 1 &&
-                            `–${format(
-                              new Date(events[events.length - 1].date),
-                              "yyyy"
-                            )}`}
-                        </p>
+          {/* Exception cards */}
+          {exceptions
+            .filter((e) => e.status === "open" || e.status === "investigating")
+            .map((exception) => (
+              <Card
+                key={exception.id}
+                className={`border-l-4 ${
+                  exception.severity === "critical"
+                    ? "border-l-red-500 bg-red-50"
+                    : exception.severity === "warning"
+                    ? "border-l-yellow-500 bg-yellow-50"
+                    : "border-l-blue-500 bg-blue-50"
+                }`}
+              >
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-start gap-3">
+                    <ShieldAlert
+                      className={`h-5 w-5 mt-0.5 ${
+                        exception.severity === "critical"
+                          ? "text-red-600"
+                          : exception.severity === "warning"
+                          ? "text-yellow-600"
+                          : "text-blue-600"
+                      }`}
+                    />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-sm">{exception.title}</p>
+                        <SeverityBadge severity={exception.severity} />
+                        <Badge variant="outline" className="text-xs">
+                          {exceptionTypeLabels[exception.exceptionType] ||
+                            exception.exceptionType}
+                        </Badge>
                       </div>
+                      <p className="text-sm text-slate-600 mt-1">
+                        {exception.description}
+                      </p>
                     </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
 
-          {/* Quick info */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Quick Info</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-slate-400" />
-                <span className="text-slate-500">Total events:</span>
-                <span className="font-medium">
-                  {component.events.length}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-slate-400" />
-                <span className="text-slate-500">Documents:</span>
-                <span className="font-medium">
-                  {component.documents.length}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-slate-400" />
-                <span className="text-slate-500">Open alerts:</span>
-                <span className="font-medium">{openAlerts.length}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <ShieldAlert className="h-4 w-4 text-slate-400" />
-                <span className="text-slate-500">Exceptions:</span>
-                <span className="font-medium">
-                  {
-                    exceptions.filter(
-                      (e) =>
-                        e.status === "open" ||
-                        e.status === "investigating"
-                    ).length
-                  }
-                </span>
-              </div>
-            </CardContent>
-          </Card>
+          {/* Alert cards */}
+          {openAlerts.map((alert) => (
+            <Card
+              key={alert.id}
+              className={`border-l-4 ${
+                alert.severity === "critical"
+                  ? "border-l-red-500 bg-red-50"
+                  : alert.severity === "warning"
+                  ? "border-l-yellow-500 bg-yellow-50"
+                  : "border-l-blue-500 bg-blue-50"
+              }`}
+            >
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle
+                    className={`h-5 w-5 mt-0.5 ${
+                      alert.severity === "critical"
+                        ? "text-red-600"
+                        : alert.severity === "warning"
+                        ? "text-yellow-600"
+                        : "text-blue-600"
+                    }`}
+                  />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-sm">{alert.title}</p>
+                      <SeverityBadge severity={alert.severity} />
+                    </div>
+                    <p className="text-sm text-slate-600 mt-1">
+                      {alert.description}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
+
+        {/* Right column: Documents */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Documents</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {component.documents.length === 0 ? (
+              <p className="text-sm text-slate-400 py-4 text-center">
+                No documents
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {component.documents.map((doc) => (
+                  <div
+                    key={doc.id}
+                    className="flex items-start gap-3 p-3 rounded-lg border hover:bg-slate-50"
+                  >
+                    <FileText className="h-5 w-5 text-slate-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">{doc.title}</p>
+                      <Badge variant="outline" className="text-xs mt-1">
+                        {doc.docType.replace("_", " ")}
+                      </Badge>
+                      {doc.isLegacy && (
+                        <Badge
+                          variant="outline"
+                          className="text-xs mt-1 ml-1 bg-orange-50 text-orange-700"
+                        >
+                          Legacy (scanned)
+                        </Badge>
+                      )}
+                      {doc.aiSummary && (
+                        <p className="text-xs text-slate-500 mt-1">
+                          {doc.aiSummary}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
