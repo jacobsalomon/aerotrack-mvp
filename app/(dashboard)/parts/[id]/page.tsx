@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,6 +37,11 @@ import {
   CheckCircle,
   Calendar,
   MapPin,
+  PackageOpen,
+  Filter,
+  RotateCcw,
+  Gauge,
+  TrendingUp,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -134,6 +139,7 @@ interface ComponentDetail {
   currentAircraft: string | null;
   currentOperator: string | null;
   isLifeLimited: boolean;
+  lifeLimit: number | null;        // Max cycles/hours if life-limited
   events: LifecycleEvent[];
   alerts: Alert[];
   documents: Document[];
@@ -205,6 +211,62 @@ const eventColors: Record<string, string> = {
   retire: "bg-red-500 text-white",
   scrap: "bg-red-700 text-white",
 };
+
+// ── US-003: Expected documents per event type (key events only) ──
+// Maps event types to the doc types that SHOULD exist.
+// Only key events flag missing docs; others just show what's present.
+const expectedDocsByEventType: Record<string, string[]> = {
+  manufacture: ["8130-3"],
+  release_to_service: ["8130-3"],
+  install: ["8130-3"],
+};
+
+// Readable labels for doc type chips
+const docTypeChipLabels: Record<string, string> = {
+  "8130-3": "8130-3",
+  "337": "Form 337",
+  "8010-4": "8010-4",
+  work_order: "WO",
+  findings_report: "Findings",
+  test_results: "Test",
+  birth_certificate: "Birth Cert",
+};
+
+// ── US-004: SVG Sparkline helper ──
+// Generates an SVG path string from data points for an area chart
+function buildSparklinePath(
+  points: { x: number; y: number }[],
+  width: number,
+  height: number
+): { linePath: string; areaPath: string } {
+  if (points.length < 2) return { linePath: "", areaPath: "" };
+
+  const xMin = points[0].x;
+  const xMax = points[points.length - 1].x;
+  const yMax = Math.max(...points.map((p) => p.y));
+  const yMin = 0;
+  const xRange = xMax - xMin || 1;
+  const yRange = yMax - yMin || 1;
+
+  // Map data points to SVG coordinates
+  const svgPoints = points.map((p) => ({
+    sx: ((p.x - xMin) / xRange) * width,
+    sy: height - ((p.y - yMin) / yRange) * height,
+  }));
+
+  // Build line path
+  let linePath = `M ${svgPoints[0].sx} ${svgPoints[0].sy}`;
+  for (let i = 1; i < svgPoints.length; i++) {
+    linePath += ` L ${svgPoints[i].sx} ${svgPoints[i].sy}`;
+  }
+
+  // Build area path (line + close to bottom)
+  const areaPath =
+    linePath +
+    ` L ${svgPoints[svgPoints.length - 1].sx} ${height} L ${svgPoints[0].sx} ${height} Z`;
+
+  return { linePath, areaPath };
+}
 
 // ── Trust & Facility Flow Constants ─────────────────
 
@@ -474,6 +536,13 @@ export default function PartDetailPage() {
   const [expandedFacility, setExpandedFacility] = useState<number | null>(null);
   const [showComparison, setShowComparison] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [downloadingDoc, setDownloadingDoc] = useState<string | null>(null);
+  // Tracks which event's "coming soon" tooltip is visible (auto-hides after 2s)
+  const [evidenceCta, setEvidenceCta] = useState<string | null>(null);
+  // US-001: Active event type filters — all ON by default (populated after data loads)
+  const [activeEventTypes, setActiveEventTypes] = useState<Set<string> | null>(null);
+  // US-004: Sparkline toggle — "hours" or "cycles"
+  const [sparklineMode, setSparklineMode] = useState<"hours" | "cycles">("hours");
 
   // Fetch component data and exceptions on mount
   useEffect(() => {
@@ -526,6 +595,27 @@ export default function PartDetailPage() {
     }
   }
 
+  // Download a compliance document as PDF
+  async function downloadDocument(docId: string, title: string) {
+    setDownloadingDoc(docId);
+    try {
+      const res = await fetch(`/api/documents/download/${docId}`);
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${title.replace(/[^a-zA-Z0-9\-_ ]/g, "")}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } finally {
+      setDownloadingDoc(null);
+    }
+  }
+
   // Toggle event detail expansion
   function toggleEvent(eventId: string) {
     setExpandedEvents((prev) => {
@@ -538,6 +628,53 @@ export default function PartDetailPage() {
       return next;
     });
   }
+
+  // Show a brief "coming soon" message when the evidence CTA is clicked
+  function handleEvidenceCta(eventId: string) {
+    setEvidenceCta(eventId);
+    setTimeout(() => setEvidenceCta(null), 2000);
+  }
+
+  // ── US-001: Hooks for event type filtering ──
+  // These must run on EVERY render (before any early returns) per Rules of Hooks.
+  // When component hasn't loaded yet, they operate on empty arrays harmlessly.
+  const allEvents = component?.events ?? [];
+  const preSortedEvents = useMemo(
+    () => [...allEvents].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
+    [allEvents]
+  );
+  const uniqueEventTypes = useMemo(
+    () => Array.from(new Set(preSortedEvents.map((e) => e.eventType))),
+    [preSortedEvents]
+  );
+  const resolvedActiveTypes = useMemo(
+    () => activeEventTypes ?? new Set(uniqueEventTypes),
+    [activeEventTypes, uniqueEventTypes]
+  );
+  const filteredEvents = useMemo(
+    () => preSortedEvents.filter((e) => resolvedActiveTypes.has(e.eventType)),
+    [preSortedEvents, resolvedActiveTypes]
+  );
+
+  // ── US-004: Sparkline data points from events with hours/cycles ──
+  const sparklineData = useMemo(() => {
+    const points: { x: number; y: number; label: string }[] = [];
+    for (const ev of preSortedEvents) {
+      const val = sparklineMode === "hours" ? ev.hoursAtEvent : ev.cyclesAtEvent;
+      if (val != null) {
+        points.push({
+          x: new Date(ev.date).getTime(),
+          y: val,
+          label: format(new Date(ev.date), "MMM yyyy"),
+        });
+      }
+    }
+    return points;
+  }, [preSortedEvents, sparklineMode]);
+  const sparklinePaths = useMemo(
+    () => buildSparklinePath(sparklineData, 200, 48),
+    [sparklineData]
+  );
 
   if (loading) {
     return (
@@ -569,8 +706,17 @@ export default function PartDetailPage() {
   );
 
   // Sort events chronologically for the timeline
-  const sortedEvents = [...component.events].sort(
-    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  // (reuse the pre-sorted array from the useMemo above — same result)
+  const sortedEvents = preSortedEvents;
+
+  // Aggregate all compliance documents (GeneratedDocuments) from all events
+  const allComplianceDocs = sortedEvents.flatMap(event =>
+    event.generatedDocs.map(doc => ({
+      ...doc,
+      eventType: event.eventType,
+      eventDate: event.date,
+      facility: event.facility,
+    }))
   );
 
   // Build facility stops for the Digital Thread visualization.
@@ -596,6 +742,14 @@ export default function PartDetailPage() {
     if (idx >= 0) {
       gapAfterEvent.set(idx, gap);
     }
+  }
+
+  // Build a matching gap map for the FILTERED events (US-001)
+  // so gap indicators still appear correctly when filters are active
+  const filteredGapAfterEvent = new Map<number, TraceGap>();
+  for (const gap of trace.gaps) {
+    const idx = filteredEvents.findIndex((e) => e.date === gap.startDate);
+    if (idx >= 0) filteredGapAfterEvent.set(idx, gap);
   }
 
   return (
@@ -823,6 +977,137 @@ export default function PartDetailPage() {
               <p className="text-xs text-slate-500">Gaps</p>
             </div>
           </div>
+
+          {/* ── US-004: Hours/Cycles Sparkline ── */}
+          {/* Small area chart showing how TSN or CSN has accumulated over time */}
+          {sparklineData.length >= 2 && (
+            <div className="mt-4 p-3 bg-slate-50 rounded-lg border">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5">
+                  <TrendingUp className="h-3.5 w-3.5 text-blue-600" />
+                  <span className="text-xs font-medium text-slate-600">
+                    {sparklineMode === "hours" ? "Hours" : "Cycles"} Accumulation
+                  </span>
+                </div>
+                {/* Toggle between hours and cycles */}
+                <div className="flex items-center bg-white rounded border text-xs overflow-hidden">
+                  <button
+                    onClick={() => setSparklineMode("hours")}
+                    className={`px-2 py-0.5 transition-colors ${
+                      sparklineMode === "hours"
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    Hours
+                  </button>
+                  <button
+                    onClick={() => setSparklineMode("cycles")}
+                    className={`px-2 py-0.5 transition-colors ${
+                      sparklineMode === "cycles"
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    Cycles
+                  </button>
+                </div>
+              </div>
+              {/* SVG area chart */}
+              <svg viewBox="0 0 200 48" className="w-full h-12" preserveAspectRatio="none">
+                {/* Filled area under the line */}
+                <path d={sparklinePaths.areaPath} fill="rgb(191 219 254)" opacity="0.5" />
+                {/* The line itself */}
+                <path d={sparklinePaths.linePath} fill="none" stroke="rgb(37 99 235)" strokeWidth="1.5" />
+              </svg>
+              {/* Start and end labels */}
+              <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+                <span>{sparklineData[0].label}</span>
+                <span className="font-medium text-slate-600">
+                  {sparklineData[sparklineData.length - 1].y.toLocaleString()}{" "}
+                  {sparklineMode === "hours" ? "hrs" : "cyc"}
+                </span>
+                <span>{sparklineData[sparklineData.length - 1].label}</span>
+              </div>
+            </div>
+          )}
+
+          {/* ── US-002: Life Consumption Gauge ── */}
+          {/* Visual fuel-gauge showing how much life this part has consumed */}
+          {/* Shown for all parts — life-limited parts get a hard limit bar, */}
+          {/* non-LLP parts get a softer "typical overhaul interval" style */}
+          {(() => {
+            const isLLP = component.isLifeLimited && component.lifeLimit;
+            // For non-LLP parts, show a softer gauge based on typical overhaul intervals
+            const gaugeLimit = isLLP
+              ? component.lifeLimit!
+              : Math.max(component.totalCycles, 10000); // fallback reference
+            const consumed = component.totalCycles;
+            const pct = Math.min(100, Math.round((consumed / gaugeLimit) * 100));
+            // Color thresholds: green < 60%, yellow 60-80%, orange 80-90%, red > 90%
+            const gaugeColor =
+              pct > 90
+                ? "bg-red-500"
+                : pct > 80
+                ? "bg-orange-500"
+                : pct > 60
+                ? "bg-yellow-500"
+                : "bg-green-500";
+            const gaugeTextColor =
+              pct > 90
+                ? "text-red-700"
+                : pct > 80
+                ? "text-orange-700"
+                : pct > 60
+                ? "text-yellow-700"
+                : "text-green-700";
+
+            return (
+              <div className="mt-4 p-3 bg-slate-50 rounded-lg border">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Gauge className="h-3.5 w-3.5 text-slate-500" />
+                  <span className="text-xs font-medium text-slate-600">
+                    {isLLP ? "Life Limit Consumption" : "Cycle Accumulation"}
+                  </span>
+                  {isLLP && (
+                    <Badge className="ml-auto bg-red-100 text-red-700 text-[10px] px-1.5 py-0">
+                      Life-Limited Part
+                    </Badge>
+                  )}
+                </div>
+                {/* Gauge bar */}
+                <div className="relative h-5 bg-slate-200 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${gaugeColor}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                  {/* Percentage label centered on bar */}
+                  <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white mix-blend-difference">
+                    {pct}%
+                  </span>
+                </div>
+                {/* Labels below the bar */}
+                <div className="flex justify-between mt-1">
+                  <span className="text-[10px] text-slate-400">0</span>
+                  <span className={`text-[10px] font-semibold ${gaugeTextColor}`}>
+                    {consumed.toLocaleString()} / {gaugeLimit.toLocaleString()} cycles
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    {isLLP ? "LIMIT" : "ref."}
+                  </span>
+                </div>
+                {/* Remaining life callout for LLP parts */}
+                {isLLP && (
+                  <p className="text-xs text-slate-500 mt-1.5">
+                    <span className={`font-bold ${gaugeTextColor}`}>
+                      {(gaugeLimit - consumed).toLocaleString()} cycles remaining
+                    </span>
+                    {" "}before mandatory replacement
+                  </p>
+                )}
+              </div>
+            );
+          })()}
         </CardContent>
       </Card>
 
@@ -1093,6 +1378,27 @@ export default function PartDetailPage() {
                                 )}
                               </div>
                             )}
+                            {/* Evidence Package CTA — placeholder for future download */}
+                            {(event.evidence.length > 0 ||
+                              event.generatedDocs.length > 0) && (
+                              <div className="mt-1.5">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEvidenceCta(event.id);
+                                  }}
+                                  className="flex items-center gap-1 px-2 py-0.5 text-[10px] border border-slate-300 rounded hover:bg-slate-100 text-slate-600 transition-colors"
+                                >
+                                  <PackageOpen className="h-2.5 w-2.5" />
+                                  Evidence Package
+                                </button>
+                                {evidenceCta === event.id && (
+                                  <p className="text-[9px] text-blue-600 mt-0.5 animate-pulse">
+                                    Evidence packaging coming soon
+                                  </p>
+                                )}
+                              </div>
+                            )}
                             {/* Voice note transcription excerpt */}
                             {event.evidence.find(
                               (e) =>
@@ -1124,20 +1430,73 @@ export default function PartDetailPage() {
       {/* ═══ BACK-TO-BIRTH TIMELINE ═══ */}
       <Card className="mb-6">
             <CardHeader>
-              <CardTitle className="text-lg">Lifecycle Timeline</CardTitle>
-              <p className="text-sm text-slate-500">
-                {component.events.length} events from{" "}
-                {sortedEvents.length > 0
-                  ? format(new Date(sortedEvents[0].date), "MMM yyyy")
-                  : ""}{" "}
-                to{" "}
-                {sortedEvents.length > 0
-                  ? format(
-                      new Date(sortedEvents[sortedEvents.length - 1].date),
-                      "MMM yyyy"
-                    )
-                  : "present"}
-              </p>
+              <div className="flex items-start justify-between">
+                <div>
+                  <CardTitle className="text-lg">Lifecycle Timeline</CardTitle>
+                  <p className="text-sm text-slate-500">
+                    {filteredEvents.length === sortedEvents.length
+                      ? `${component.events.length} events`
+                      : `${filteredEvents.length} of ${component.events.length} events`}{" "}
+                    from{" "}
+                    {sortedEvents.length > 0
+                      ? format(new Date(sortedEvents[0].date), "MMM yyyy")
+                      : ""}{" "}
+                    to{" "}
+                    {sortedEvents.length > 0
+                      ? format(
+                          new Date(sortedEvents[sortedEvents.length - 1].date),
+                          "MMM yyyy"
+                        )
+                      : "present"}
+                  </p>
+                </div>
+                {/* Reset filter button — only shows when some types are hidden */}
+                {resolvedActiveTypes.size < uniqueEventTypes.length && (
+                  <button
+                    onClick={() => setActiveEventTypes(null)}
+                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 transition-colors"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    Show all
+                  </button>
+                )}
+              </div>
+
+              {/* ── US-001: Event Type Filter Bar ── */}
+              {/* Clickable chips for each event type — toggle to show/hide in the timeline */}
+              <div className="flex flex-wrap gap-1.5 mt-3">
+                {uniqueEventTypes.map((type) => {
+                  const isActive = resolvedActiveTypes.has(type);
+                  const colorClass = eventColors[type] || "bg-slate-500 text-white";
+                  // Extract bg color for active state, use muted version for inactive
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => {
+                        const next = new Set(resolvedActiveTypes);
+                        if (isActive) {
+                          next.delete(type);
+                        } else {
+                          next.add(type);
+                        }
+                        setActiveEventTypes(next);
+                      }}
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium transition-all border ${
+                        isActive
+                          ? `${colorClass} border-transparent shadow-sm`
+                          : "bg-white text-slate-400 border-slate-200 hover:border-slate-300"
+                      }`}
+                    >
+                      {eventLabels[type] || type}
+                      {isActive && (
+                        <span className="text-[10px] opacity-70">
+                          {sortedEvents.filter((e) => e.eventType === type).length}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </CardHeader>
             <CardContent>
               <div className="relative">
@@ -1145,17 +1504,17 @@ export default function PartDetailPage() {
                 <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-slate-200" />
 
                 <div className="space-y-0">
-                  {sortedEvents.map((event, index) => {
+                  {filteredEvents.map((event, index) => {
                     const Icon =
                       eventIcons[event.eventType] || ClipboardCheck;
                     const isExpanded = expandedEvents.has(event.id);
-                    const isLast = index === sortedEvents.length - 1;
-                    const gap = gapAfterEvent.get(index);
+                    const isLast = index === filteredEvents.length - 1;
+                    const gap = filteredGapAfterEvent.get(index);
 
                     // Detect ownership change (company transfer)
                     const prevOwner =
                       index > 0
-                        ? getOwner(sortedEvents[index - 1])
+                        ? getOwner(filteredEvents[index - 1])
                         : null;
                     const currentOwner = getOwner(event);
                     const ownerChanged =
@@ -1165,8 +1524,8 @@ export default function PartDetailPage() {
 
                     // Calculate duration to next event
                     const nextEvent =
-                      index < sortedEvents.length - 1
-                        ? sortedEvents[index + 1]
+                      index < filteredEvents.length - 1
+                        ? filteredEvents[index + 1]
                         : null;
                     const daysToNext = nextEvent
                       ? Math.ceil(
@@ -1276,6 +1635,45 @@ export default function PartDetailPage() {
                               </div>
                             )}
 
+                            {/* ── US-003: Document Chips ── */}
+                            {/* Show actual doc type badges for attached docs,  */}
+                            {/* plus dashed badges for expected-but-missing docs */}
+                            {(() => {
+                              // Docs that ARE attached to this event
+                              const attachedTypes = event.generatedDocs.map((d) => d.docType);
+                              // Docs that SHOULD be attached based on event type
+                              const expected = expectedDocsByEventType[event.eventType] || [];
+                              // Missing = expected but not present
+                              const missing = expected.filter((dt) => !attachedTypes.includes(dt));
+                              if (attachedTypes.length === 0 && missing.length === 0) return null;
+                              return (
+                                <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                                  {/* Solid chips for attached documents */}
+                                  {attachedTypes.map((dt, i) => (
+                                    <span
+                                      key={`doc-${i}`}
+                                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-green-100 text-green-700 text-[10px] font-medium rounded border border-green-200"
+                                    >
+                                      <FileText className="h-2.5 w-2.5" />
+                                      {docTypeChipLabels[dt] || dt}
+                                    </span>
+                                  ))}
+                                  {/* Dashed chips for missing expected documents */}
+                                  {missing.map((dt, i) => (
+                                    <span
+                                      key={`miss-${i}`}
+                                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded border border-dashed border-red-300 text-red-400"
+                                      title={`Expected ${docTypeChipLabels[dt] || dt} not found`}
+                                    >
+                                      <FileText className="h-2.5 w-2.5" />
+                                      {docTypeChipLabels[dt] || dt}
+                                      <span className="text-[8px]">?</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+
                             {/* Evidence counts (docs, photos, videos, voice notes) */}
                             {(docCount > 0 ||
                               photoCount > 0 ||
@@ -1309,6 +1707,28 @@ export default function PartDetailPage() {
                                     {voiceCount} voice note
                                     {voiceCount !== 1 ? "s" : ""}
                                   </span>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Evidence Package CTA — placeholder for future download */}
+                            {(event.evidence.length > 0 ||
+                              event.generatedDocs.length > 0) && (
+                              <div className="mt-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEvidenceCta(event.id);
+                                  }}
+                                  className="flex items-center gap-1.5 px-2.5 py-1 text-xs border border-slate-300 rounded-md hover:bg-slate-100 text-slate-600 transition-colors"
+                                >
+                                  <PackageOpen className="h-3 w-3" />
+                                  Download Evidence Package
+                                </button>
+                                {evidenceCta === event.id && (
+                                  <p className="text-[10px] text-blue-600 mt-1 animate-pulse">
+                                    Evidence packaging coming soon
+                                  </p>
                                 )}
                               </div>
                             )}
@@ -1607,6 +2027,76 @@ export default function PartDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+      {/* ═══ COMPLIANCE DOCUMENTS (AI-Generated) ═══ */}
+      {allComplianceDocs.length > 0 && (
+        <Card className="mb-6">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg">Compliance Documents</CardTitle>
+                <p className="text-sm text-slate-500 mt-1">
+                  AI-generated FAA compliance documents from maintenance events
+                </p>
+              </div>
+              <Badge className="bg-blue-100 text-blue-800">
+                {allComplianceDocs.length} document{allComplianceDocs.length !== 1 ? "s" : ""}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {allComplianceDocs.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="flex items-center gap-4 p-4 rounded-lg border hover:bg-slate-50 transition-colors"
+                >
+                  <FileText className="h-6 w-6 text-blue-500 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-slate-900">{doc.title}</p>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <Badge variant="outline" className="text-xs">
+                        {doc.docType === "8130-3" ? "FAA 8130-3" :
+                         doc.docType === "337" ? "FAA Form 337" :
+                         doc.docType === "8010-4" ? "FAA Form 8010-4" :
+                         doc.docType.replace("_", " ")}
+                      </Badge>
+                      <Badge
+                        className={`text-xs ${
+                          doc.status === "approved"
+                            ? "bg-green-100 text-green-800"
+                            : doc.status === "signed"
+                            ? "bg-blue-100 text-blue-800"
+                            : "bg-yellow-100 text-yellow-800"
+                        }`}
+                      >
+                        {doc.status}
+                      </Badge>
+                      <span className="text-xs text-slate-400">
+                        {format(new Date(doc.eventDate), "MMM d, yyyy")}
+                        {" · "}
+                        {doc.facility.split(",")[0]}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => downloadDocument(doc.id, doc.title)}
+                    disabled={downloadingDoc === doc.id}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors shrink-0"
+                  >
+                    {downloadingDoc === doc.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Download className="h-3.5 w-3.5" />
+                    )}
+                    PDF
+                  </button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ═══ BOTTOM: EXCEPTIONS + DOCUMENTS SIDE BY SIDE ═══ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

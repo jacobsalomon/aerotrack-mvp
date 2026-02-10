@@ -1,0 +1,221 @@
+// AeroTrack MVP Database Schema
+// This defines all the data structures for tracking aerospace component lifecycles.
+// Think of each "model" as a type of record in our system.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ──────────────────────────────────────────────────────
+// A component — the core entity. One record per physical part.
+// Example: A single Parker HPC-7 Hydraulic Pump, serial number SN-2019-07842
+// ──────────────────────────────────────────────────────
+model Component {
+  id                  String   @id @default(cuid())
+  partNumber          String                          // Real Parker format: "881700-1001"
+  serialNumber        String   @unique                // e.g., "SN-2019-07842"
+  description         String                          // e.g., "HPC-7 Hydraulic Pump"
+  oem                 String                          // e.g., "Parker Aerospace"
+  oemDivision         String?                         // e.g., "Hydraulic Systems Division"
+  manufactureDate     DateTime
+  manufacturePlant    String?                         // e.g., "Irvine, CA"
+  totalHours          Float    @default(0)
+  totalCycles         Int      @default(0)
+  timeSinceOverhaul   Float?   @default(0)            // TSO — hours since last overhaul
+  cyclesSinceOverhaul Int?     @default(0)            // CSO — cycles since last overhaul
+  status              String   @default("serviceable") // serviceable, in-repair, installed, retired, quarantined
+  currentLocation     String?                          // Where the part physically is right now
+  currentAircraft     String?                          // Registration of aircraft it's installed on
+  currentOperator     String?                          // Airline currently operating it
+  isLifeLimited       Boolean  @default(false)         // Is this a life-limited part (LLP)?
+  lifeLimit           Int?                             // If LLP, what's the cycle/hour limit?
+  imageUrl            String?                          // Photo of the part
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relationships — one component has many events, alerts, and documents
+  events     LifecycleEvent[]
+  alerts     Alert[]
+  documents  Document[]
+  exceptions Exception[]
+}
+
+// ──────────────────────────────────────────────────────
+// A single event in a component's life.
+// Examples: manufacture, install on aircraft, remove for repair, overhaul steps, etc.
+// ──────────────────────────────────────────────────────
+model LifecycleEvent {
+  id            String   @id @default(cuid())
+  componentId   String
+  component     Component @relation(fields: [componentId], references: [id])
+  eventType     String    // "manufacture", "install", "remove", "receiving_inspection",
+                          // "teardown", "detailed_inspection", "repair", "reassembly",
+                          // "functional_test", "final_inspection", "release_to_service",
+                          // "transfer", "retire", "scrap"
+  date          DateTime
+  facility      String    // Where this happened — e.g., "ST Engineering, Singapore"
+  facilityType  String    // "oem", "airline", "mro", "distributor", "broker"
+  facilityCert  String?   // FAA Part 145 certificate number
+  performer     String    // Who did the work (company or person)
+  performerCert String?   // Mechanic's certificate number (A&P, IA, etc.)
+  description   String    // What happened — the narrative
+  hoursAtEvent  Float?    // Component hours at time of event
+  cyclesAtEvent Int?      // Component cycles at time of event
+  aircraft      String?   // Aircraft registration (if applicable)
+  operator      String?   // Airline (if applicable)
+  workOrderRef  String?   // Work order or job card reference number
+  cmmReference  String?   // Applicable CMM and revision
+  notes         String?   // Additional observations (tribal knowledge!)
+  hash          String?   // SHA-256 hash for tamper evidence
+  createdAt     DateTime  @default(now())
+
+  // Relationships
+  evidence      Evidence[]
+  generatedDocs GeneratedDocument[]
+  partsConsumed PartConsumed[]
+}
+
+// ──────────────────────────────────────────────────────
+// A piece of captured evidence — photo, voice note, measurement, document scan
+// Attached to a specific lifecycle event
+// ──────────────────────────────────────────────────────
+model Evidence {
+  id              String   @id @default(cuid())
+  eventId         String
+  event           LifecycleEvent @relation(fields: [eventId], references: [id])
+  type            String         // "photo", "video", "voice_note", "document_scan", "measurement"
+  fileName        String
+  filePath        String
+  mimeType        String
+  capturedAt      DateTime
+  capturedBy      String         // Technician name
+  capturedByBadge String?        // Technician ID/badge number
+  location        String?        // Facility name
+  transcription   String?        // AI transcription of voice note
+  structuredData  String?        // AI-structured version (JSON string)
+  hash            String         // SHA-256 hash for tamper evidence
+  createdAt       DateTime       @default(now())
+}
+
+// ──────────────────────────────────────────────────────
+// AI-generated formal documents — 8130-3, work orders, findings reports
+// These are the paperwork that the AI writes automatically
+// ──────────────────────────────────────────────────────
+model GeneratedDocument {
+  id           String    @id @default(cuid())
+  eventId      String
+  event        LifecycleEvent @relation(fields: [eventId], references: [id])
+  docType      String         // "8130-3", "work_order", "findings_report", "test_results"
+  title        String
+  content      String         // Full generated document content (JSON)
+  pdfPath      String?        // Path to generated PDF
+  status       String    @default("draft") // "draft", "approved", "signed"
+  approvedBy   String?        // Who approved/signed
+  approvedAt   DateTime?
+  signatureRef String?        // Electronic signature reference
+  hash         String?        // Document hash
+  createdAt    DateTime  @default(now())
+}
+
+// ──────────────────────────────────────────────────────
+// Replacement parts consumed during a repair
+// Creates nested traceability — the new part's own 8130-3 links here
+// ──────────────────────────────────────────────────────
+model PartConsumed {
+  id           String   @id @default(cuid())
+  eventId      String
+  event        LifecycleEvent @relation(fields: [eventId], references: [id])
+  partNumber   String         // P/N of the consumed/replacement part
+  serialNumber String?        // S/N if serialized
+  description  String
+  quantity     Int      @default(1)
+  sourceDoc    String?        // 8130-3 or CoC reference for the new part
+  sourceVendor String?        // Where the part came from
+}
+
+// ──────────────────────────────────────────────────────
+// An alert — something that needs attention
+// Examples: provenance gap, counterfeit suspect, overdue inspection
+// ──────────────────────────────────────────────────────
+model Alert {
+  id          String    @id @default(cuid())
+  componentId String
+  component   Component @relation(fields: [componentId], references: [id])
+  alertType   String    // "provenance_gap", "counterfeit_suspect", "overdue_inspection",
+                        // "record_mismatch", "nff_pattern", "life_limit_approaching"
+  severity    String    // "info", "warning", "critical"
+  title       String
+  description String
+  status      String    @default("open") // "open", "investigating", "resolved", "dismissed"
+  createdAt   DateTime  @default(now())
+  resolvedAt  DateTime?
+}
+
+// ──────────────────────────────────────────────────────
+// An exception — a detected inconsistency or error in the data.
+// Found by the automated exception engine scanning across events and documents.
+// Examples: cycles going backward, documentation gaps, missing certificates
+// ──────────────────────────────────────────────────────
+model Exception {
+  id              String    @id @default(cuid())
+  componentId     String
+  component       Component @relation(fields: [componentId], references: [id])
+  exceptionType   String    // "serial_number_mismatch", "part_number_mismatch",
+                            // "cycle_count_discrepancy", "hour_count_discrepancy",
+                            // "documentation_gap", "missing_release_certificate",
+                            // "missing_birth_certificate", "date_inconsistency",
+                            // "unsigned_document"
+  severity        String    // "info", "warning", "critical"
+  title           String    // Human-readable title for the exception
+  description     String    // Detailed plain-language explanation of what was found
+  evidence        String    // JSON string — the specific data points that triggered this
+  status          String    @default("open") // "open", "investigating", "resolved", "false_positive"
+  detectedAt      DateTime  @default(now())
+  resolvedAt      DateTime?
+  resolvedBy      String?
+  resolutionNotes String?
+}
+
+// ──────────────────────────────────────────────────────
+// A source document associated with a component
+// Legacy docs, CMMs, service bulletins, certificates
+// ──────────────────────────────────────────────────────
+model Document {
+  id            String   @id @default(cuid())
+  componentId   String
+  component     Component @relation(fields: [componentId], references: [id])
+  docType       String    // "cmm", "service_bulletin", "certificate", "legacy_work_order",
+                          // "birth_certificate", "8130", "coc"
+  title         String
+  fileName      String?
+  filePath      String?
+  extractedText String?   // AI-extracted text from PDF
+  aiSummary     String?   // AI-generated summary
+  hash          String?   // File hash
+  isLegacy      Boolean   @default(false) // Was this digitized from paper?
+  createdAt     DateTime  @default(now())
+}
+
+// ──────────────────────────────────────────────────────
+// Knowledge library entries — captured expertise from experienced mechanics
+// This is how tribal knowledge gets preserved
+// ──────────────────────────────────────────────────────
+model KnowledgeEntry {
+  id            String   @id @default(cuid())
+  partFamily    String    // e.g., "HPC-7 Hydraulic Pump (881700 series)"
+  topic         String    // e.g., "Corrosion on mounting flange"
+  expertName    String
+  expertYears   Int       // Years of experience
+  expertCert    String?   // Certificate type (A&P, IA, etc.)
+  description   String    // The insight itself
+  audioPath     String?   // Path to audio clip
+  transcription String?   // Transcription of the audio
+  tags          String    // Comma-separated tags for search
+  cmmReference  String?   // Related CMM section
+  createdAt     DateTime  @default(now())
+}

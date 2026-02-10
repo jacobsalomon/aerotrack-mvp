@@ -23,10 +23,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import Form8130Preview, { type Form8130Data } from "@/components/documents/form-8130-preview";
+import Form337Preview from "@/components/documents/form-337-preview";
+import Form8010Preview from "@/components/documents/form-8010-preview";
+import { FORM_ROW_KEYFRAME } from "@/components/documents/form-helpers";
+import StepThread from "@/components/demo/step-thread";
 import {
   Play,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   Clock,
   FileText,
   Glasses,
@@ -42,6 +47,8 @@ import {
   AlertTriangle,
   Check,
   TrendingUp,
+  Link2,
+  Info,
 } from "lucide-react";
 
 // ─── STEP DEFINITIONS ──────────────────────────────────────
@@ -61,15 +68,19 @@ const DEMO_STEPS = [
 const PRESENTER_NOTES: Record<string, { points: string[]; questions: { q: string; a: string }[] }> = {
   problem: {
     points: [
-      "2.4M hours/year spent on MRO paperwork across the industry",
-      "Average mechanic spends 40% of their time on documentation",
-      "15% error rate on hand-written forms — that's 1 in 7",
-      "Each error can ground an aircraft for hours or days",
-      "This is what $180M in wasted labor looks like",
+      "60% of a mechanic's day is spent on documentation, not actual maintenance (McKinsey, 'The Generative AI Opportunity in Airline Maintenance', 2024)",
+      "520,000 suspected unapproved parts enter aircraft annually (FAA Suspected Unapproved Parts Program)",
+      "44–73% of maintenance errors involve documentation failures (FAA Human Factors in Aviation Maintenance report, 2012)",
+      "$114B global MRO market still running on handwritten forms (Oliver Wyman MRO Forecast 2024)",
+      "1 in 3 mechanics will reach retirement age within a decade (Oliver Wyman 2023). When they leave, their tribal knowledge leaves with them. AeroTrack captures that knowledge as they work.",
+      "Each error can ground an aircraft costing $10K–$150K per hour",
     ],
     questions: [
-      { q: "Where do these numbers come from?", a: "Oliver Wyman MRO Survey 2024, FAA Advisory Circulars, and interviews with 15 MRO shop managers." },
-      { q: "Is this just paperwork or does it affect safety?", a: "Both. Documentation errors are a leading cause of repeat inspections and the #2 factor in bogus part infiltration." },
+      { q: "Where do these numbers come from?", a: "McKinsey 'Generative AI in Airline Maintenance' 2024, Oliver Wyman MRO Forecast 2024, FAA Suspected Unapproved Parts (SUP) Program data, FAA Human Factors in Aviation Maintenance report (2012), and Impresa Corp fleet management data." },
+      { q: "Is this just paperwork or does it affect safety?", a: "Both. The FAA found that 44–73% of maintenance errors involve documentation failures. Documentation errors are a leading cause of repeat inspections and a key factor in bogus part infiltration." },
+      { q: "What about the AOG Technics scandal?", a: "In 2023, AOG Technics was found to have sold thousands of parts with forged 8130-3 documentation to major airlines. 120+ aircraft were grounded. This happened because there's no automated way to verify documentation at the source — exactly what AeroTrack solves." },
+      { q: "What about the workforce crisis?", a: "Oliver Wyman projects 1 in 3 A&P mechanics will reach retirement age within a decade. AeroTrack preserves tribal knowledge by capturing it during the normal workflow — new mechanics get AI-assisted guidance from day one." },
+      { q: "What about European regulations?", a: "EASA is phasing in digital compliance requirements through 2027 under its Part 145 modernization roadmap. Companies that adopt digital documentation now will be ahead; companies that wait will face costly catch-up." },
     ],
   },
   mechanic: {
@@ -87,15 +98,17 @@ const PRESENTER_NOTES: Record<string, { points: string[]; questions: { q: string
   },
   documents: {
     points: [
-      "Watch the form fill itself in — this took 8 seconds vs 87 minutes by hand",
+      "Watch the form fill itself in — 8 seconds vs. hours of manual work",
       "Every field is populated from the captured evidence",
       "Click 'See What This Replaced' for the before/after comparison",
       "The PDF download creates a print-ready FAA form",
-      "This is Block 7 — the most error-prone part of the form",
+      "Notice the 8010-4 tab — the AI detected a fleet-wide pattern that no human would have caught",
     ],
     questions: [
       { q: "Is this legally valid?", a: "The form is generated as a draft. An A&P/IA still reviews and signs it. We automate 95% of the work, they provide the final 5% — the judgment." },
       { q: "What if the AI makes a mistake?", a: "Every field has traceability back to the source evidence. The watermark says 'PENDING REVIEW' until a human signs." },
+      { q: "Is AI-generated documentation legally valid?", a: "Yes. FAA Advisory Circular AC 120-78B explicitly allows electronic signatures and records. AeroTrack follows the 'AI-assisted, human-approved' model — the AI drafts the form, a certified A&P/IA reviews and signs. This is fully compliant." },
+      { q: "What about European regulations?", a: "EASA is phasing in digital compliance requirements through 2027 under its Part 145 modernization roadmap. Companies that adopt digital documentation now will be ahead; companies that wait will face costly catch-up." },
     ],
   },
   thread: {
@@ -105,10 +118,12 @@ const PRESENTER_NOTES: Record<string, { points: string[]; questions: { q: string
       "Now look at Component 2 — spot the red gap?",
       "14 months with no records. Was it on an aircraft? In a warehouse? Nobody knows.",
       "This is how counterfeit parts enter the supply chain",
+      "The FAA's SUP Program flags ~520,000 suspected unapproved parts annually — most enter through documentation gaps like Component B.",
     ],
     questions: [
-      { q: "What's a typical trace score?", a: "Industry average is ~38%. Most parts have massive documentation gaps. AeroTrack captures everything automatically." },
+      { q: "What's a typical trace score?", a: "Most parts have significant documentation gaps. The FAA estimates ~520,000 suspected unapproved parts enter aircraft annually, largely through chain-of-custody breaks. AeroTrack captures everything automatically — gaps become impossible." },
       { q: "Can this prevent counterfeit parts?", a: "Not directly — but it makes them visible. If a part shows up with a gap, you investigate before installing it." },
+      { q: "What about European regulations?", a: "EASA is phasing in digital compliance requirements through 2027 under its Part 145 modernization roadmap. Companies that adopt digital documentation now will be ahead; companies that wait will face costly catch-up." },
     ],
   },
   intelligence: {
@@ -122,6 +137,7 @@ const PRESENTER_NOTES: Record<string, { points: string[]; questions: { q: string
     questions: [
       { q: "How does it know what's wrong?", a: "Rule-based engine: checks for monotonic timestamps, required documents at each lifecycle stage, certificate validity, and cross-references part numbers." },
       { q: "False positive rate?", a: "In seed data, ~10%. The engine errs on the side of flagging — better to investigate and dismiss than to miss a real issue." },
+      { q: "What about European regulations?", a: "EASA is phasing in digital compliance requirements through 2027 under its Part 145 modernization roadmap. Companies that adopt digital documentation now will be ahead; companies that wait will face costly catch-up." },
     ],
   },
   opportunity: {
@@ -129,12 +145,13 @@ const PRESENTER_NOTES: Record<string, { points: string[]; questions: { q: string
       "These numbers are editable — adjust for HEICO's actual network size",
       "62 MRO shops and 8,500 overhauls/year is conservative for HEICO",
       "The 5-year value is the key number — that's the contract size",
-      "$58M+ in labor savings alone, before counting error reduction",
+      "Open the Advanced Inputs to see the full value story: AOG avoidance, audit reduction, and fleet value preservation",
       "Ask: 'What would it mean if every part in your network could tell its own story?'",
     ],
     questions: [
-      { q: "What does AeroTrack cost?", a: "We're pricing at $X per overhaul or $Y per shop per month. Details in the proposal." },
+      { q: "What does AeroTrack cost?", a: "We're finalizing pricing tiers — we'll have specifics for the proposal. Our model is designed so the ROI is obvious within the first quarter." },
       { q: "What's the implementation timeline?", a: "Pilot at one shop in 30 days. Network rollout in 6 months. Full integration in 12 months." },
+      { q: "What about European regulations?", a: "EASA is phasing in digital compliance requirements through 2027 under its Part 145 modernization roadmap. Companies that adopt digital documentation now will be ahead; companies that wait will face costly catch-up." },
     ],
   },
   explore: {
@@ -391,7 +408,7 @@ export default function DemoPage() {
           {step === 0 && <StepProblem />}
           {step === 1 && <StepMechanic />}
           {step === 2 && <StepDocuments />}
-          {step === 3 && <StepThread />}
+          {step === 3 && <StepThread active={step === 3} />}
           {step === 4 && <StepIntelligence />}
           {step === 5 && <StepOpportunity />}
           {step === 6 && <StepExplore onNavigate={(path) => { setMode("landing"); router.push(path); }} />}
@@ -483,15 +500,26 @@ export default function DemoPage() {
 // ═══════════════════════════════════════════════════════════
 
 // ── STEP 1: THE PROBLEM ────────────────────────────────────
-// Animated stats counters that reveal the MRO paperwork burden
+// Animated stats counters that reveal the MRO paperwork burden.
+// The 60% McKinsey stat is the hero — largest and most prominent.
+// New: AOG Technics scandal card, workforce crisis, grounded cost.
 function StepProblem() {
-  const [counters, setCounters] = useState({ hours: 0, cost: 0, errors: 0, forms: 0 });
+  const [counters, setCounters] = useState({
+    counterfeit: 0, mro: 0, errors: 0, forms: 0, mckinsey: 0,
+  });
   const animDone = useRef(false);
 
   useEffect(() => {
     if (animDone.current) return;
-    const targets = { hours: 2400000, cost: 180, errors: 15, forms: 12 };
-    const duration = 2000; // 2 seconds
+    // All stats sourced — see presenter notes for citations
+    const targets = {
+      counterfeit: 520000, // FAA SUP Program — suspected unapproved parts/year
+      mro: 114,           // Oliver Wyman MRO Forecast 2024 — $114B global market
+      errors: 44,         // FAA Human Factors report 2012 — 44-73% doc-related
+      forms: 50,          // Impresa Corp — 50-75 pieces of paper per LRU overhaul
+      mckinsey: 60,       // McKinsey — verified
+    };
+    const duration = 2000;
     const steps = 60;
     const interval = duration / steps;
     let current = 0;
@@ -499,13 +527,13 @@ function StepProblem() {
     const timer = setInterval(() => {
       current++;
       const progress = Math.min(current / steps, 1);
-      // Ease-out curve for a satisfying deceleration
       const eased = 1 - Math.pow(1 - progress, 3);
       setCounters({
-        hours: Math.round(targets.hours * eased),
-        cost: Math.round(targets.cost * eased),
+        counterfeit: Math.round(targets.counterfeit * eased),
+        mro: Math.round(targets.mro * eased),
         errors: Math.round(targets.errors * eased),
         forms: Math.round(targets.forms * eased),
+        mckinsey: Math.round(targets.mckinsey * eased),
       });
       if (current >= steps) {
         clearInterval(timer);
@@ -517,47 +545,108 @@ function StepProblem() {
   }, []);
 
   return (
-    <div className="flex items-center justify-center h-full bg-gradient-to-br from-slate-900 to-slate-800 p-8">
-      <div className="max-w-3xl w-full text-center">
+    <div className="flex items-center justify-center h-full bg-gradient-to-br from-slate-900 to-slate-800 p-8 overflow-y-auto">
+      <div className="max-w-4xl w-full text-center">
         <p className="text-sm text-red-400 uppercase tracking-widest mb-4 font-medium">
-          The $180 Million Problem
+          A $114 Billion Industry, Still Running on Paper
         </p>
         <h2 className="text-4xl font-bold text-white mb-2">
           MRO Paperwork is Unsustainable
         </h2>
-        <p className="text-lg text-slate-400 mb-12">
+        <p className="text-lg text-slate-400 mb-10">
           Every year, the aviation MRO industry wastes millions of hours
           on documentation that should be automatic.
         </p>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
-          <div className="bg-white/5 border border-white/10 rounded-lg p-5">
-            <p className="text-3xl font-bold text-red-400 font-mono">
-              {counters.hours.toLocaleString()}
+        {/* ── HERO STAT: 60% McKinsey ── */}
+        <div className="mb-10">
+          <p className="text-7xl font-bold text-red-400 font-mono leading-none">
+            {counters.mckinsey}%
+          </p>
+          <p className="text-lg text-slate-300 mt-2 max-w-md mx-auto">
+            of a mechanic&apos;s day spent on paperwork, not fixing airplanes
+          </p>
+          <p className="text-xs text-slate-500 mt-1 italic">
+            Source: McKinsey, &ldquo;The Generative AI Opportunity in Airline Maintenance&rdquo;, 2024
+          </p>
+        </div>
+
+        {/* ── 4 STAT COUNTERS (all sourced) ── */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+            <p className="text-2xl font-bold text-red-400 font-mono">
+              {counters.counterfeit.toLocaleString()}
             </p>
-            <p className="text-xs text-slate-400 mt-1">hours/year on paperwork</p>
+            <p className="text-xs text-slate-400 mt-1">suspected unapproved parts/year</p>
+            <p className="text-[10px] text-slate-500 mt-0.5 italic">FAA SUP Program</p>
           </div>
-          <div className="bg-white/5 border border-white/10 rounded-lg p-5">
-            <p className="text-3xl font-bold text-red-400 font-mono">
-              ${counters.cost}M
+          <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+            <p className="text-2xl font-bold text-red-400 font-mono">
+              ${counters.mro}B
             </p>
-            <p className="text-xs text-slate-400 mt-1">in labor costs</p>
+            <p className="text-xs text-slate-400 mt-1">global MRO market</p>
+            <p className="text-[10px] text-slate-500 mt-0.5 italic">Oliver Wyman 2024</p>
           </div>
-          <div className="bg-white/5 border border-white/10 rounded-lg p-5">
-            <p className="text-3xl font-bold text-amber-400 font-mono">
-              {counters.errors}%
+          <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+            <p className="text-2xl font-bold text-amber-400 font-mono">
+              {counters.errors}–73%
             </p>
-            <p className="text-xs text-slate-400 mt-1">error rate (hand-written)</p>
+            <p className="text-xs text-slate-400 mt-1">of maintenance errors are documentation-related</p>
+            <p className="text-[10px] text-slate-500 mt-0.5 italic">FAA Human Factors, 2012</p>
           </div>
-          <div className="bg-white/5 border border-white/10 rounded-lg p-5">
-            <p className="text-3xl font-bold text-blue-400 font-mono">
-              {counters.forms}
+          <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+            <p className="text-2xl font-bold text-blue-400 font-mono">
+              {counters.forms}–75
             </p>
-            <p className="text-xs text-slate-400 mt-1">forms per overhaul</p>
+            <p className="text-xs text-slate-400 mt-1">pieces of paper per LRU overhaul</p>
+            <p className="text-[10px] text-slate-500 mt-0.5 italic">Impresa Corp</p>
           </div>
         </div>
 
-        <div className="space-y-3 text-left max-w-lg mx-auto">
+        {/* ── NEW STAT ROW: Workforce + Grounded Cost ── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 text-left">
+            <p className="text-3xl font-bold text-amber-400 font-mono mb-1">
+              1 in 3
+            </p>
+            <p className="text-sm text-amber-200">
+              mechanics will reach retirement age within a decade
+            </p>
+            <p className="text-xs text-amber-500/70 mt-1">
+              Oliver Wyman 2023 — When they leave, their tribal knowledge leaves with them.
+            </p>
+          </div>
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-left">
+            <p className="text-3xl font-bold text-red-400 font-mono mb-1">
+              $10K–$150K
+            </p>
+            <p className="text-sm text-red-200">
+              per hour — cost of a grounded aircraft
+            </p>
+            <p className="text-xs text-red-500/70 mt-1">
+              A single documentation error can trigger an AOG event costing hundreds of thousands.
+            </p>
+          </div>
+        </div>
+
+        {/* ── AOG TECHNICS SCANDAL ALERT ── */}
+        <div className="bg-red-900/30 border border-red-500/50 rounded-lg p-5 mb-8 text-left max-w-2xl mx-auto">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle className="h-5 w-5 text-red-400" />
+            <span className="text-red-300 font-bold text-sm uppercase tracking-wide">
+              AOG Technics Scandal — 2023
+            </span>
+          </div>
+          <p className="text-sm text-red-200">
+            One company sold parts with <strong className="text-red-100">forged 8130-3 tags</strong> to Delta, United,
+            American, and Southwest. <strong className="text-red-100">120+ aircraft were grounded</strong>. This happened
+            because there&apos;s no automated way to verify documentation at the source —{" "}
+            <span className="text-white font-medium">exactly what AeroTrack solves.</span>
+          </p>
+        </div>
+
+        {/* ── WARNING CALLOUTS ── */}
+        <div className="space-y-3 text-left max-w-lg mx-auto mb-8">
           <div className="flex items-start gap-3 text-slate-300 text-sm">
             <AlertTriangle className="h-5 w-5 text-red-400 shrink-0 mt-0.5" />
             <p>A single transposition error on an 8130-3 can ground an aircraft for days</p>
@@ -568,11 +657,11 @@ function StepProblem() {
           </div>
           <div className="flex items-start gap-3 text-slate-300 text-sm">
             <AlertTriangle className="h-5 w-5 text-blue-400 shrink-0 mt-0.5" />
-            <p>Average mechanic spends 40% of their time writing paperwork instead of turning wrenches</p>
+            <p>Average mechanic spends 60% of their time writing paperwork instead of turning wrenches</p>
           </div>
         </div>
 
-        <p className="text-lg text-white mt-12 font-medium">
+        <p className="text-lg text-white font-medium">
           What if there was a better way?
         </p>
       </div>
@@ -646,19 +735,56 @@ function StepMechanic() {
 }
 
 // ── STEP 3: EVIDENCE → DOCUMENTS ───────────────────────────
-// Shows the 8130-3 form rendering with reveal animation
+// Shows all 3 FAA forms (8130-3, 337, 8010-4) in a tabbed interface
+// with staggered row animations. Includes AI pattern detection
+// callout on the 8010-4 tab and a narrative transition card.
 function StepDocuments() {
-  // Key forces re-mount and re-animation when navigating back
   const [formKey, setFormKey] = useState(0);
   const [showForm, setShowForm] = useState(false);
+  // Which tab is active
+  const [activeTab, setActiveTab] = useState<"8130" | "337" | "8010">("8130");
+  // Track which forms have already animated (don't re-animate on tab switch)
+  const [animatedForms, setAnimatedForms] = useState<Set<string>>(new Set());
+  // Whether the 8130-3 form animation has completed (for the narrative card)
+  const [formAnimDone, setFormAnimDone] = useState(false);
 
   function triggerGeneration() {
     setFormKey((k) => k + 1);
     setShowForm(true);
+    setActiveTab("8130");
+    setAnimatedForms(new Set());
+    setFormAnimDone(false);
   }
+
+  // Mark forms as animated after the stagger animation completes (~3.5s)
+  useEffect(() => {
+    if (!showForm) return;
+    if (animatedForms.has(activeTab)) return;
+
+    const timeout = setTimeout(() => {
+      setAnimatedForms((prev) => new Set([...prev, activeTab]));
+    }, 3500);
+
+    return () => clearTimeout(timeout);
+  }, [showForm, activeTab, animatedForms]);
+
+  // Tab configuration
+  const tabs: { key: "8130" | "337" | "8010"; label: string; subtitle: string }[] = [
+    { key: "8130", label: "FAA 8130-3", subtitle: "Release Certificate" },
+    { key: "337", label: "FAA 337", subtitle: "Major Repair" },
+    { key: "8010", label: "FAA 8010-4", subtitle: "Defect Report" },
+  ];
 
   return (
     <div className="h-full overflow-y-auto p-6">
+      {/* CSS keyframe for Form337/Form8010 row animations */}
+      <style dangerouslySetInnerHTML={{ __html: FORM_ROW_KEYFRAME + `
+        @keyframes fadeSlideUp {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}} />
+
       {/* Narration card */}
       <div className="max-w-3xl mx-auto mb-6">
         <div className="bg-purple-50 border border-purple-200 rounded-lg p-5">
@@ -668,8 +794,8 @@ function StepDocuments() {
           </div>
           <p className="text-sm text-purple-700">
             All the evidence captured during the overhaul — photos, voice notes,
-            measurements — is fed to AI which generates a complete FAA Form 8130-3
-            in seconds. Watch the form fill itself in.
+            measurements — is fed to AI which generates <strong>three complete FAA forms</strong> in
+            seconds. Watch them fill themselves in.
           </p>
         </div>
       </div>
@@ -680,163 +806,103 @@ function StepDocuments() {
             <Sparkles className="h-12 w-12 text-blue-400 mx-auto mb-4" />
             <p className="text-lg font-medium mb-2">Ready to generate</p>
             <p className="text-sm text-slate-500 mb-6">
-              AI will create a complete FAA Form 8130-3 from captured evidence
+              AI will create 3 complete FAA forms from captured evidence
             </p>
             <Button size="lg" onClick={triggerGeneration} className="gap-2">
-              <Sparkles className="h-4 w-4" /> Generate 8130-3
+              <Sparkles className="h-4 w-4" /> Generate FAA Documentation
             </Button>
           </div>
         ) : (
-          <Form8130Preview
-            key={formKey}
-            data={MOCK_8130}
-            animate={true}
-            showDownload={true}
-          />
+          <>
+            {/* ── TABBED FORM INTERFACE ── */}
+            <div className="flex gap-1 mb-5 border-b border-slate-200">
+              {tabs.map((tab) => {
+                const isActive = activeTab === tab.key;
+                const isComplete = animatedForms.has(tab.key);
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveTab(tab.key)}
+                    className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-all -mb-px ${
+                      isActive
+                        ? "border-blue-600 text-blue-700"
+                        : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      {isComplete && <span className="text-green-600">✓</span>}
+                      <span>{tab.label}</span>
+                      <span className="text-slate-400 font-normal text-xs">{tab.subtitle}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* ── AI DETECTION CALLOUT (8010-4 tab only) ── */}
+            {activeTab === "8010" && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+                <div className="flex items-start gap-3">
+                  <Sparkles className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-bold text-amber-900 text-sm">AI DETECTED: Fleet-Wide Pattern</p>
+                    <p className="text-sm text-amber-700 mt-1">
+                      881700-4022 seals on units &gt;7,500 hrs show accelerated failure rates.
+                      4 of 12 fleet units required unscheduled replacement. AeroTrack auto-generated
+                      this defect report to alert the FAA — no human had to notice the pattern.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── ACTIVE FORM ── */}
+            {activeTab === "8130" && (
+              <Form8130Preview
+                key={animatedForms.has("8130") ? `8130-static-${formKey}` : `8130-animate-${formKey}`}
+                data={MOCK_8130}
+                animate={!animatedForms.has("8130")}
+                showDownload={true}
+                onAnimationComplete={() => setFormAnimDone(true)}
+              />
+            )}
+            {activeTab === "337" && (
+              <Form337Preview
+                key={animatedForms.has("337") ? "337-static" : "337-animate"}
+                animate={!animatedForms.has("337")}
+              />
+            )}
+            {activeTab === "8010" && (
+              <Form8010Preview
+                key={animatedForms.has("8010") ? "8010-static" : "8010-animate"}
+                animate={!animatedForms.has("8010")}
+              />
+            )}
+
+            {/* ── NARRATIVE TRANSITION CARD (US-003) ── */}
+            {formAnimDone && (
+              <div
+                className="border-l-4 border-indigo-400 bg-indigo-50 rounded-r-lg p-5 mt-6"
+                style={{
+                  animation: "fadeSlideUp 500ms ease forwards",
+                  animationDelay: "400ms",
+                  opacity: 0,
+                }}
+              >
+                <div className="flex items-start gap-3">
+                  <Link2 className="h-5 w-5 text-indigo-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm text-indigo-800">
+                      That form just created an unbreakable link in this component&apos;s chain of custody.
+                      Every measurement, every photo, every signature — cryptographically sealed.{" "}
+                      <strong>Now let&apos;s see what happens when that chain is broken.</strong>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         )}
-      </div>
-    </div>
-  );
-}
-
-// ── STEP 4: THE DIGITAL THREAD ─────────────────────────────
-// Shows Component 1 (clean) vs Component 2 (with gap)
-function StepThread() {
-  const [components, setComponents] = useState<{ clean: string | null; gapped: string | null }>({
-    clean: null,
-    gapped: null,
-  });
-
-  // Fetch component IDs by serial number
-  useEffect(() => {
-    async function fetchIds() {
-      try {
-        const res = await fetch("/api/components");
-        const all = await res.json();
-        const clean = all.find((c: { serialNumber: string }) => c.serialNumber === "SN-2019-07842");
-        const gapped = all.find((c: { serialNumber: string }) => c.serialNumber === "SN-2018-06231");
-        setComponents({
-          clean: clean?.id || null,
-          gapped: gapped?.id || null,
-        });
-      } catch {
-        // If API fails, just show the links without IDs
-      }
-    }
-    fetchIds();
-  }, []);
-
-  return (
-    <div className="h-full overflow-y-auto p-6">
-      {/* Narration card */}
-      <div className="max-w-3xl mx-auto mb-6">
-        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <Search className="h-5 w-5 text-indigo-600" />
-            <h3 className="font-bold text-indigo-900">The Digital Thread</h3>
-          </div>
-          <p className="text-sm text-indigo-700">
-            Every component has a &ldquo;digital thread&rdquo; — a complete record of everywhere
-            it&apos;s been and everything that&apos;s happened to it. Compare these two
-            components and spot the difference.
-          </p>
-        </div>
-      </div>
-
-      <div className="max-w-3xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Component 1: Clean */}
-        <Card className="border-2 border-green-200">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-3 h-3 rounded-full bg-green-500" />
-              <h4 className="font-bold text-green-800">The Perfect History</h4>
-            </div>
-            <div className="space-y-2 text-sm mb-4">
-              <p className="font-mono text-xs text-slate-500">P/N 881700-1001 | S/N SN-2019-07842</p>
-              <p className="text-slate-600">HPC-7 Hydraulic Pump</p>
-              <div className="flex items-center gap-2 mt-3">
-                <div className="flex gap-0.5">
-                  {["green", "green", "green", "green", "green", "green"].map((c, i) => (
-                    <div key={i} className="w-3 h-3 rounded-full bg-green-500" />
-                  ))}
-                </div>
-                <span className="text-xs text-green-700 font-medium">94% Trace Score</span>
-              </div>
-              <p className="text-xs text-slate-500 mt-2">
-                14 lifecycle events | Complete documentation from birth to present |
-                Every facility certified, every transfer documented
-              </p>
-            </div>
-            {components.clean ? (
-              <a
-                href={`/parts/${components.clean}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-sm text-green-600 hover:underline"
-              >
-                View Digital Thread <ExternalLink className="h-3 w-3" />
-              </a>
-            ) : (
-              <p className="text-xs text-slate-400">Loading...</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Component 2: Gapped */}
-        <Card className="border-2 border-red-200">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-3 h-3 rounded-full bg-red-500" />
-              <h4 className="font-bold text-red-800">The Gap</h4>
-            </div>
-            <div className="space-y-2 text-sm mb-4">
-              <p className="font-mono text-xs text-slate-500">P/N 881700-1034 | S/N SN-2018-06231</p>
-              <p className="text-slate-600">HPC-7 Hydraulic Pump</p>
-              <div className="flex items-center gap-2 mt-3">
-                <div className="flex gap-0.5">
-                  {["green", "green", "green", "red", "green", "green"].map((c, i) => (
-                    <div key={i} className={`w-3 h-3 rounded-full ${c === "red" ? "bg-red-500" : "bg-green-500"}`} />
-                  ))}
-                </div>
-                <span className="text-xs text-red-700 font-medium">~67% Trace Score</span>
-              </div>
-              <div className="bg-red-50 border border-red-200 rounded p-2 mt-2">
-                <p className="text-xs text-red-700 font-medium flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3" /> 14-month gap detected
-                </p>
-                <p className="text-xs text-red-600 mt-0.5">
-                  Nov 2020 → Jan 2022 — No records. Where was this part?
-                  Was it on an aircraft? In a warehouse? Was it tampered with?
-                </p>
-              </div>
-            </div>
-            {components.gapped ? (
-              <a
-                href={`/parts/${components.gapped}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-sm text-red-600 hover:underline"
-              >
-                View Digital Thread <ExternalLink className="h-3 w-3" />
-              </a>
-            ) : (
-              <p className="text-xs text-slate-400">Loading...</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Call-to-action insight */}
-      <div className="max-w-3xl mx-auto mt-8 text-center">
-        <div className="bg-slate-50 border rounded-lg p-5">
-          <p className="text-sm text-slate-600 mb-2">
-            <strong>Industry average:</strong> Only 38% of components have a complete
-            documentation trail. The rest have gaps like Component 2.
-          </p>
-          <p className="text-sm text-slate-800 font-medium">
-            AeroTrack captures everything automatically — gaps become impossible.
-          </p>
-        </div>
       </div>
     </div>
   );
@@ -993,20 +1059,68 @@ function StepIntelligence() {
 }
 
 // ── STEP 6: THE HEICO OPPORTUNITY ──────────────────────────
-// Editable ROI calculator with HEICO-relevant defaults
+// Editable ROI calculator with HEICO-relevant defaults.
+// Covers 5 value categories: labor savings, AOG cost avoidance,
+// audit cost reduction, counterfeit risk reduction, and
+// aircraft value preservation.
 function StepOpportunity() {
+  // Core inputs (always visible)
   const [inputs, setInputs] = useState({
     shops: 62,
     partsPerYear: 8500,
     minutesPerPart: 90,
     hourlyRate: 65,
+    // Advanced inputs (behind toggle)
+    aogEventsAvoided: 10,
+    avgAogCost: 150000,
+    annualAuditPrepCost: 500000,
+    fleetDocImprovement: 15,
   });
 
-  // Computed outputs
+  // Toggle for the advanced inputs section
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Helper to clamp input values to non-negative integers
+  const handleInput = (field: string, value: string) => {
+    setInputs({ ...inputs, [field]: Math.max(0, parseInt(value) || 0) });
+  };
+
+  // ── COMPUTED OUTPUTS ──
+  // 1. Labor savings: time saved per part × hourly rate
   const totalMinutesSaved = inputs.partsPerYear * (inputs.minutesPerPart - 3); // 3 min with AeroTrack
   const totalHoursSaved = Math.round(totalMinutesSaved / 60);
   const laborCostSaved = Math.round(totalHoursSaved * inputs.hourlyRate);
-  const fiveYearValue = laborCostSaved * 5;
+
+  // 2. AOG cost avoidance: fewer aircraft-on-ground events via predictive docs
+  const aogAvoidance = inputs.aogEventsAvoided * inputs.avgAogCost;
+
+  // 3. Audit cost reduction: 60% less time on audit prep
+  const auditReduction = Math.round(inputs.annualAuditPrepCost * 0.60);
+
+  // 4. Counterfeit risk reduction: 2% of parts × $5K avg exposure × doc improvement %
+  const counterfeitReduction = Math.round(
+    inputs.partsPerYear * 0.02 * 5000 * (inputs.fleetDocImprovement / 100)
+  );
+
+  // 5. Aircraft value preservation: better docs = higher residual value
+  const aircraftValue = Math.round(
+    inputs.shops * 3 * 1_000_000 * (inputs.fleetDocImprovement / 100)
+  );
+
+  // Total annual savings (excluding one-time aircraft value)
+  const annualSavings = laborCostSaved + aogAvoidance + auditReduction + counterfeitReduction;
+
+  // 5-year total: annual savings × 5 + aircraft value preservation
+  const fiveYearValue = annualSavings * 5 + aircraftValue;
+
+  // Stacked bar segments (percentage of annual savings)
+  const barSegments = [
+    { label: "Labor", value: laborCostSaved, color: "bg-green-500" },
+    { label: "AOG", value: aogAvoidance, color: "bg-blue-500" },
+    { label: "Audit", value: auditReduction, color: "bg-indigo-500" },
+    { label: "Counterfeit", value: counterfeitReduction, color: "bg-amber-500" },
+  ];
+  const barTotal = barSegments.reduce((sum, s) => sum + s.value, 0);
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -1025,14 +1139,14 @@ function StepOpportunity() {
       </div>
 
       <div className="max-w-3xl mx-auto">
-        {/* Input controls */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        {/* ── CORE INPUTS ── */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
           <div>
             <label className="text-xs text-slate-500 mb-1 block">MRO Shops in Network</label>
             <Input
               type="number"
               value={inputs.shops}
-              onChange={(e) => setInputs({ ...inputs, shops: parseInt(e.target.value) || 0 })}
+              onChange={(e) => handleInput("shops", e.target.value)}
               className="text-center font-bold"
             />
           </div>
@@ -1041,7 +1155,7 @@ function StepOpportunity() {
             <Input
               type="number"
               value={inputs.partsPerYear}
-              onChange={(e) => setInputs({ ...inputs, partsPerYear: parseInt(e.target.value) || 0 })}
+              onChange={(e) => handleInput("partsPerYear", e.target.value)}
               className="text-center font-bold"
             />
           </div>
@@ -1050,7 +1164,7 @@ function StepOpportunity() {
             <Input
               type="number"
               value={inputs.minutesPerPart}
-              onChange={(e) => setInputs({ ...inputs, minutesPerPart: parseInt(e.target.value) || 0 })}
+              onChange={(e) => handleInput("minutesPerPart", e.target.value)}
               className="text-center font-bold"
             />
           </div>
@@ -1059,49 +1173,188 @@ function StepOpportunity() {
             <Input
               type="number"
               value={inputs.hourlyRate}
-              onChange={(e) => setInputs({ ...inputs, hourlyRate: parseInt(e.target.value) || 0 })}
+              onChange={(e) => handleInput("hourlyRate", e.target.value)}
               className="text-center font-bold"
             />
           </div>
         </div>
 
-        {/* Output cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-          <div className="bg-green-50 border border-green-200 rounded-lg p-5 text-center">
-            <p className="text-3xl font-bold text-green-800">
+        {/* ── ADVANCED INPUTS TOGGLE ── */}
+        <button
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 mb-4 mx-auto transition-colors"
+        >
+          <ChevronDown
+            className={`h-3.5 w-3.5 transition-transform ${showAdvanced ? "rotate-180" : ""}`}
+          />
+          {showAdvanced ? "Hide" : "Show"} Advanced Inputs
+        </button>
+
+        {/* ── ADVANCED INPUTS (hidden by default) ── */}
+        {showAdvanced && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 bg-slate-50 border border-slate-200 rounded-lg">
+            <div>
+              <label className="text-xs text-slate-500 mb-1 flex items-center gap-1">
+                AOG Events Avoided/Yr
+                <span className="group relative">
+                  <Info className="h-3 w-3 text-slate-400 cursor-help" />
+                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-slate-800 text-white text-[10px] rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+                    Aircraft-on-ground events prevented by better documentation
+                  </span>
+                </span>
+              </label>
+              <Input
+                type="number"
+                value={inputs.aogEventsAvoided}
+                onChange={(e) => handleInput("aogEventsAvoided", e.target.value)}
+                className="text-center font-bold"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 flex items-center gap-1">
+                Avg. AOG Cost ($)
+                <span className="group relative">
+                  <Info className="h-3 w-3 text-slate-400 cursor-help" />
+                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-slate-800 text-white text-[10px] rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+                    Cost per grounded aircraft ($10K–$150K/hr is industry standard)
+                  </span>
+                </span>
+              </label>
+              <Input
+                type="number"
+                value={inputs.avgAogCost}
+                onChange={(e) => handleInput("avgAogCost", e.target.value)}
+                className="text-center font-bold"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 flex items-center gap-1">
+                Annual Audit Prep ($)
+                <span className="group relative">
+                  <Info className="h-3 w-3 text-slate-400 cursor-help" />
+                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-slate-800 text-white text-[10px] rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+                    Total cost of preparing for FAA/EASA audits across all shops
+                  </span>
+                </span>
+              </label>
+              <Input
+                type="number"
+                value={inputs.annualAuditPrepCost}
+                onChange={(e) => handleInput("annualAuditPrepCost", e.target.value)}
+                className="text-center font-bold"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 flex items-center gap-1">
+                Doc Improvement (%)
+                <span className="group relative">
+                  <Info className="h-3 w-3 text-slate-400 cursor-help" />
+                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-slate-800 text-white text-[10px] rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+                    Percentage improvement in fleet documentation completeness
+                  </span>
+                </span>
+              </label>
+              <Input
+                type="number"
+                value={inputs.fleetDocImprovement}
+                onChange={(e) => handleInput("fleetDocImprovement", e.target.value)}
+                className="text-center font-bold"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ── OUTPUT CARDS ── */}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+          {/* Existing outputs */}
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+            <p className="text-2xl font-bold text-green-800">
               {totalHoursSaved.toLocaleString()}
             </p>
             <p className="text-xs text-green-600 mt-1">Hours Saved / Year</p>
           </div>
-          <div className="bg-green-50 border border-green-200 rounded-lg p-5 text-center">
-            <p className="text-3xl font-bold text-green-800">
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+            <p className="text-2xl font-bold text-green-800">
               ${(laborCostSaved / 1000000).toFixed(1)}M
             </p>
             <p className="text-xs text-green-600 mt-1">Labor Cost Saved / Year</p>
           </div>
-          <div className="bg-green-50 border border-green-200 rounded-lg p-5 text-center">
-            <p className="text-3xl font-bold text-green-800">
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+            <p className="text-2xl font-bold text-green-800">
               15% → &lt;1%
             </p>
             <p className="text-xs text-green-600 mt-1">Error Rate Reduction</p>
           </div>
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-5 text-center">
-            <p className="text-3xl font-bold text-blue-800">
-              Weeks → Min
+
+          {/* New outputs from advanced calculator */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
+            <p className="text-2xl font-bold text-blue-800">
+              ${(aogAvoidance / 1000000).toFixed(1)}M
             </p>
-            <p className="text-xs text-blue-600 mt-1">Audit Prep Time</p>
+            <p className="text-xs text-blue-600 mt-1">AOG Cost Avoidance / Year</p>
           </div>
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-5 text-center">
-            <p className="text-3xl font-bold text-blue-800">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
+            <p className="text-2xl font-bold text-blue-800">
+              ${(auditReduction / 1000).toFixed(0)}K
+            </p>
+            <p className="text-xs text-blue-600 mt-1">Audit Cost Reduction / Year</p>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
+            <p className="text-2xl font-bold text-blue-800">
+              ${(counterfeitReduction / 1000).toFixed(0)}K
+            </p>
+            <p className="text-xs text-blue-600 mt-1">Counterfeit Risk Reduction</p>
+          </div>
+
+          {/* Full-width value cards */}
+          <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 text-center">
+            <p className="text-2xl font-bold text-indigo-800">
+              ${(aircraftValue / 1000000).toFixed(1)}M
+            </p>
+            <p className="text-xs text-indigo-600 mt-1">Aircraft Value Preserved</p>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
+            <p className="text-2xl font-bold text-blue-800">
               0% → 94%+
             </p>
             <p className="text-xs text-blue-600 mt-1">Digital Thread Coverage</p>
           </div>
-          <div className="bg-gradient-to-br from-emerald-50 to-green-50 border-2 border-emerald-300 rounded-lg p-5 text-center">
-            <p className="text-3xl font-bold text-emerald-800">
+          <div className="bg-gradient-to-br from-emerald-50 to-green-50 border-2 border-emerald-300 rounded-lg p-4 text-center">
+            <p className="text-2xl font-bold text-emerald-800">
               ${(fiveYearValue / 1000000).toFixed(0)}M+
             </p>
-            <p className="text-xs text-emerald-600 mt-1 font-medium">5-Year Value</p>
+            <p className="text-xs text-emerald-600 mt-1 font-medium">5-Year Total Value</p>
+          </div>
+        </div>
+
+        {/* ── STACKED BAR CHART ── */}
+        {/* Visual breakdown of annual savings by category */}
+        <div className="mb-6">
+          <p className="text-xs text-slate-500 mb-2 font-medium">Annual Savings Breakdown</p>
+          <div className="flex h-8 rounded-lg overflow-hidden border border-slate-200">
+            {barSegments.map((seg) => {
+              const pct = barTotal > 0 ? (seg.value / barTotal) * 100 : 0;
+              if (pct < 1) return null; // Skip tiny segments
+              return (
+                <div
+                  key={seg.label}
+                  className={`${seg.color} flex items-center justify-center text-white text-[10px] font-medium transition-all`}
+                  style={{ width: `${pct}%` }}
+                  title={`${seg.label}: $${(seg.value / 1000000).toFixed(1)}M`}
+                >
+                  {pct > 12 ? `${seg.label} $${(seg.value / 1000000).toFixed(1)}M` : ""}
+                </div>
+              );
+            })}
+          </div>
+          {/* Legend */}
+          <div className="flex flex-wrap gap-3 mt-2">
+            {barSegments.map((seg) => (
+              <div key={seg.label} className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                <div className={`w-2.5 h-2.5 rounded-sm ${seg.color}`} />
+                {seg.label}: ${(seg.value / 1000000).toFixed(1)}M
+              </div>
+            ))}
           </div>
         </div>
 
@@ -1109,10 +1362,10 @@ function StepOpportunity() {
         <div className="bg-slate-50 border rounded-lg p-5 text-center">
           <TrendingUp className="h-6 w-6 text-emerald-600 mx-auto mb-2" />
           <p className="text-sm text-slate-700">
-            At {inputs.shops} shops and {inputs.partsPerYear.toLocaleString()} overhauls per year,
-            AeroTrack saves <strong>{totalHoursSaved.toLocaleString()} hours</strong> of
-            mechanic time — that&apos;s <strong>{Math.round(totalHoursSaved / 2080)} full-time
-            equivalents</strong> redeployed to actual maintenance work.
+            At {inputs.shops} shops processing {inputs.partsPerYear.toLocaleString()} overhauls/year,
+            AeroTrack delivers <strong>${(annualSavings / 1000000).toFixed(1)}M in annual savings</strong> across
+            labor, AOG avoidance, audit prep, and counterfeit prevention — plus{" "}
+            <strong>${(aircraftValue / 1000000).toFixed(1)}M in aircraft value preservation</strong>.
           </p>
         </div>
       </div>
@@ -1134,12 +1387,22 @@ function StepExplore({ onNavigate }: { onNavigate: (path: string) => void }) {
   return (
     <div className="h-full flex items-center justify-center p-8">
       <div className="max-w-2xl w-full text-center">
+        {/* ── CLOSING STATEMENT CARD ── */}
+        <div className="border-t border-b border-slate-200 rounded-xl p-8 mb-8 bg-gradient-to-b from-white to-slate-50">
+          <p className="text-xl md:text-2xl font-semibold text-slate-800 leading-relaxed">
+            The aerospace industry is moving to digital thread.
+            The question isn&apos;t <em>whether</em> — it&apos;s who gets there first.
+          </p>
+          <p className="text-sm text-slate-500 mt-4">
+            Everything you&apos;ve seen is live. This isn&apos;t a slide deck — it&apos;s a working system.
+          </p>
+        </div>
+
         <h2 className="text-2xl font-bold text-slate-900 mb-2">
           Your Turn
         </h2>
         <p className="text-sm text-slate-500 mb-8">
           Explore the app freely. Click anything. Ask questions.
-          Everything you&apos;ve seen is live — this isn&apos;t a slide deck.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-left">

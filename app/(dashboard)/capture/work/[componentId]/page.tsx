@@ -128,101 +128,6 @@ export default function CaptureWorkPage() {
     fetchComponent();
   }, [params.componentId]);
 
-  if (loading) return <p className="py-12 text-center text-slate-500">Loading...</p>;
-  if (!component) return <p className="py-12 text-center text-slate-500">Component not found.</p>;
-
-  const currentStepKey = STEPS[currentStep].key;
-
-  function addItem(type: CapturedItem["type"], label: string, detail?: string) {
-    setCapturedItems((prev) => [
-      ...prev,
-      {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        type,
-        time: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
-        label,
-        detail,
-        step: currentStepKey,
-      },
-    ]);
-  }
-
-  function addTextNote() {
-    if (!textNote.trim()) return;
-    addItem("text_note", textNote);
-    setTextNote("");
-  }
-
-  function addMeasurement() {
-    if (!measurementParam || !measurementValue) return;
-    const pass = measurementSpec ? "— checking..." : "";
-    addItem("measurement", `${measurementParam}: ${measurementValue}`, measurementSpec ? `Spec: ${measurementSpec} ${pass}` : undefined);
-    setMeasurementParam("");
-    setMeasurementValue("");
-    setMeasurementSpec("");
-  }
-
-  async function generateDocumentation() {
-    if (!component) return;
-    setGenerating(true);
-
-    // Build the payload with all captured data for the AI routes
-    const payload = {
-      component: {
-        partNumber: component.partNumber,
-        serialNumber: component.serialNumber,
-        description: component.description,
-        oem: component.oem,
-        totalHours: component.totalHours,
-        totalCycles: component.totalCycles,
-      },
-      capturedItems,
-      testResults,
-      receivingChecklist,
-    };
-
-    try {
-      // Call both AI routes in parallel for speed
-      const [form8130Res, workOrderRes] = await Promise.all([
-        fetch("/api/ai/generate-8130", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }),
-        fetch("/api/ai/generate-workorder", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }),
-      ]);
-
-      const form8130 = await form8130Res.json();
-      const workOrder = await workOrderRes.json();
-
-      // Count findings and test results for the summary cards
-      const findingsCount = workOrder.findings?.length || capturedItems.filter((i) => i.type === "text_note" || i.type === "voice").length;
-      const testsCount = workOrder.testResults?.length || testResults.length;
-      const allPass = workOrder.testResults?.every((t: { passFail: string }) => t.passFail === "PASS") ?? testResults.every((t) => t.result === "PASS");
-
-      setGeneratedDocs({
-        form8130,
-        workOrder,
-        findingsReport: `${findingsCount} findings documented with photo references and CMM dispositions.`,
-        testResults: `${testsCount} tests performed — ${allPass ? "all PASS" : "review required"}.`,
-      });
-    } catch (error) {
-      console.error("Documentation generation failed:", error);
-      // Show a user-friendly error state
-      setGeneratedDocs({
-        form8130: null,
-        workOrder: null,
-        findingsReport: "Generation failed — please try again.",
-        testResults: null,
-      });
-    }
-    setGenerating(false);
-  }
-
   // Helper: add a captured item to a specific step (used by demo autopilot
   // so it can add items to any step without relying on currentStep state)
   function addItemToStep(step: string, type: CapturedItem["type"], label: string, detail?: string) {
@@ -250,6 +155,8 @@ export default function CaptureWorkPage() {
   // ── DEMO AUTOPILOT ──
   // Walks through all 6 overhaul steps with realistic data appearing
   // at timed intervals. Jake narrates live over the top of it.
+  // NOTE: This useCallback MUST be above the early returns below so
+  // hooks always run in the same order on every render.
   const runDemoAutopilot = useCallback(async () => {
     if (!component) return;
     demoAbortRef.current = false;
@@ -438,6 +345,102 @@ export default function CaptureWorkPage() {
     setDemoMode(false);
   }
 
+  // ── EARLY RETURNS (must be AFTER all hooks) ──
+  if (loading) return <p className="py-12 text-center text-slate-500">Loading...</p>;
+  if (!component) return <p className="py-12 text-center text-slate-500">Component not found.</p>;
+
+  const currentStepKey = STEPS[currentStep].key;
+
+  function addItem(type: CapturedItem["type"], label: string, detail?: string) {
+    setCapturedItems((prev) => [
+      ...prev,
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        type,
+        time: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
+        label,
+        detail,
+        step: currentStepKey,
+      },
+    ]);
+  }
+
+  function addTextNote() {
+    if (!textNote.trim()) return;
+    addItem("text_note", textNote);
+    setTextNote("");
+  }
+
+  function addMeasurement() {
+    if (!measurementParam || !measurementValue) return;
+    const pass = measurementSpec ? "— checking..." : "";
+    addItem("measurement", `${measurementParam}: ${measurementValue}`, measurementSpec ? `Spec: ${measurementSpec} ${pass}` : undefined);
+    setMeasurementParam("");
+    setMeasurementValue("");
+    setMeasurementSpec("");
+  }
+
+  async function generateDocumentation() {
+    if (!component) return;
+    setGenerating(true);
+
+    // Build the payload with all captured data for the AI routes
+    const payload = {
+      component: {
+        partNumber: component.partNumber,
+        serialNumber: component.serialNumber,
+        description: component.description,
+        oem: component.oem,
+        totalHours: component.totalHours,
+        totalCycles: component.totalCycles,
+      },
+      capturedItems,
+      testResults,
+      receivingChecklist,
+    };
+
+    try {
+      // Call both AI routes in parallel for speed
+      const [form8130Res, workOrderRes] = await Promise.all([
+        fetch("/api/ai/generate-8130", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }),
+        fetch("/api/ai/generate-workorder", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }),
+      ]);
+
+      const form8130 = await form8130Res.json();
+      const workOrder = await workOrderRes.json();
+
+      // Count findings and test results for the summary cards
+      const findingsCount = workOrder.findings?.length || capturedItems.filter((i) => i.type === "text_note" || i.type === "voice").length;
+      const testsCount = workOrder.testResults?.length || testResults.length;
+      const allPass = workOrder.testResults?.every((t: { passFail: string }) => t.passFail === "PASS") ?? testResults.every((t) => t.result === "PASS");
+
+      setGeneratedDocs({
+        form8130,
+        workOrder,
+        findingsReport: `${findingsCount} findings documented with photo references and CMM dispositions.`,
+        testResults: `${testsCount} tests performed — ${allPass ? "all PASS" : "review required"}.`,
+      });
+    } catch (error) {
+      console.error("Documentation generation failed:", error);
+      // Show a user-friendly error state
+      setGeneratedDocs({
+        form8130: null,
+        workOrder: null,
+        findingsReport: "Generation failed — please try again.",
+        testResults: null,
+      });
+    }
+    setGenerating(false);
+  }
+
   // The 8130-3 data is already parsed (the API returns JSON directly)
   const form8130Data = generatedDocs.form8130;
 
@@ -567,9 +570,44 @@ export default function CaptureWorkPage() {
                   ))}
                 </div>
 
-                <p className="text-xs text-slate-400 mb-2">
+                <p className="text-xs text-slate-400 mb-4">
                   Customer Work Scope: &ldquo;Full overhaul per CMM 29-10-01&rdquo;
                 </p>
+
+                {/* Capture tools for receiving — photo of as-received condition, voice note */}
+                <div className="border-t pt-3 space-y-2">
+                  <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Capture Evidence</p>
+                  {!restrictedMode && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full justify-start gap-2"
+                      onClick={() => addItem("photo", "As-received condition photo", "Photo of component upon arrival")}
+                    >
+                      <Camera className="h-4 w-4" /> Photo — As-Received Condition
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start gap-2"
+                    onClick={() => addItem("voice", "Receiving inspection note", "Voice note captured during receiving inspection")}
+                  >
+                    <Mic className="h-4 w-4" /> Voice Note
+                  </Button>
+                  <div className="flex gap-2">
+                    <Textarea
+                      placeholder="Add a note about incoming condition..."
+                      value={textNote}
+                      onChange={(e) => setTextNote(e.target.value)}
+                      className="text-sm"
+                      rows={2}
+                    />
+                    <Button size="sm" variant="secondary" onClick={addTextNote} className="shrink-0 self-end">
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -834,9 +872,25 @@ export default function CaptureWorkPage() {
             </CardHeader>
             <CardContent>
               {capturedItems.length === 0 ? (
-                <p className="text-xs text-slate-400 py-4 text-center">
-                  No evidence captured yet. Use the tools on the left to capture photos, voice notes, and measurements.
-                </p>
+                <div className="py-6 text-center">
+                  <Camera className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+                  <p className="text-sm font-medium text-slate-500 mb-1">
+                    No evidence captured yet
+                  </p>
+                  <p className="text-xs text-slate-400 mb-3">
+                    Photos, voice notes, and measurements will appear here as you capture them.
+                  </p>
+                  {!restrictedMode && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5"
+                      onClick={() => addItem("photo", `Photo — ${currentStepKey}`, "Quick capture from evidence panel")}
+                    >
+                      <Camera className="h-3.5 w-3.5" /> Quick Photo
+                    </Button>
+                  )}
+                </div>
               ) : (
                 <div className="space-y-2 max-h-[500px] overflow-y-auto">
                   {capturedItems.slice().reverse().map((item) => (

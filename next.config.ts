@@ -1,13 +1,30 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Tell Next.js NOT to bundle these packages — use them as-is at runtime.
+  // This is critical for native modules (better-sqlite3) which contain
+  // compiled C++ code that webpack can't process. Without this, the bundler
+  // tries to parse native .node files and gets stuck, causing the dev server
+  // to take 40+ seconds to start instead of ~5 seconds.
+  serverExternalPackages: [
+    "better-sqlite3",
+    "@prisma/adapter-better-sqlite3",
+    "@prisma/client",
+    "prisma",
+    "pdf-lib",
+    "@anthropic-ai/sdk",
+  ],
+
   experimental: {
-    // Disable Turbopack's persistent filesystem cache.
-    // It writes .sst files that corrupt easily, crashing the dev server.
-    turbopackFileSystemCacheForDev: false,
-    // Disable isolated dev build — Next.js 16 moved dev output to .next/dev/
-    // which causes missing manifest errors on first compile.
-    isolatedDevBuild: false,
+    // Tree-shake barrel exports from large icon/component libraries.
+    // Without this, importing { Plane } from "lucide-react" pulls in
+    // ALL 1,500+ icons during compilation instead of just the one you need.
+    optimizePackageImports: [
+      "lucide-react",
+      "recharts",
+      "radix-ui",
+      "date-fns",
+    ],
   },
 };
 

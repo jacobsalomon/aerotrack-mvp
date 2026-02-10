@@ -556,12 +556,14 @@ export async function GET(
 
     // Evidence counts
     const photos = event.evidence.filter((e) => e.type === "photo").length;
+    const videos = event.evidence.filter((e) => e.type === "video").length;
     const voices = event.evidence.filter((e) => e.type === "voice_note").length;
     const docs = event.generatedDocs.length;
-    if (photos > 0 || voices > 0 || docs > 0) {
+    if (photos > 0 || videos > 0 || voices > 0 || docs > 0) {
       const evidenceParts: string[] = [];
       if (docs > 0) evidenceParts.push(`${docs} doc${docs > 1 ? "s" : ""}`);
       if (photos > 0) evidenceParts.push(`${photos} photo${photos > 1 ? "s" : ""}`);
+      if (videos > 0) evidenceParts.push(`${videos} video${videos > 1 ? "s" : ""}`);
       if (voices > 0) evidenceParts.push(`${voices} voice note${voices > 1 ? "s" : ""}`);
       timelinePage.drawText(evidenceParts.join("  |  "), {
         x: MARGIN + 22,
