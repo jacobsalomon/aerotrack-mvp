@@ -7,14 +7,15 @@ const nextConfig: NextConfig = {
   output: "standalone",
 
   // Tell Next.js NOT to bundle these packages — use them as-is at runtime.
-  // This is critical for native modules (better-sqlite3) which contain
-  // compiled C++ code that webpack can't process. Without this, the bundler
-  // tries to parse native .node files and gets stuck, causing the dev server
-  // to take 40+ seconds to start instead of ~5 seconds.
+  // Without this, the bundler tries to process native modules and gets stuck,
+  // causing the dev server to take 40+ seconds to start instead of ~5 seconds.
   serverExternalPackages: [
-    "better-sqlite3",
-    "@prisma/adapter-better-sqlite3",
+    "@prisma/adapter-libsql",
     "@prisma/client",
+    "@libsql/client",
+    "@libsql/hrana-client",
+    "@libsql/isomorphic-ws",
+    "@libsql/isomorphic-fetch",
     "prisma",
     "pdf-lib",
     "@anthropic-ai/sdk",
