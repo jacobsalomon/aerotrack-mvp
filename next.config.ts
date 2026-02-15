@@ -1,11 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Creates a minimal self-contained build — only includes files actually needed.
-  // Required for Docker/Railway/Fly.io deployment, and also speeds up the build
-  // because webpack has far less to trace through.
-  output: "standalone",
-
   // Tell Next.js NOT to bundle these packages — use them as-is at runtime.
   // Without this, the bundler tries to process native modules and gets stuck,
   // causing the dev server to take 40+ seconds to start instead of ~5 seconds.
