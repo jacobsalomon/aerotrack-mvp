@@ -45,7 +45,12 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("API /components error:", error);
     return NextResponse.json(
-      { error: String(error), env: { hasTursoUrl: !!process.env.TURSO_DATABASE_URL, hasTursoToken: !!process.env.TURSO_AUTH_TOKEN } },
+      { error: String(error), env: {
+        hasTursoUrl: !!process.env.TURSO_DATABASE_URL,
+        hasTursoToken: !!process.env.TURSO_AUTH_TOKEN,
+        urlPrefix: process.env.TURSO_DATABASE_URL?.substring(0, 30) + "...",
+        urlLength: process.env.TURSO_DATABASE_URL?.length,
+      } },
       { status: 500 }
     );
   }
