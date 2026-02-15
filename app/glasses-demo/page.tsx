@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
 import { FormCell, FormRow, FORM_ROW_KEYFRAME } from "@/components/documents/form-helpers";
 import Form337Preview from "@/components/documents/form-337-preview";
 import Form8010Preview from "@/components/documents/form-8010-preview";
@@ -291,7 +293,7 @@ export default function GlassesDemoPage() {
   const [partInfo, setPartInfo] = useState<string | null>(null);
   const [docStatus, setDocStatus] = useState<string | null>(null);
   const [bom, setBom] = useState<BomItem[]>(INITIAL_BOM.map(b => ({ ...b })));
-  const [currentImage, setCurrentImage] = useState("/glasses/glasses-1-scan.jpg");
+  const [currentImage, setCurrentImage] = useState(`${basePath}/glasses/glasses-1-scan.jpg`);
 
   // ── GENERATING SCREEN STATE ──
   // Tracks which progress steps are visible during the "generating" transition
@@ -321,20 +323,20 @@ export default function GlassesDemoPage() {
     setPartInfo(null);
     setDocStatus(null);
     setBom(INITIAL_BOM.map(b => ({ ...b })));
-    setCurrentImage("/glasses/glasses-1-scan.jpg");
+    setCurrentImage(`${basePath}/glasses/glasses-1-scan.jpg`);
     setGeneratingStep(0);
     setActiveFormTab("8130");
     setAnimatedForms(new Set());
 
     // Schedule camera image transitions synced to the demo phases
     const imageTransitions = [
-      { time: 0,     src: "/glasses/glasses-1-scan.jpg" },
-      { time: 8500,  src: "/glasses/glasses-3-inspect-bore.jpg" },
-      { time: 17000, src: "/glasses/glasses-2-teardown.jpg" },
-      { time: 21000, src: "/glasses/glasses-4-seal-degraded.jpg" },
-      { time: 30000, src: "/glasses/glasses-5-repair.jpg" },
-      { time: 35500, src: "/glasses/glasses-6-test.jpg" },
-      { time: 40000, src: "/glasses/glasses-7-complete.jpg" },
+      { time: 0,     src: `${basePath}/glasses/glasses-1-scan.jpg` },
+      { time: 8500,  src: `${basePath}/glasses/glasses-3-inspect-bore.jpg` },
+      { time: 17000, src: `${basePath}/glasses/glasses-2-teardown.jpg` },
+      { time: 21000, src: `${basePath}/glasses/glasses-4-seal-degraded.jpg` },
+      { time: 30000, src: `${basePath}/glasses/glasses-5-repair.jpg` },
+      { time: 35500, src: `${basePath}/glasses/glasses-6-test.jpg` },
+      { time: 40000, src: `${basePath}/glasses/glasses-7-complete.jpg` },
     ];
     imageTransitions.forEach(({ time, src }) => {
       timersRef.current.push(setTimeout(() => setCurrentImage(src), time));
@@ -422,7 +424,7 @@ export default function GlassesDemoPage() {
     setPartInfo(null);
     setDocStatus(null);
     setBom(INITIAL_BOM.map(b => ({ ...b })));
-    setCurrentImage("/glasses/glasses-1-scan.jpg");
+    setCurrentImage(`${basePath}/glasses/glasses-1-scan.jpg`);
     setGeneratingStep(0);
     setActiveFormTab("8130");
     setAnimatedForms(new Set());
