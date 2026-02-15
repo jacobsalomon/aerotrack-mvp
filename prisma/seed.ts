@@ -7,14 +7,15 @@
 // facility names, and maintenance terminology throughout.
 // ──────────────────────────────────────────────────────
 
+import "dotenv/config";
 import { PrismaClient } from "../generated/prisma/client.js";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaLibSql } from "@prisma/adapter-libsql";
 import crypto from "crypto";
 
-// Prisma 7 uses a JS database adapter instead of the old Rust engine.
-// The .env has DATABASE_URL="file:./dev.db" which resolves relative to project root.
-const adapter = new PrismaBetterSqlite3({
-  url: "file:./dev.db",
+// Connect to Turso (cloud) when env vars are set, otherwise local SQLite file
+const adapter = new PrismaLibSql({
+  url: process.env.TURSO_DATABASE_URL ?? "file:./dev.db",
+  authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
 const prisma = new PrismaClient({ adapter });

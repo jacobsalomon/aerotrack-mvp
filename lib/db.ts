@@ -1,13 +1,14 @@
 // Database connection singleton
-// This ensures we only create one connection to the database,
-// even when Next.js hot-reloads during development.
+// Uses Turso (cloud SQLite) when TURSO_DATABASE_URL is set (production),
+// falls back to local SQLite file for local development.
 
 import { PrismaClient } from "@/generated/prisma/client";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaLibSql } from "@prisma/adapter-libsql";
 
-// Prisma 7 uses a JS database adapter instead of the old Rust engine
-const adapter = new PrismaBetterSqlite3({
-  url: process.env.DATABASE_URL || "file:./dev.db",
+// Connect to Turso in production, local file in dev
+const adapter = new PrismaLibSql({
+  url: process.env.TURSO_DATABASE_URL ?? "file:./dev.db",
+  authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
 const globalForPrisma = globalThis as unknown as {
