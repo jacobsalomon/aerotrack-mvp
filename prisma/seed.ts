@@ -11,11 +11,21 @@ import "dotenv/config";
 import { PrismaClient } from "../generated/prisma/client.js";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
 import crypto from "crypto";
+import path from "path";
+import { fileURLToPath } from "url";
 
-// Connect to Turso (cloud) when env vars are set, otherwise local SQLite file
+// Resolve absolute path to dev.db so libsql finds the right file
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const localDbPath = `file:${path.resolve(__dirname, "..", "dev.db")}`;
+
+// Connect to Turso (cloud) when USE_TURSO is explicitly set, otherwise local SQLite
+const dbUrl = process.env.USE_TURSO === "true" && process.env.TURSO_DATABASE_URL
+  ? process.env.TURSO_DATABASE_URL
+  : localDbPath;
+
 const adapter = new PrismaLibSql({
-  url: process.env.TURSO_DATABASE_URL ?? "file:./dev.db",
-  authToken: process.env.TURSO_AUTH_TOKEN,
+  url: dbUrl,
+  authToken: process.env.USE_TURSO === "true" ? process.env.TURSO_AUTH_TOKEN : undefined,
 });
 
 const prisma = new PrismaClient({ adapter });
@@ -26,7 +36,16 @@ function makeHash(data: string): string {
 }
 
 async function main() {
-  // Clear existing data
+  // Clear existing data (new mobile capture tables first, then original tables)
+  await prisma.auditLogEntry.deleteMany();
+  await prisma.videoAnnotation.deleteMany();
+  await prisma.sessionAnalysis.deleteMany();
+  await prisma.documentGeneration2.deleteMany();
+  await prisma.captureEvidence.deleteMany();
+  await prisma.captureSession.deleteMany();
+  await prisma.technician.deleteMany();
+  await prisma.organization.deleteMany();
+  await prisma.referenceData.deleteMany();
   await prisma.exception.deleteMany();
   await prisma.evidence.deleteMany();
   await prisma.partConsumed.deleteMany();
@@ -2413,9 +2432,225 @@ async function main() {
 
   console.log("✅ Additional knowledge entries created");
 
+  // ════════════════════════════════════════════════════
+  // MOBILE CAPTURE SYSTEM — Demo Organization + Technicians
+  // These support the AeroVision Capture iPhone app
+  // ════════════════════════════════════════════════════
+
+  const demoOrg = await prisma.organization.create({
+    data: {
+      id: "demo-precision-aero",
+      name: "Precision Aerospace MRO",
+      faaRepairStationCert: "Y4PR509K",
+      address: "2800 Airport Blvd, Suite 100",
+      city: "Austin",
+      state: "TX",
+      zip: "78719",
+      phone: "(512) 555-0147",
+      email: "ops@precisionaero.example.com",
+    },
+  });
+
+  // Demo technicians — each gets a deterministic API key for easy mobile testing
+  const techMike = await prisma.technician.create({
+    data: {
+      id: "tech-mike-chen",
+      organizationId: demoOrg.id,
+      firstName: "Mike",
+      lastName: "Chen",
+      email: "mike.chen@precisionaero.example.com",
+      badgeNumber: "PAM-1001",
+      role: "TECHNICIAN",
+      status: "ACTIVE",
+      apiKey: "av_demo_mike_chen_2026",
+    },
+  });
+
+  const techSarah = await prisma.technician.create({
+    data: {
+      id: "tech-sarah-okafor",
+      organizationId: demoOrg.id,
+      firstName: "Sarah",
+      lastName: "Okafor",
+      email: "sarah.okafor@precisionaero.example.com",
+      badgeNumber: "PAM-1002",
+      role: "SUPERVISOR",
+      status: "ACTIVE",
+      apiKey: "av_demo_sarah_okafor_2026",
+    },
+  });
+
+  const techJuan = await prisma.technician.create({
+    data: {
+      id: "tech-juan-ramirez",
+      organizationId: demoOrg.id,
+      firstName: "Juan",
+      lastName: "Ramirez",
+      email: "juan.ramirez@precisionaero.example.com",
+      badgeNumber: "PAM-1003",
+      role: "TECHNICIAN",
+      status: "ACTIVE",
+      apiKey: "av_demo_juan_ramirez_2026",
+    },
+  });
+
+  console.log(`✅ Demo organization created: ${demoOrg.name}`);
+  console.log(`   Technicians: ${techMike.firstName} ${techMike.lastName}, ${techSarah.firstName} ${techSarah.lastName}, ${techJuan.firstName} ${techJuan.lastName}`);
+
+  // ════════════════════════════════════════════════════
+  // REFERENCE DATA — Per-part-number reference info for AI context
+  // Used by the document generation AI to produce more accurate results
+  // Starting with demo P/N 881700-1089 (HPC-7 hydraulic pump)
+  // ════════════════════════════════════════════════════
+
+  await prisma.referenceData.create({
+    data: {
+      partNumber: "881700-1089",
+      title: "Overhaul Procedure Summary",
+      category: "procedure",
+      content: `HPC-7 Hydraulic Pump Overhaul (CMM 881700-OH Rev. 12)
+
+1. Receiving Inspection: Verify P/N, S/N, and accompanying documentation. Check for shipping damage and external contamination. Record incoming hours/cycles.
+
+2. Disassembly: Remove end caps, extract rotating group, separate all sub-assemblies. Tag and photograph each component per Section 4.2.
+
+3. Cleaning: Solvent clean all metallic parts per Process Spec PS-881700-003. Ultrasonic clean bearing races and gears. Do NOT use abrasive methods on sealing surfaces.
+
+4. Detailed Inspection:
+   - Magnetic particle inspect housing and end caps per ASTM E1444
+   - Fluorescent penetrant inspect rotating group per ASTM E1417
+   - Dimensional check all wear surfaces per Table 5-1 limits
+   - Borescope internal fluid passages for contamination/corrosion
+
+5. Repair/Replace: Replace all seals, O-rings, and bearings (mandatory). Repair minor wear per Table 5-2 limits. Replace any part exceeding service limits.
+
+6. Reassembly: Follow torque sequence in Table 6-1. Apply Mil-PRF-83282 hydraulic fluid to all sealing surfaces during assembly. Safety wire all external fasteners per MS33540.
+
+7. Functional Test: Run test stand per Section 7.0 — verify flow rate (28 GPM ± 1 at 3000 PSI), case drain (max 0.5 GPM), pressure regulation (3000 ± 50 PSI), and no external leakage over 15-minute hold.
+
+8. Final Inspection: Verify all paperwork complete, all SBs incorporated, test results within limits. Prepare 8130-3 release certificate.`,
+      source: "CMM 881700-OH Rev. 12, Sections 3-8",
+    },
+  });
+
+  await prisma.referenceData.create({
+    data: {
+      partNumber: "881700-1089",
+      title: "Torque Specifications",
+      category: "specification",
+      content: `HPC-7 Hydraulic Pump Torque Values (Table 6-1)
+
+Inlet Port Fitting (AN816-16): 450-500 in-lbs
+Outlet Port Fitting (AN816-12): 350-400 in-lbs
+Case Drain Port Fitting (AN816-6): 150-175 in-lbs
+Drive Shaft Spline Coupling Nut: 200-225 in-lbs
+End Cap Bolts (12x MS21250-04016): 65-75 in-lbs, torque in star pattern per Figure 6-3
+Mounting Flange Bolts (4x NAS6204): 100-110 in-lbs
+Relief Valve Cartridge: 300-350 in-lbs (do NOT exceed — damages valve seat)
+Pressure Compensator Adjustment: 175-200 in-lbs (field adjustable, seal after setting)
+
+All torque values are for clean, dry threads with Mil-PRF-83282 hydraulic fluid on sealing surfaces. Apply anti-seize compound MIL-PRF-907 to all stainless steel threads. Safety wire all fasteners per MS33540 after torque verification.`,
+      source: "CMM 881700-OH Rev. 12, Table 6-1",
+    },
+  });
+
+  await prisma.referenceData.create({
+    data: {
+      partNumber: "881700-1089",
+      title: "Inspection Intervals and Wear Limits",
+      category: "interval",
+      content: `HPC-7 Hydraulic Pump Service Intervals
+
+Overhaul Interval: 8,000 flight hours or 5,000 cycles (whichever first)
+On-condition Interval: Inspect at 4,000 hours for trend monitoring
+Hot Section Equivalent: N/A (hydraulic component)
+
+WEAR LIMITS (Table 5-1):
+- Drive shaft journal diameter: Min 0.7495", Max 0.7505" (new: 0.7500")
+- Gear tooth thickness: Min 0.1240", service limit 0.1225"
+- Housing bore diameter: Max 2.0010", service limit 2.0020"
+- Bearing journal run-out: Max 0.0005" TIR
+- End plate flatness: Max 0.0002" across full face
+- Piston bore diameter: Max 0.5005", service limit 0.5010"
+- Case drain port thread condition: No thread damage, minimum 3 full threads engagement
+
+MANDATORY REPLACEMENT ITEMS AT OVERHAUL:
+- All O-rings and backup rings (Kit P/N 881700-K001)
+- All bearings (Kit P/N 881700-K002)
+- Drive shaft seal (P/N 881700-S003)
+- Pressure compensator spring (if hours > 6,000)`,
+      source: "CMM 881700-OH Rev. 12, Tables 5-1, 5-2, Section 2.3",
+    },
+  });
+
+  await prisma.referenceData.create({
+    data: {
+      partNumber: "881700-1089",
+      title: "Applicable Service Bulletins",
+      category: "specification",
+      content: `Active Service Bulletins for 881700-series Hydraulic Pumps
+
+SB 881700-29-001 (Rev. 3): Seal Material Upgrade
+- Replaces Buna-N seals with fluorocarbon (Viton) for improved heat resistance
+- MANDATORY at next overhaul
+- Effectivity: All 881700-series pumps with S/N below SN-2023-xxxxx
+- Kit: 881700-K001-V (Viton seal kit)
+
+SB 881700-29-004 (Rev. 1): Modified Pressure Compensator Spring
+- Addresses in-service reports of pressure drift above 4,000 hours
+- RECOMMENDED (becomes mandatory if pressure drift reported)
+- New spring P/N: 881700-SP004-A
+
+SB 881700-29-006 (Rev. 0): Housing Drain Port Thread Insert
+- Applies to pumps with case drain port thread damage from overtorque
+- OPTIONAL — provides repair procedure using Helicoil insert
+- Requires special tooling Kit T-881700-006
+
+AD 2024-15-08: Hydraulic Pump Drive Shaft Inspection
+- One-time inspection of drive shaft spline for stress corrosion cracking
+- MANDATORY within 500 hours of AD effective date
+- Inspection method: Fluorescent penetrant per ASTM E1417`,
+      source: "Parker Aerospace Service Bulletin Index, current as of Jan 2026",
+    },
+  });
+
+  await prisma.referenceData.create({
+    data: {
+      partNumber: "881700-1089",
+      title: "Functional Test Stand Parameters",
+      category: "specification",
+      content: `HPC-7 Hydraulic Pump Test Stand Requirements (Section 7.0)
+
+TEST FLUID: MIL-PRF-83282 (synthetic hydrocarbon), temperature 100°F ± 10°F
+
+TEST SEQUENCE:
+1. Low-speed break-in: 1500 RPM for 5 minutes, monitor for leaks and unusual noise
+2. Rated speed run: 3600 RPM (simulates engine-driven pump speed)
+3. Flow rate test: 28.0 GPM ± 1.0 GPM at 3000 PSI system pressure
+4. Pressure regulation: 3000 PSI ± 50 PSI (adjust compensator if needed)
+5. Case drain measurement: Maximum 0.5 GPM at rated conditions (indicates internal wear)
+6. Proof pressure: 4500 PSI for 2 minutes — no external leakage permitted
+7. Endurance run: 15 minutes at rated speed and pressure — stable output, no leaks
+8. Pressure rise rate: 0 to 3000 PSI in < 2 seconds from no-load
+
+ACCEPTANCE CRITERIA:
+- Flow rate within tolerance at rated conditions
+- Case drain below maximum (reject if > 0.5 GPM)
+- No external leakage at any test point
+- Pressure regulation within ± 50 PSI
+- No abnormal noise or vibration
+- Fluid temperature rise < 30°F during endurance run`,
+      source: "CMM 881700-OH Rev. 12, Section 7.0",
+    },
+  });
+
+  console.log("✅ Reference data seeded for P/N 881700-1089 (5 entries)");
+
   console.log("\n🎉 Seed data complete! 17 components with full lifecycle histories loaded.");
   console.log("   Including evidence, exceptions, parts consumed, and knowledge library.");
-  console.log("   Ready for AeroTrack demo.");
+  console.log("   Plus demo organization with 3 technicians for mobile capture.");
+  console.log("   Plus reference data for demo component P/N 881700-1089.");
+  console.log("   Ready for AeroVision demo.");
 }
 
 main()

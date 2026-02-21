@@ -51,19 +51,19 @@ const recordQuality = [
 export default function AnalyticsPage() {
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Analytics</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Data-driven insights across the Parker parts ecosystem
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>Analytics</h1>
+        <p className="text-sm mt-2" style={{ color: 'rgb(100, 100, 100)' }}>
+          Data-driven insights across the aerospace parts ecosystem
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* NFF Analysis */}
-        <Card>
+        <Card className="border-0 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-base">&ldquo;No Fault Found&rdquo; Rate by Part Family</CardTitle>
-            <p className="text-xs text-slate-500">
+            <CardTitle className="text-base font-bold" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>&ldquo;No Fault Found&rdquo; Rate by Part Family</CardTitle>
+            <p className="text-xs mt-1" style={{ color: 'rgb(120, 120, 120)' }}>
               Higher NFF rates indicate potential systemic issues — the 65075 actuator spike was traced to a batch connector defect
             </p>
           </CardHeader>
@@ -82,10 +82,10 @@ export default function AnalyticsPage() {
         </Card>
 
         {/* Reliability trend */}
-        <Card>
+        <Card className="border-0 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-base">Mean Time Between Removals (MTBR)</CardTitle>
-            <p className="text-xs text-slate-500">
+            <CardTitle className="text-base font-bold" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>Mean Time Between Removals (MTBR)</CardTitle>
+            <p className="text-xs mt-1" style={{ color: 'rgb(120, 120, 120)' }}>
               HPC-7 Hydraulic Pump (881700 series) — trending upward after SB implementation
             </p>
           </CardHeader>
@@ -110,10 +110,10 @@ export default function AnalyticsPage() {
         </Card>
 
         {/* Turnaround times */}
-        <Card>
+        <Card className="border-0 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-base">Repair Turnaround by Facility</CardTitle>
-            <p className="text-xs text-slate-500">
+            <CardTitle className="text-base font-bold" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>Repair Turnaround by Facility</CardTitle>
+            <p className="text-xs mt-1" style={{ color: 'rgb(120, 120, 120)' }}>
               Average days from receiving to release — AAR Miami leads for HPC-7 series
             </p>
           </CardHeader>
@@ -131,11 +131,11 @@ export default function AnalyticsPage() {
         </Card>
 
         {/* Record quality */}
-        <Card>
+        <Card className="border-0 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-base">Record Quality Distribution</CardTitle>
-            <p className="text-xs text-slate-500">
-              68% of lifecycle events have born-digital structured records — AeroTrack aims to push this to 95%+
+            <CardTitle className="text-base font-bold" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>Record Quality Distribution</CardTitle>
+            <p className="text-xs mt-1" style={{ color: 'rgb(120, 120, 120)' }}>
+              68% of lifecycle events have born-digital structured records — AeroVision aims to push this to 95%+
             </p>
           </CardHeader>
           <CardContent>

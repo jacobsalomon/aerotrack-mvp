@@ -10,14 +10,18 @@ import {
   BarChart3,
   Plane,
   Play,
+  Smartphone,
+  Users,
 } from "lucide-react";
 
 const navItems = [
   { href: "/demo", label: "Executive Demo", icon: Play },
   { href: "/dashboard", label: "Parts Fleet", icon: LayoutDashboard },
+  { href: "/sessions", label: "Capture Sessions", icon: Smartphone },
   { href: "/capture", label: "Capture Tool", icon: ScanLine },
   { href: "/knowledge", label: "Knowledge Library", icon: BookOpen },
   { href: "/integrity", label: "Integrity", icon: ShieldCheck },
+  { href: "/technicians", label: "Technicians", icon: Users },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
 ];
 
@@ -25,11 +29,11 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="fixed left-0 top-0 z-40 h-screen w-60 bg-slate-900 text-white flex flex-col">
+    <aside className="fixed left-0 top-0 z-40 h-screen w-60 flex flex-col" style={{ backgroundColor: 'rgb(12, 12, 12)' }}>
       {/* Logo */}
-      <Link href="/" className="flex items-center gap-2 px-5 py-5 border-b border-slate-700">
-        <Plane className="h-7 w-7 text-blue-400" />
-        <span className="text-xl font-bold tracking-tight">AeroTrack</span>
+      <Link href="/" className="flex items-center gap-2 px-5 py-5 border-b" style={{ borderColor: 'rgba(255, 255, 255, 0.08)' }}>
+        <Plane className="h-7 w-7" style={{ color: 'rgb(230, 227, 224)' }} />
+        <span className="text-xl font-bold tracking-tight" style={{ color: 'rgb(230, 227, 224)' }}>AeroVision</span>
       </Link>
 
       {/* Navigation */}
@@ -40,11 +44,17 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+              className={`flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-all ${
                 isActive
-                  ? "bg-blue-700 text-white"
-                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                  ? "text-white"
+                  : "hover:text-white"
               }`}
+              style={isActive ? {
+                backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                color: 'rgb(230, 227, 224)'
+              } : {
+                color: 'rgba(255, 255, 255, 0.6)'
+              }}
             >
               <item.icon className="h-5 w-5" />
               {item.label}
@@ -54,9 +64,9 @@ export function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="px-5 py-4 border-t border-slate-700 text-xs text-slate-500">
-        <p>AeroTrack MVP</p>
-        <p>Built for Parker Aerospace</p>
+      <div className="px-5 py-4 border-t text-xs" style={{ borderColor: 'rgba(255, 255, 255, 0.08)', color: 'rgba(255, 255, 255, 0.3)' }}>
+        <p>AeroVision MVP</p>
+        <p>The Mechanical Vision Corporation</p>
       </div>
     </aside>
   );

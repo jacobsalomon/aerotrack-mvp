@@ -70,14 +70,14 @@ export default function PasscodeGate({ children }: { children: ReactNode }) {
   if (unlocked) return <>{children}</>;
 
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900">
+    <div className="flex h-screen w-screen items-center justify-center" style={{ backgroundColor: 'rgb(12, 12, 12)' }}>
       <div className="flex flex-col items-center gap-8">
         {/* Logo / brand */}
         <div className="flex flex-col items-center gap-2">
-          <div className="text-3xl font-bold text-white tracking-tight">
-            MVC
+          <div className="text-3xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(230, 227, 224)' }}>
+            AeroVision
           </div>
-          <p className="text-sm text-blue-300/70">
+          <p className="text-sm" style={{ color: 'rgba(230, 227, 224, 0.5)' }}>
             Enter access code to continue
           </p>
         </div>
@@ -96,8 +96,17 @@ export default function PasscodeGate({ children }: { children: ReactNode }) {
               value={digit}
               onChange={(e) => handleChange(i, e.target.value)}
               onKeyDown={(e) => handleKeyDown(i, e)}
-              className={`w-14 h-16 text-center text-2xl font-mono rounded-lg border-2 bg-white/5 text-white outline-none transition-colors
-                ${error ? "border-red-400" : "border-white/20 focus:border-blue-400"}`}
+              className={`w-14 h-16 text-center text-2xl font-mono rounded-md outline-none transition-all
+                ${error ? "" : ""}`}
+              style={error ? {
+                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                border: '2px solid rgb(220, 38, 38)',
+                color: 'rgb(230, 227, 224)'
+              } : {
+                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                border: '2px solid rgba(230, 227, 224, 0.2)',
+                color: 'rgb(230, 227, 224)'
+              }}
             />
           ))}
         </div>
@@ -107,11 +116,12 @@ export default function PasscodeGate({ children }: { children: ReactNode }) {
         )}
 
         {/* Contact for access */}
-        <p className="text-sm text-white/40">
+        <p className="text-sm" style={{ color: 'rgba(230, 227, 224, 0.4)' }}>
           Need access?{" "}
           <a
             href="mailto:jacobrsalomon@gmail.com"
-            className="text-blue-300/70 hover:text-blue-300 transition-colors underline"
+            className="transition-colors underline hover:opacity-80"
+            style={{ color: 'rgba(230, 227, 224, 0.6)' }}
           >
             jacobrsalomon@gmail.com
           </a>
