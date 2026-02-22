@@ -2646,6 +2646,230 @@ ACCEPTANCE CRITERIA:
 
   console.log("✅ Reference data seeded for P/N 881700-1089 (5 entries)");
 
+  // ════════════════════════════════════════════════════
+  // REFERENCE DATA — Fuel Control Valve (P/N 2548934-1)
+  // Parker Gas Turbine Fuel Systems — common CFM56 component
+  // ════════════════════════════════════════════════════
+
+  await prisma.referenceData.create({
+    data: {
+      partNumber: "2548934-1",
+      title: "Overhaul Procedure Summary",
+      category: "procedure",
+      content: `Fuel Control Valve Overhaul (CMM 2548934-OH Rev. 8)
+
+1. Receiving Inspection: Record incoming condition, verify P/N and S/N against shipping docs. Check for fuel contamination, external damage, and signs of heat distress.
+
+2. Disassembly: Remove actuator assembly, extract metering valve, separate solenoid assembly. Photograph all components per Section 3.4. Note spool position marks.
+
+3. Cleaning: Flush all fuel passages with MIL-PRF-7024 Type II. Ultrasonic clean precision valve components. Air-dry — no wiping of spool surfaces.
+
+4. Detailed Inspection:
+   - Fluorescent penetrant inspect housing per ASTM E1417
+   - Dimensional check metering spool per Table 4-1 (diametral clearance 0.0002-0.0006")
+   - Check solenoid coil resistance: 12.5 ohms ± 0.5 at 68°F
+   - Inspect valve seat for erosion or contamination scoring
+
+5. Reassembly: Install new O-ring kit (P/N 2548934-K001). Lubricate spool with clean jet fuel during installation. Torque solenoid connector per Table 5-1.
+
+6. Functional Test: Flow test at 800 PPH ± 20 PPH at 40 PSI differential. Verify metering accuracy within ± 2% across full range. Check for external leakage over 10-minute pressure hold at 1500 PSI.`,
+      source: "CMM 2548934-OH Rev. 8, Sections 3-6",
+    },
+  });
+
+  await prisma.referenceData.create({
+    data: {
+      partNumber: "2548934-1",
+      title: "Torque and Flow Specifications",
+      category: "specification",
+      content: `Fuel Control Valve Specifications (CMM 2548934-OH Rev. 8)
+
+TORQUE VALUES (Table 5-1):
+- Solenoid retaining nut: 35-40 in-lbs
+- Inlet/outlet port fittings (AN816-8): 200-225 in-lbs
+- Mounting bolts (4x NAS6203): 55-65 in-lbs
+- Metering adjustment locknut: 25-30 in-lbs (adjust before locking)
+- Electrical connector shell: 15-18 in-lbs (do NOT overtorque)
+
+FLOW SPECIFICATIONS:
+- Rated flow: 800 PPH ± 20 PPH at 40 PSI differential
+- Minimum flow (shutoff): < 5 PPH leakage past spool
+- Metering linearity: ± 2% across 10-100% range
+- Response time: < 50 ms from signal to full travel
+- Proof pressure: 2250 PSI — no external leakage
+- Burst pressure: 4500 PSI (housing structural test only)
+
+WEAR LIMITS:
+- Metering spool diametral clearance: 0.0002-0.0006" (new), service limit 0.0010"
+- Valve seat surface finish: 8 microinches Ra max
+- Solenoid plunger stroke: 0.062" ± 0.002"`,
+      source: "CMM 2548934-OH Rev. 8, Tables 4-1, 5-1",
+    },
+  });
+
+  console.log("✅ Reference data seeded for P/N 2548934-1 (2 entries)");
+
+  // ════════════════════════════════════════════════════
+  // REFERENCE DATA — Flight Control Actuator (P/N 65075-05)
+  // Parker Control Systems — electro-hydraulic servo actuator
+  // ════════════════════════════════════════════════════
+
+  await prisma.referenceData.create({
+    data: {
+      partNumber: "65075-05",
+      title: "Overhaul Procedure Summary",
+      category: "procedure",
+      content: `Flight Control Actuator Overhaul (CMM 65075-OH Rev. 6)
+
+1. Receiving: Verify identity, check for external damage, leaks, or seized actuator rod. Record rod position and any anomalies. Drain residual hydraulic fluid.
+
+2. Disassembly: Remove servo valve, extract piston and rod assembly, separate LVDT feedback sensor. Bench-mount actuator body horizontally.
+
+3. Cleaning: Solvent clean all metallic parts per PS-65075-001. Flush internal passages with filtered MIL-PRF-83282. Inspect bore with borescope before and after cleaning.
+
+4. Detailed Inspection:
+   - Eddy current inspect piston rod for surface cracks per Section 4.6
+   - Dimensional check cylinder bore: 2.000" +0.0005/-0.0000"
+   - Rod chrome plating thickness: minimum 0.002" remaining
+   - LVDT coil resistance: 850 ohms ± 25 at 68°F
+   - Check all fluid port threads — no damage, minimum 4 full threads
+
+5. Reassembly: Install new seal kit (P/N 65075-K001). Carefully install piston — do NOT scratch bore. Torque servo valve mounting per Table 5-1. Bleed all air from internal passages.
+
+6. Test: Stroke test full travel (± 3.0" from neutral). Verify position accuracy within ± 0.005". Frequency response test at 1 Hz ± 0.5 dB. Internal leakage < 1.0 in³/min at 3000 PSI.`,
+      source: "CMM 65075-OH Rev. 6, Sections 3-6",
+    },
+  });
+
+  await prisma.referenceData.create({
+    data: {
+      partNumber: "65075-05",
+      title: "Inspection Intervals and Wear Limits",
+      category: "interval",
+      content: `Flight Control Actuator Service Intervals
+
+Overhaul Interval: 12,000 flight hours or 10 calendar years (whichever first)
+On-condition Monitoring: Check for rod seal leakage at each A-check
+Life Limit: Piston rod — 30,000 flight hours (mandatory retirement)
+
+WEAR LIMITS (Table 4-1):
+- Cylinder bore diameter: Max 2.0010", service limit 2.0015"
+- Piston OD: Min 1.9990", service limit 1.9985"
+- Rod chrome plating: Min 0.002" remaining thickness
+- Rod straightness: Max 0.001" TIR over full length
+- Servo valve spool clearance: 0.0001-0.0003" (service limit 0.0005")
+- Bearing bore: Max 0.6255", service limit 0.6260"
+- Mounting trunnion pin: Min 0.7495", service limit 0.7490"
+
+MANDATORY REPLACEMENT AT OVERHAUL:
+- All seals and O-rings (Kit P/N 65075-K001)
+- Rod end bearing (P/N 65075-B001)
+- Anti-rotation pin (if worn beyond 0.248" minimum diameter)`,
+      source: "CMM 65075-OH Rev. 6, Table 4-1, Section 2.3",
+    },
+  });
+
+  console.log("✅ Reference data seeded for P/N 65075-05 (2 entries)");
+
+  // ════════════════════════════════════════════════════
+  // REFERENCE DATA — Hydraulic Motor (P/N 2670112-M1)
+  // Parker Hydraulic Systems — gear-type hydraulic motor
+  // ════════════════════════════════════════════════════
+
+  await prisma.referenceData.create({
+    data: {
+      partNumber: "2670112-M1",
+      title: "Overhaul Procedure Summary",
+      category: "procedure",
+      content: `Hydraulic Motor Overhaul (CMM 2670112-OH Rev. 4)
+
+1. Receiving Inspection: Verify P/N, S/N against documentation. Check shaft for play and rotation resistance. Record direction of rotation and shaft end configuration.
+
+2. Disassembly: Remove end covers, extract gear set, separate wear plates. Mark gear mesh orientation — gears are matched sets and must not be intermixed.
+
+3. Cleaning: Solvent clean all components per PS-2670112-001. Use brass brush only on gear teeth (no steel). Blow-dry all internal passages with filtered shop air.
+
+4. Detailed Inspection:
+   - Magnetic particle inspect gears and shafts per ASTM E1444
+   - Measure gear backlash: 0.002-0.006" (service limit 0.010")
+   - Check wear plate flatness: Max 0.0003" — resurface or replace if exceeded
+   - Shaft seal journal: Min 0.6245", service limit 0.6240"
+   - Housing bore check for scoring — any visible scoring requires replacement
+
+5. Reassembly: Install new seal kit (P/N 2670112-K001). Align gear mesh marks from disassembly. Torque end cover bolts per Table 6-1 in alternating pattern. Fill with clean MIL-PRF-83282 before final cover installation.
+
+6. Test: No-load speed test at 3600 RPM. Loaded efficiency test — minimum 85% volumetric efficiency at rated conditions. Case drain maximum 0.8 GPM. No external leakage during 10-minute run.`,
+      source: "CMM 2670112-OH Rev. 4, Sections 3-6",
+    },
+  });
+
+  console.log("✅ Reference data seeded for P/N 2670112-M1 (1 entry)");
+
+  // ════════════════════════════════════════════════════
+  // REFERENCE DATA — 131-9A APU (P/N 3800520-3)
+  // Honeywell Aerospace — common narrow-body APU
+  // ════════════════════════════════════════════════════
+
+  await prisma.referenceData.create({
+    data: {
+      partNumber: "3800520-3",
+      title: "Hot Section Inspection Procedure Summary",
+      category: "procedure",
+      content: `131-9A APU Hot Section Inspection (CMM 3800520-HSI Rev. 10)
+
+1. Borescope Inspection: Prior to removal — record turbine blade tip clearance, nozzle guide vane condition, and combustor liner status per Section 3.2. This determines if HSI is actually required vs. continued on-condition operation.
+
+2. Module Removal: Separate hot section module from cold section at the mid-flange. Mark blade positions. Do NOT rotate turbine wheel after separation.
+
+3. Disassembly: Remove nozzle guide vanes (NGVs), extract turbine wheel, remove combustor liner. Tag each NGV with its clock position.
+
+4. Cleaning: Glass bead blast turbine blades at 30-40 PSI max. Chemical strip combustor liner and NGVs per Process Spec PS-3800520-005. Do NOT bead-blast NGV airfoil surfaces.
+
+5. Detailed Inspection:
+   - Fluorescent penetrant inspect all hot section parts per ASTM E1417
+   - Turbine blade tip thickness: Min 0.020" (service limit)
+   - NGV throat area measurement: Must be within ± 3% of original
+   - Combustor liner — visual inspect for burn-through, crack length limits per Table 4-3
+   - Turbine wheel run-out: Max 0.003" TIR at rim
+
+6. Reassembly: Install new gaskets (Kit P/N 3800520-K003). Match-mark NGV positions for gas path symmetry. Torque mid-flange bolts per Table 5-2 in star pattern.
+
+7. Test Run: Ground run per Section 7.0 — verify EGT margin (minimum 30°C below redline), stable idle, and normal acceleration time (< 60 seconds to rated speed).`,
+      source: "CMM 3800520-HSI Rev. 10, Sections 3-7",
+    },
+  });
+
+  await prisma.referenceData.create({
+    data: {
+      partNumber: "3800520-3",
+      title: "Temperature and Performance Limits",
+      category: "specification",
+      content: `131-9A APU Operating and Inspection Limits
+
+TEMPERATURE LIMITS:
+- Normal EGT (rated load): Max 680°C
+- Transient EGT (starting): Max 760°C for 5 seconds
+- EGT margin for release: Minimum 30°C below 680°C limit at rated load
+- Turbine inlet temperature (calculated): Max 980°C
+
+PERFORMANCE REQUIREMENTS:
+- Bleed air output: 90 lb/min at sea level, standard day
+- Electrical output: 40 kVA at rated speed
+- Start time: < 60 seconds from initiation to rated speed
+- Oil consumption: Max 0.15 quarts/hour (trend monitor if > 0.10)
+- Vibration: Max 2.0 IPS at any measured location
+
+SERVICE INTERVALS:
+- Hot Section Inspection: 5,000 APU hours or 3,500 cycles (whichever first)
+- Full Overhaul: 10,000 APU hours or 7,000 cycles
+- On-condition: Oil analysis every 200 hours, borescope every 1,000 hours
+- Life-limited parts: Turbine wheel — 15,000 hours or 10,000 cycles (mandatory replacement)`,
+      source: "CMM 3800520-HSI Rev. 10, Section 2.0 and Table 2-1",
+    },
+  });
+
+  console.log("✅ Reference data seeded for P/N 3800520-3 (2 entries)");
+
   console.log("\n🎉 Seed data complete! 17 components with full lifecycle histories loaded.");
   console.log("   Including evidence, exceptions, parts consumed, and knowledge library.");
   console.log("   Plus demo organization with 3 technicians for mobile capture.");

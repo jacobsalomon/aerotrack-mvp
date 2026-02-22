@@ -123,7 +123,7 @@ export async function transcribeAudioGroqFallback(
 
   const formData = new FormData();
   formData.append("file", audioFile, fileName);
-  formData.append("model", "whisper-large-v3-turbo");
+  formData.append("model", "whisper-large-v3");
   formData.append("language", "en");
   formData.append("response_format", "verbose_json");
   // Aerospace vocabulary helps the model correctly recognize technical terms
@@ -152,7 +152,7 @@ export async function transcribeAudioGroqFallback(
     duration: result.duration || 0,
     words: result.words || [],
     language: result.language || "en",
-    model: "whisper-large-v3-turbo (groq fallback)",
+    model: "whisper-large-v3 (groq fallback)",
   };
 }
 
