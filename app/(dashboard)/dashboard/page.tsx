@@ -99,67 +99,57 @@ export default function DashboardPage() {
   return (
     <div>
       {/* Page header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Parts Fleet Overview</h1>
-        <p className="text-sm text-slate-500 mt-1">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>Parts Fleet Overview</h1>
+        <p className="text-sm mt-2" style={{ color: 'rgb(100, 100, 100)' }}>
           Track every component across the ecosystem
         </p>
       </div>
 
       {/* Stats cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <Package className="h-8 w-8 text-blue-600" />
-              <div>
-                <p className="text-2xl font-bold">{components.length}</p>
-                <p className="text-xs text-slate-500">Total Parts Tracked</p>
-              </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        <Card className="border-0 shadow-sm">
+          <CardContent className="pt-6 pb-6">
+            <div className="flex flex-col gap-2">
+              <Package className="h-6 w-6 mb-1" style={{ color: 'rgb(60, 60, 60)' }} />
+              <p className="text-3xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>{components.length}</p>
+              <p className="text-xs font-medium" style={{ color: 'rgb(120, 120, 120)' }}>Total Parts Tracked</p>
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <CheckCircle2 className="h-8 w-8 text-green-600" />
-              <div>
-                <p className="text-2xl font-bold">{statusCounts["serviceable"] || 0}</p>
-                <p className="text-xs text-slate-500">Serviceable</p>
-              </div>
+        <Card className="border-0 shadow-sm">
+          <CardContent className="pt-6 pb-6">
+            <div className="flex flex-col gap-2">
+              <CheckCircle2 className="h-6 w-6 mb-1" style={{ color: 'rgb(34, 197, 94)' }} />
+              <p className="text-3xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>{statusCounts["serviceable"] || 0}</p>
+              <p className="text-xs font-medium" style={{ color: 'rgb(120, 120, 120)' }}>Serviceable</p>
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <Wrench className="h-8 w-8 text-yellow-600" />
-              <div>
-                <p className="text-2xl font-bold">{statusCounts["in-repair"] || 0}</p>
-                <p className="text-xs text-slate-500">In Repair</p>
-              </div>
+        <Card className="border-0 shadow-sm">
+          <CardContent className="pt-6 pb-6">
+            <div className="flex flex-col gap-2">
+              <Wrench className="h-6 w-6 mb-1" style={{ color: 'rgb(202, 138, 4)' }} />
+              <p className="text-3xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>{statusCounts["in-repair"] || 0}</p>
+              <p className="text-xs font-medium" style={{ color: 'rgb(120, 120, 120)' }}>In Repair</p>
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <AlertTriangle className="h-8 w-8 text-orange-500" />
-              <div>
-                <p className="text-2xl font-bold">{openAlerts}</p>
-                <p className="text-xs text-slate-500">Open Alerts</p>
-              </div>
+        <Card className="border-0 shadow-sm">
+          <CardContent className="pt-6 pb-6">
+            <div className="flex flex-col gap-2">
+              <AlertTriangle className="h-6 w-6 mb-1" style={{ color: 'rgb(234, 88, 12)' }} />
+              <p className="text-3xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>{openAlerts}</p>
+              <p className="text-xs font-medium" style={{ color: 'rgb(120, 120, 120)' }}>Open Alerts</p>
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <XCircle className="h-8 w-8 text-red-600" />
-              <div>
-                <p className="text-2xl font-bold">{criticalAlerts}</p>
-                <p className="text-xs text-slate-500">Critical Alerts</p>
-              </div>
+        <Card className="border-0 shadow-sm">
+          <CardContent className="pt-6 pb-6">
+            <div className="flex flex-col gap-2">
+              <XCircle className="h-6 w-6 mb-1" style={{ color: 'rgb(220, 38, 38)' }} />
+              <p className="text-3xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>{criticalAlerts}</p>
+              <p className="text-xs font-medium" style={{ color: 'rgb(120, 120, 120)' }}>Critical Alerts</p>
             </div>
           </CardContent>
         </Card>
@@ -168,10 +158,10 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Parts table (3 columns) */}
         <div className="lg:col-span-3">
-          <Card>
+          <Card className="border-0 shadow-sm">
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Components</CardTitle>
+                <CardTitle className="text-lg font-bold" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>Components</CardTitle>
                 <div className="flex items-center gap-3">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -200,7 +190,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               {loading ? (
-                <p className="text-center py-8 text-slate-500">Loading components...</p>
+                <p className="text-center py-8" style={{ color: 'rgb(120, 120, 120)' }}>Loading components...</p>
               ) : (
                 <Table>
                   <TableHeader>
@@ -216,32 +206,33 @@ export default function DashboardPage() {
                   </TableHeader>
                   <TableBody>
                     {components.map((comp) => (
-                      <TableRow key={comp.id} className="cursor-pointer hover:bg-slate-50">
+                      <TableRow key={comp.id} className="cursor-pointer hover:bg-slate-50/50">
                         <TableCell>
                           <Link
                             href={`/parts/${comp.id}`}
-                            className="font-mono font-medium text-blue-700 hover:underline"
+                            className="font-mono font-medium hover:underline"
+                            style={{ color: 'rgb(60, 60, 60)' }}
                           >
                             {comp.partNumber}
                           </Link>
                         </TableCell>
-                        <TableCell className="font-mono text-sm">
+                        <TableCell className="font-mono text-sm" style={{ color: 'rgb(80, 80, 80)' }}>
                           {comp.serialNumber}
                         </TableCell>
-                        <TableCell>{comp.description}</TableCell>
+                        <TableCell style={{ color: 'rgb(60, 60, 60)' }}>{comp.description}</TableCell>
                         <TableCell>
                           <StatusBadge status={comp.status} />
                           {comp.alerts.some((a) => a.severity === "critical") && (
                             <SeverityBadge severity="critical" />
                           )}
                         </TableCell>
-                        <TableCell className="text-sm">
+                        <TableCell className="text-sm" style={{ color: 'rgb(80, 80, 80)' }}>
                           {comp.totalHours.toLocaleString()}h / {comp.totalCycles.toLocaleString()}c
                         </TableCell>
-                        <TableCell className="text-sm text-slate-600">
+                        <TableCell className="text-sm" style={{ color: 'rgb(100, 100, 100)' }}>
                           {comp.currentOperator || comp.currentLocation || "—"}
                         </TableCell>
-                        <TableCell className="text-sm">{comp._count.events}</TableCell>
+                        <TableCell className="text-sm" style={{ color: 'rgb(60, 60, 60)' }}>{comp._count.events}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -253,9 +244,9 @@ export default function DashboardPage() {
 
         {/* Status chart (1 column) */}
         <div>
-          <Card>
+          <Card className="border-0 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-lg">Status Breakdown</CardTitle>
+              <CardTitle className="text-lg font-bold" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>Status Breakdown</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={200}>

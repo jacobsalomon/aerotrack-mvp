@@ -20,7 +20,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   Search,
   ExternalLink,
-  AlertTriangle,
   Factory,
   Plane,
   Wrench,
@@ -30,7 +29,6 @@ import {
   ArrowRightLeft,
   ChevronDown,
   Camera,
-  Mic,
   FileText,
   Hash,
 } from "lucide-react";
@@ -370,7 +368,6 @@ function TimelineColumn({
     if (showGaps && i > 0) {
       const gap = daysBetween(events[i - 1].date, event.date);
       if (gap > 180) {
-        const months = Math.round(gap / 30);
         timelineItems.push({
           type: "gap",
           days: gap,

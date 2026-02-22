@@ -15,7 +15,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SeverityBadge } from "@/components/shared/status-badge";
 import {
@@ -24,7 +24,6 @@ import {
   ShieldAlert,
   ShieldX,
   Scan,
-  Info,
   Loader2,
   Eye,
   CheckCircle,
@@ -187,9 +186,6 @@ export default function IntegrityPage() {
   ).length;
   const warningExceptions = openExceptions.filter(
     (e) => e.severity === "warning"
-  ).length;
-  const infoExceptions = openExceptions.filter(
-    (e) => e.severity === "info"
   ).length;
   const resolvedExceptions = exceptions.filter(
     (e) => e.status === "resolved" || e.status === "false_positive"

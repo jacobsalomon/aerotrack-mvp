@@ -219,3 +219,216 @@ model KnowledgeEntry {
   cmmReference  String?   // Related CMM section
   createdAt     DateTime  @default(now())
 }
+
+// ══════════════════════════════════════════════════════
+// MOBILE CAPTURE SYSTEM — New models for iPhone app + multi-technician support
+// Added for AeroVision Capture PoC (Feb 2026)
+// ══════════════════════════════════════════════════════
+
+// ──────────────────────────────────────────────────────
+// Organization — the repair station or shop
+// A shop's info auto-populates into generated compliance documents
+// ──────────────────────────────────────────────────────
+model Organization {
+  id                    String   @id @default(cuid())
+  name                  String                          // e.g., "Precision Aerospace MRO"
+  faaRepairStationCert  String?                         // FAA Part 145 certificate number
+  address               String?
+  city                  String?
+  state                 String?
+  zip                   String?
+  phone                 String?
+  email                 String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relationships
+  technicians     Technician[]
+  captureSessions CaptureSession[]
+  auditLog        AuditLogEntry[]
+}
+
+// ──────────────────────────────────────────────────────
+// Technician — a person who uses the mobile capture app
+// Each technician gets their own API key for PoC authentication
+// ──────────────────────────────────────────────────────
+model Technician {
+  id              String   @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  firstName       String
+  lastName        String
+  email           String   @unique
+  badgeNumber     String   @unique                      // Used for mobile app login
+  role            String   @default("TECHNICIAN")       // TECHNICIAN, SUPERVISOR, ADMIN
+  status          String   @default("ACTIVE")           // ACTIVE, INACTIVE
+  apiKey          String?  @unique                      // Generated API key for mobile auth
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relationships
+  captureSessions     CaptureSession[]
+  reviewedDocuments   DocumentGeneration2[]  @relation("reviewer")
+  auditLog            AuditLogEntry[]
+}
+
+// ──────────────────────────────────────────────────────
+// CaptureSession — a single capture session from the mobile app
+// Created when a technician taps "Start Capture", ended when they tap "Finish"
+// ──────────────────────────────────────────────────────
+model CaptureSession {
+  id              String    @id @default(cuid())
+  technicianId    String
+  technician      Technician @relation(fields: [technicianId], references: [id])
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  componentId     String?                               // Linked after AI identifies the part
+  status          String    @default("capturing")       // capturing, processing, documents_generated, submitted, approved, rejected
+  description     String?
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relationships
+  evidence        CaptureEvidence[]
+  documents       DocumentGeneration2[]
+  analysis        SessionAnalysis?
+}
+
+// ──────────────────────────────────────────────────────
+// CaptureEvidence — a piece of evidence captured during a session
+// Photos, videos, and audio chunks from the mobile app
+// Stored with hash for audit integrity
+// ──────────────────────────────────────────────────────
+model CaptureEvidence {
+  id              String    @id @default(cuid())
+  sessionId       String
+  session         CaptureSession @relation(fields: [sessionId], references: [id])
+  type            String                                // PHOTO, VIDEO, AUDIO_CHUNK
+  fileUrl         String                                // URL to file in cloud storage (or local path for PoC)
+  fileSize        Int       @default(0)                 // File size in bytes
+  fileHash        String?                               // SHA-256 hash for audit integrity
+  mimeType        String                                // e.g., "image/jpeg", "video/mp4", "audio/m4a"
+  durationSeconds Float?                                // For video and audio
+  transcription   String?                               // AI transcription of audio
+  aiExtraction    String?                               // JSON — AI-extracted data from images (part numbers, text, etc.)
+  gpsLatitude     Float?
+  gpsLongitude    Float?
+  capturedAt      DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+
+  // Relationships
+  videoAnnotations VideoAnnotation[]
+}
+
+// ──────────────────────────────────────────────────────
+// VideoAnnotation — timestamped tags from real-time video analysis
+// Created by Gemini 2.0 Flash analyzing 2-minute video chunks
+// Makes all footage searchable (part numbers spotted, actions observed, tools in use)
+// ──────────────────────────────────────────────────────
+model VideoAnnotation {
+  id          String   @id @default(cuid())
+  evidenceId  String
+  evidence    CaptureEvidence @relation(fields: [evidenceId], references: [id])
+  timestamp   Float                                     // Seconds into the video chunk
+  tag         String                                    // e.g., "part_number", "action", "tool", "text", "condition"
+  description String                                    // e.g., "Torque wrench applied to engine mount bolt"
+  confidence  Float    @default(0)                      // 0-1 confidence score
+  rawResponse String?                                   // Full AI response for debugging
+  createdAt   DateTime @default(now())
+}
+
+// ──────────────────────────────────────────────────────
+// SessionAnalysis — deep analysis of an entire capture session
+// Created by Gemini 2.5 Flash after session ends, with CMM context loaded
+// Contains detailed action log, part identification, procedure verification
+// ──────────────────────────────────────────────────────
+model SessionAnalysis {
+  id              String   @id @default(cuid())
+  sessionId       String   @unique
+  session         CaptureSession @relation(fields: [sessionId], references: [id])
+  actionLog       String                                // JSON — timestamped list of actions observed
+  partsIdentified String                                // JSON — all part numbers/serials found
+  procedureSteps  String                                // JSON — maintenance steps identified
+  anomalies       String   @default("[]")               // JSON — any concerns or anomalies spotted
+  confidence      Float    @default(0)                  // 0-1 overall confidence
+  modelUsed       String                                // e.g., "gemini-2.5-flash"
+  rawResponse     String?                               // Full AI response for debugging
+  costEstimate    Float?                                // Estimated API cost in dollars
+  processingTime  Int?                                  // Processing time in milliseconds
+  createdAt       DateTime @default(now())
+}
+
+// ──────────────────────────────────────────────────────
+// ComponentManual — CMM (Component Maintenance Manual) PDFs
+// Uploaded by admins, linked to part numbers
+// Loaded into Gemini's 1M token context window during deep video analysis
+// ──────────────────────────────────────────────────────
+model ComponentManual {
+  id            String   @id @default(cuid())
+  partNumber    String                                  // Part number this manual applies to
+  title         String                                  // e.g., "HPC-7 Hydraulic Pump CMM Rev. 12"
+  fileUrl       String                                  // URL in R2 or local path
+  fileSizeBytes Int      @default(0)                    // File size for display
+  pageCount     Int?                                    // Number of pages (for context window estimation)
+  uploadedAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
+}
+
+// ──────────────────────────────────────────────────────
+// ReferenceData — simple reference info per part number
+// Procedures, limits, intervals, specifications — used as AI context
+// during document generation (instead of full CMM PDFs for now)
+// ──────────────────────────────────────────────────────
+model ReferenceData {
+  id          String   @id @default(cuid())
+  partNumber  String                                    // Which part this reference applies to
+  title       String                                    // e.g., "Overhaul Procedure Summary"
+  category    String                                    // "procedure", "limit", "interval", "specification"
+  content     String                                    // The actual reference text
+  source      String                                    // Where this info came from, e.g., "CMM Rev. 12, Section 5.2"
+  createdAt   DateTime @default(now())
+}
+
+// ──────────────────────────────────────────────────────
+// DocumentGeneration2 — AI-generated compliance documents from capture sessions
+// Named "2" to avoid conflict with existing GeneratedDocument model
+// (existing model is for the web MVP demo; this is for real mobile captures)
+// ──────────────────────────────────────────────────────
+model DocumentGeneration2 {
+  id                  String    @id @default(cuid())
+  sessionId           String
+  session             CaptureSession @relation(fields: [sessionId], references: [id])
+  documentType        String                            // "8130-3", "337", "8010-4", etc. — extensible
+  contentJson         String                            // Full form field data as JSON string
+  status              String    @default("draft")       // draft, pending_review, approved, rejected
+  confidence          Float     @default(0)             // 0-1 overall AI confidence score
+  lowConfidenceFields String    @default("[]")          // JSON array of field names AI was uncertain about
+  generatedAt         DateTime  @default(now())
+  reviewedById        String?
+  reviewedBy          Technician? @relation("reviewer", fields: [reviewedById], references: [id])
+  reviewedAt          DateTime?
+  reviewNotes         String?
+  verificationJson    String?                           // JSON — AI verification results (field-level issues, confidence)
+  verifiedAt          DateTime?                         // When the independent AI verification completed
+  createdAt           DateTime  @default(now())
+}
+
+// ──────────────────────────────────────────────────────
+// AuditLogEntry — immutable log of all system actions
+// Required for FAA compliance — who did what, when, to what
+// ──────────────────────────────────────────────────────
+model AuditLogEntry {
+  id              String    @id @default(cuid())
+  organizationId  String?
+  organization    Organization? @relation(fields: [organizationId], references: [id])
+  technicianId    String?
+  technician      Technician? @relation(fields: [technicianId], references: [id])
+  action          String                                // "session_started", "evidence_captured", "document_generated",
+                                                        // "document_approved", "document_rejected", "technician_created", etc.
+  entityType      String?                               // "CaptureSession", "CaptureEvidence", "DocumentGeneration2", etc.
+  entityId        String?                               // ID of the affected record
+  metadata        String?                               // JSON — additional context
+  timestamp       DateTime  @default(now())
+}

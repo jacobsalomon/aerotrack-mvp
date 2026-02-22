@@ -49,3 +49,17 @@ dev.db
 # editor / AI tool directories
 .cursor/
 .specify/
+.claude/
+
+# macOS resource forks
+Icon?
+
+# local SQLite WAL files (root only)
+/auth
+/auth-wal
+
+# dev screenshots
+/screenshots/
+
+# generated client (all)
+/generated/
