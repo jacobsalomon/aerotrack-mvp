@@ -36,10 +36,8 @@ import {
   Mic,
   Download,
   CheckCircle,
-  Calendar,
   MapPin,
   PackageOpen,
-  Filter,
   RotateCcw,
   Gauge,
   TrendingUp,
@@ -639,10 +637,9 @@ export default function PartDetailPage() {
   // ── US-001: Hooks for event type filtering ──
   // These must run on EVERY render (before any early returns) per Rules of Hooks.
   // When component hasn't loaded yet, they operate on empty arrays harmlessly.
-  const allEvents = component?.events ?? [];
   const preSortedEvents = useMemo(
-    () => [...allEvents].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
-    [allEvents]
+    () => [...(component?.events ?? [])].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
+    [component?.events]
   );
   const uniqueEventTypes = useMemo(
     () => Array.from(new Set(preSortedEvents.map((e) => e.eventType))),

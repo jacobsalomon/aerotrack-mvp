@@ -101,7 +101,6 @@ export default function CaptureWorkPage() {
 
   // AI generation state
   const [generating, setGenerating] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [generatedDocs, setGeneratedDocs] = useState<{
     form8130: Record<string, string> | null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -338,7 +337,6 @@ export default function CaptureWorkPage() {
     }
     setGenerating(false);
     setDemoMode(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [component]);
 
   function stopDemo() {

@@ -72,22 +72,21 @@ export default function SessionsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
 
   useEffect(() => {
+    async function fetchSessions() {
+      setLoading(true);
+      try {
+        const params = statusFilter !== "all" ? `?status=${statusFilter}` : "";
+        const res = await fetch(apiUrl(`/api/sessions${params}`));
+        const data = await res.json();
+        setSessions(data);
+      } catch (err) {
+        console.error("Failed to fetch sessions:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
     fetchSessions();
   }, [statusFilter]);
-
-  async function fetchSessions() {
-    setLoading(true);
-    try {
-      const params = statusFilter !== "all" ? `?status=${statusFilter}` : "";
-      const res = await fetch(apiUrl(`/api/sessions${params}`));
-      const data = await res.json();
-      setSessions(data);
-    } catch (err) {
-      console.error("Failed to fetch sessions:", err);
-    } finally {
-      setLoading(false);
-    }
-  }
 
   function formatDate(iso: string): string {
     return new Date(iso).toLocaleString("en-US", {

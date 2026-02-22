@@ -16,7 +16,7 @@
 // 7. Try It Yourself — Return to the free-explore app
 // ══════════════════════════════════════════════════════════════════════
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { apiUrl } from "@/lib/api-url";
 import { Card, CardContent } from "@/components/ui/card";
@@ -43,8 +43,6 @@ import {
   ArrowRight,
   ExternalLink,
   MessageSquare,
-  Eye,
-  EyeOff,
   AlertTriangle,
   Check,
   TrendingUp,
