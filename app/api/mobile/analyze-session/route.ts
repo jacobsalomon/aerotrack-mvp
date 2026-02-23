@@ -13,8 +13,6 @@ import {
   deleteGeminiFile,
 } from "@/lib/ai/gemini";
 import { NextResponse } from "next/server";
-import { readFile } from "fs/promises";
-import path from "path";
 
 export async function POST(request: Request) {
   const auth = await authenticateRequest(request);
@@ -85,11 +83,18 @@ export async function POST(request: Request) {
 
     const startTime = Date.now();
 
-    // For PoC, we analyze the first/largest video chunk
-    // In production, we'd concatenate all chunks or pick the most important one
+    // Analyze the first/largest video chunk
     const videoEvidence = session.evidence[0];
-    const filePath = path.join(process.cwd(), "public", videoEvidence.fileUrl);
-    const fileBuffer = await readFile(filePath);
+
+    // Download the video file from Vercel Blob
+    const fileResponse = await fetch(videoEvidence.fileUrl);
+    if (!fileResponse.ok) {
+      return NextResponse.json(
+        { success: false, error: "Could not retrieve video file" },
+        { status: 500 }
+      );
+    }
+    const fileBuffer = Buffer.from(await fileResponse.arrayBuffer());
 
     // Step 1: Upload video to Gemini File API
     const uploadedFile = await uploadFileToGemini(
@@ -117,15 +122,13 @@ export async function POST(request: Request) {
         });
 
         if (cmm) {
-          // Load the CMM file content
-          // For PoC, CMMs are stored locally — read the file
+          // Load the CMM file content from URL
           try {
-            const cmmPath = cmm.fileUrl.startsWith("/")
-              ? path.join(process.cwd(), "public", cmm.fileUrl)
-              : cmm.fileUrl;
-            const cmmBuffer = await readFile(cmmPath, "utf-8");
-            cmmContent = cmmBuffer;
-            console.log(`Loaded CMM: ${cmm.title} (${cmm.partNumber})`);
+            const cmmResponse = await fetch(cmm.fileUrl);
+            if (cmmResponse.ok) {
+              cmmContent = await cmmResponse.text();
+              console.log(`Loaded CMM: ${cmm.title} (${cmm.partNumber})`);
+            }
           } catch (err) {
             console.warn(`Could not load CMM file: ${cmm.fileUrl}`, err);
             // Graceful degradation — proceed without CMM

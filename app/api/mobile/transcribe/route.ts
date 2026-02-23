@@ -1,4 +1,7 @@
 // POST /api/mobile/transcribe — Transcribe audio from capture session
+// Accepts either:
+//   1. JSON with audioBlobUrl (from client-side Vercel Blob upload — preferred)
+//   2. FormData with file (legacy, subject to 4.5MB serverless limit)
 // Uses GPT-4o-transcribe (best accuracy ~2.5% WER) with Groq Whisper fallback
 // Returns word-level timestamps for searchable audio
 // Protected by API key authentication
@@ -13,22 +16,63 @@ export async function POST(request: Request) {
   if ("error" in auth) return auth.error;
 
   try {
-    const formData = await request.formData();
-    const audioFile = formData.get("file") as File | null;
-    const evidenceId = formData.get("evidenceId") as string | null;
-    const sessionId = formData.get("sessionId") as string | null;
-    const chunkIndex = formData.get("chunkIndex") as string | null;
+    let audioFile: File | Blob;
+    let fileName: string;
+    let evidenceId: string | null = null;
+    let sessionId: string | null = null;
+    let chunkIndex: string | null = null;
 
-    if (!audioFile) {
-      return NextResponse.json(
-        { success: false, error: "Audio file is required" },
-        { status: 400 }
-      );
+    const contentType = request.headers.get("content-type") || "";
+
+    if (contentType.includes("application/json")) {
+      // New path: audio was uploaded to Vercel Blob, we get the URL
+      const body = await request.json();
+      const { audioBlobUrl, fileName: bodyFileName, mimeType } = body;
+      evidenceId = body.evidenceId || null;
+      sessionId = body.sessionId || null;
+      chunkIndex = body.chunkIndex || null;
+
+      if (!audioBlobUrl) {
+        return NextResponse.json(
+          { success: false, error: "audioBlobUrl is required" },
+          { status: 400 }
+        );
+      }
+
+      // Download audio from Vercel Blob
+      const blobResponse = await fetch(audioBlobUrl);
+      if (!blobResponse.ok) {
+        return NextResponse.json(
+          { success: false, error: "Could not retrieve audio file from blob storage" },
+          { status: 500 }
+        );
+      }
+
+      const buffer = Buffer.from(await blobResponse.arrayBuffer());
+      audioFile = new Blob([buffer], { type: mimeType || "audio/m4a" });
+      fileName = bodyFileName || "audio.m4a";
+    } else {
+      // Legacy path: audio sent as FormData (subject to 4.5MB limit)
+      const formData = await request.formData();
+      const formFile = formData.get("file") as File | null;
+      evidenceId = formData.get("evidenceId") as string | null;
+      sessionId = formData.get("sessionId") as string | null;
+      chunkIndex = formData.get("chunkIndex") as string | null;
+
+      if (!formFile) {
+        return NextResponse.json(
+          { success: false, error: "Audio file is required" },
+          { status: 400 }
+        );
+      }
+
+      audioFile = formFile;
+      fileName = formFile.name || "audio.m4a";
     }
 
     // Transcribe with automatic fallback (GPT-4o-transcribe → Groq Whisper)
     const startTime = Date.now();
-    const result = await transcribeWithFallback(audioFile, audioFile.name || "audio.m4a");
+    const result = await transcribeWithFallback(audioFile, fileName);
     const latencyMs = Date.now() - startTime;
 
     // If we have an evidenceId, update the evidence record with the transcription

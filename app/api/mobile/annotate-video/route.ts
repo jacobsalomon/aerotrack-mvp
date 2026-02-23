@@ -13,8 +13,6 @@ import {
   deleteGeminiFile,
 } from "@/lib/ai/gemini";
 import { NextResponse } from "next/server";
-import { readFile } from "fs/promises";
-import path from "path";
 
 export async function POST(request: Request) {
   const auth = await authenticateRequest(request);
@@ -58,9 +56,15 @@ export async function POST(request: Request) {
       );
     }
 
-    // Read the video file from local storage (for PoC — production would use R2 URL)
-    const filePath = path.join(process.cwd(), "public", evidence.fileUrl);
-    const fileBuffer = await readFile(filePath);
+    // Download the video file from Vercel Blob
+    const fileResponse = await fetch(evidence.fileUrl);
+    if (!fileResponse.ok) {
+      return NextResponse.json(
+        { success: false, error: "Could not retrieve video file" },
+        { status: 500 }
+      );
+    }
+    const fileBuffer = Buffer.from(await fileResponse.arrayBuffer());
 
     const startTime = Date.now();
 
