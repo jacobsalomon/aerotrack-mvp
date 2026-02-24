@@ -11,6 +11,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      DATABASE_URL: "file:./test.db"
+      TURSO_DATABASE_URL: "file:./test.db"
 
     steps:
       # 1. Check out the code
@@ -28,32 +31,23 @@ jobs:
       # 4. Generate Prisma client
       - run: npx prisma generate
 
-      # 5. Set up test database (copy dev.db or create from schema)
+      # 5. Set up test database
       - run: npx prisma db push --force-reset
-        env:
-          DATABASE_URL: "file:./test.db"
 
       # 6. Seed the test database
       - run: npx prisma db seed
-        env:
-          DATABASE_URL: "file:./test.db"
 
       # 7. Run ESLint
       - run: npm run lint
 
-      # 8. Run production build (needs DB URL for Prisma + dummy AI keys)
+      # 8. Run production build
       - run: npm run build
         env:
-          DATABASE_URL: "file:./test.db"
-          TURSO_DATABASE_URL: "file:./test.db"
           OPENAI_API_KEY: "sk-test-dummy-key-for-build"
           GOOGLE_AI_API_KEY: "test-dummy-key-for-build"
 
       # 9. Run Vitest unit tests
       - run: npx vitest run
-        env:
-          DATABASE_URL: "file:./test.db"
-          TURSO_DATABASE_URL: "file:./test.db"
 
       # 10. Install Playwright browsers
       - run: npx playwright install chromium --with-deps
@@ -61,8 +55,6 @@ jobs:
       # 11. Run Playwright E2E tests
       - run: npx playwright test
         env:
-          DATABASE_URL: "file:./test.db"
-          TURSO_DATABASE_URL: "file:./test.db"
           OPENAI_API_KEY: "sk-test-dummy-key-for-ci"
           GOOGLE_AI_API_KEY: "test-dummy-key-for-ci"
 
