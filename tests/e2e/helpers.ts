@@ -17,8 +17,15 @@ export const authHeaders = {
   Cookie: "av-session=authenticated",
 };
 
-/** Bypass the passcode gate by setting sessionStorage before page loads */
+/** Bypass the passcode gate by setting sessionStorage + auth cookie.
+ *  sessionStorage hides the passcode UI. The cookie lets client-side
+ *  API fetches (e.g. on the parts detail page) pass auth checks. */
 export async function bypassPasscode(page: Page) {
+  // Set the auth cookie so client-side API calls succeed
+  await page.context().addCookies([
+    { name: "av-session", value: "authenticated", domain: "localhost", path: "/" },
+  ]);
+  // Set sessionStorage so the PasscodeGate component renders children
   await page.addInitScript(() => {
     sessionStorage.setItem("demo-unlocked", "true");
   });

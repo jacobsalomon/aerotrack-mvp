@@ -83,13 +83,13 @@ test.describe("GET /api/components/[id]", () => {
 
     // At least one event should have evidence
     const withEvidence = data.events.filter(
-      (e: any) => e.evidence && e.evidence.length > 0
+      (e: Record<string, unknown[]>) => e.evidence && e.evidence.length > 0
     );
     expect(withEvidence.length).toBeGreaterThan(0);
 
     // At least one event should have generated docs
     const withDocs = data.events.filter(
-      (e: any) => e.generatedDocs && e.generatedDocs.length > 0
+      (e: Record<string, unknown[]>) => e.generatedDocs && e.generatedDocs.length > 0
     );
     expect(withDocs.length).toBeGreaterThan(0);
   });
