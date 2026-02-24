@@ -1,16 +1,14 @@
 // POST /api/mobile/evidence/upload-callback — Vercel Blob upload completion callback
-// Vercel Blob requires a callback URL when generating client tokens.
+// This route exists as a safety net in case onUploadCompleted is re-enabled in the future.
+// Currently, we don't use onUploadCompleted (removed to fix upload failures).
 // The actual evidence registration is done by the mobile app calling POST /api/mobile/evidence.
+//
+// NOTE: No authentication here — Vercel's servers call this endpoint directly
+// and won't have the mobile app's auth token.
 
 import { NextResponse } from "next/server";
-import { authenticateRequest } from "@/lib/mobile-auth";
 
-export async function POST(request: Request) {
-  // Require mobile authentication
-  const auth = await authenticateRequest(request);
-  if ("error" in auth) return auth.error;
-
+export async function POST() {
   // Just acknowledge — the mobile app handles evidence registration separately
-  console.log("Blob upload callback received");
   return NextResponse.json({ received: true });
 }

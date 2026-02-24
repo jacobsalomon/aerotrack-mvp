@@ -74,8 +74,8 @@ export async function PATCH(
     const body = await request.json();
     const { status, description, componentId } = body;
 
-    // Validate status against allowed values
-    const validStatuses = ["capturing", "processing", "completed", "failed"];
+    // Validate status against allowed values (must match all statuses used by mobile app + results screen)
+    const validStatuses = ["capturing", "capture_complete", "processing", "documents_generated", "completed", "failed"];
     if (status && !validStatuses.includes(status)) {
       return NextResponse.json(
         { success: false, error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` },
