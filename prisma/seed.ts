@@ -957,7 +957,7 @@ async function main() {
     },
   });
 
-  const comp6Events = await prisma.lifecycleEvent.createMany({
+  await prisma.lifecycleEvent.createMany({
     data: [
       {
         componentId: comp6.id,
