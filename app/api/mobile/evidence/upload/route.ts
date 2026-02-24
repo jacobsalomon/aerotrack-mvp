@@ -2,29 +2,17 @@
 // The mobile app calls this to get a token, then uploads the file directly to Vercel Blob.
 // This bypasses the 4.5MB serverless function body size limit.
 // Protected by API key authentication
+//
+// NOTE: We intentionally do NOT use onUploadCompleted callbacks here.
+// The mobile app registers evidence metadata separately via POST /api/mobile/evidence.
+// Callbacks were causing upload failures because:
+//   - Local dev: Vercel can't reach localhost callback URL
+//   - Production: Callback route required auth that Vercel's servers don't have
+// Without callbacks, the Blob PUT response returns immediately after file upload.
 
 import { generateClientTokenFromReadWriteToken } from "@vercel/blob/client";
 import { authenticateRequest } from "@/lib/mobile-auth";
 import { NextResponse } from "next/server";
-
-// Build the callback URL for Vercel Blob upload completion
-// Must include the basePath since this project runs under /aerovision-demo
-function getCallbackUrl(request: Request): string {
-  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
-  // Try origin from the request headers first
-  const origin = request.headers.get("origin");
-  if (origin) {
-    return `${origin}${basePath}/api/mobile/evidence/upload-callback`;
-  }
-  // In production, use the Vercel production URL
-  const vercelUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
-  if (vercelUrl) {
-    const protocol = vercelUrl.includes("localhost") ? "http" : "https";
-    return `${protocol}://${vercelUrl}${basePath}/api/mobile/evidence/upload-callback`;
-  }
-  // Fallback for local dev
-  return `http://localhost:3000${basePath}/api/mobile/evidence/upload-callback`;
-}
 
 export async function POST(request: Request) {
   const auth = await authenticateRequest(request);
@@ -50,14 +38,10 @@ export async function POST(request: Request) {
     }
 
     // Generate a short-lived client token scoped to the specific upload path
+    // No onUploadCompleted — evidence registration is handled by the mobile app
     const clientToken = await generateClientTokenFromReadWriteToken({
       token,
       pathname,
-      onUploadCompleted: {
-        // No callback needed — the mobile app will register the evidence separately
-        // Build a proper callback URL including the basePath (/aerovision-demo)
-        callbackUrl: getCallbackUrl(request),
-      },
       allowedContentTypes: contentType
         ? [contentType]
         : [
