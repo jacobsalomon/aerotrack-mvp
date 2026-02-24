@@ -22,6 +22,16 @@ export async function POST(request: Request) {
       );
     }
 
+    // Validate evidence type — must be uppercase to match downstream filters
+    const validTypes = ["PHOTO", "VIDEO", "AUDIO_CHUNK"];
+    const normalizedType = String(type).toUpperCase();
+    if (!validTypes.includes(normalizedType)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid evidence type. Must be one of: ${validTypes.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
     // Verify the session exists and belongs to this technician
     const session = await prisma.captureSession.findUnique({
       where: { id: sessionId },
@@ -45,7 +55,7 @@ export async function POST(request: Request) {
     const evidence = await prisma.captureEvidence.create({
       data: {
         sessionId,
-        type,
+        type: normalizedType,
         fileUrl: blobUrl,
         fileSize: fileSize || 0,
         mimeType: mimeType || "application/octet-stream",

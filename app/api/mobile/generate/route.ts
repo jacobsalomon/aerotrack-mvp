@@ -20,16 +20,18 @@ export async function POST(request: Request) {
   const auth = await authenticateRequest(request);
   if ("error" in auth) return auth.error;
 
-  try {
-    const body = await request.json();
-    const { sessionId } = body;
+  // Parse sessionId outside try so catch block can reset status on error
+  const body = await request.json();
+  const { sessionId } = body;
 
-    if (!sessionId) {
-      return NextResponse.json(
-        { success: false, error: "sessionId is required" },
-        { status: 400 }
-      );
-    }
+  if (!sessionId) {
+    return NextResponse.json(
+      { success: false, error: "sessionId is required" },
+      { status: 400 }
+    );
+  }
+
+  try {
 
     // Load the session with all evidence, analysis, technician, and org info
     const session = await prisma.captureSession.findUnique({
@@ -269,6 +271,15 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("Generate documents error:", error);
+    // Reset session status so it doesn't get stuck in "processing" forever
+    try {
+      await prisma.captureSession.update({
+        where: { id: sessionId },
+        data: { status: "capture_complete" },
+      });
+    } catch {
+      // Best effort — don't mask the original error
+    }
     return NextResponse.json(
       {
         success: false,
