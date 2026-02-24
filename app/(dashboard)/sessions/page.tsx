@@ -77,6 +77,7 @@ export default function SessionsPage() {
       try {
         const params = statusFilter !== "all" ? `?status=${statusFilter}` : "";
         const res = await fetch(apiUrl(`/api/sessions${params}`));
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
         const data = await res.json();
         setSessions(data);
       } catch (err) {

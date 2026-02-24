@@ -281,7 +281,7 @@ export default function StepThread({ active }: StepThreadProps) {
             annually — most through documentation gaps like Component B.
           </p>
           <p className="text-sm text-slate-800 font-medium">
-            AeroTrack captures everything automatically — gaps become impossible.
+            AeroVision captures everything automatically — gaps become impossible.
           </p>
         </div>
       </div>

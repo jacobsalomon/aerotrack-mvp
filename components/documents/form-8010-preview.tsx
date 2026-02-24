@@ -1,7 +1,7 @@
 // ══════════════════════════════════════════════════════════════════════
 // FAA FORM 8010-4 — Malfunction or Defect Report
 //
-// Filed when a defect is discovered during maintenance. AeroTrack
+// Filed when a defect is discovered during maintenance. AeroVision
 // auto-generates this because the AI noticed a degraded seal AND
 // flagged a fleet-wide pattern — this report alerts the FAA to a
 // potential trend.
@@ -149,7 +149,7 @@ export default function Form8010Preview({ animate }: Form8010PreviewProps) {
         </div>
       </FormRow>
 
-      {/* Row 7: Submitted by + AeroTrack footer */}
+      {/* Row 7: Submitted by + AeroVision footer */}
       <FormRow delay={d * 7} animate={animate}>
         <div className="px-3 py-1.5">
           <div className="grid grid-cols-3 gap-3 text-xs mb-2">
@@ -168,7 +168,7 @@ export default function Form8010Preview({ animate }: Form8010PreviewProps) {
           </div>
           <div className="flex items-center justify-between pt-1.5 border-t border-slate-200">
             <div className="flex items-center gap-2 text-[10px] text-slate-500">
-              <span className="border border-blue-300 bg-blue-50 px-1.5 py-0.5 rounded text-blue-700 text-[9px] font-sans font-medium">AeroTrack Verified</span>
+              <span className="border border-blue-300 bg-blue-50 px-1.5 py-0.5 rounded text-blue-700 text-[9px] font-sans font-medium">AeroVision Verified</span>
               <span className="font-mono text-slate-400">SHA-256: 3c9e...87a2</span>
             </div>
             <p className="text-[10px] text-slate-400 font-sans">Auto-generated from AI fleet analysis</p>

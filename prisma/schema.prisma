@@ -1,4 +1,4 @@
-// AeroTrack MVP Database Schema
+// AeroVision MVP Database Schema
 // This defines all the data structures for tracking aerospace component lifecycles.
 // Think of each "model" as a type of record in our system.
 

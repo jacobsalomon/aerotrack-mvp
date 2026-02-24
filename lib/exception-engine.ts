@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────────────
 // Exception Detection Engine
 //
-// This is the brain of AeroTrack's data integrity system.
+// This is the brain of AeroVision's data integrity system.
 // It scans a component's complete history — every event, document,
 // and certificate — looking for inconsistencies that humans miss.
 //

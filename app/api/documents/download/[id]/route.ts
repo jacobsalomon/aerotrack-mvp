@@ -23,29 +23,44 @@ export async function GET(
   }
 
   // Parse the stored JSON content
-  const content = JSON.parse(doc.content);
+  let content;
+  try {
+    content = JSON.parse(doc.content);
+  } catch {
+    return NextResponse.json(
+      { error: "Document content is malformed" },
+      { status: 500 }
+    );
+  }
 
   // Generate the PDF based on document type
   let pdfBytes: Uint8Array;
   let filename: string;
 
-  switch (doc.docType) {
-    case "8130-3":
-      pdfBytes = await render8130Pdf(content, doc.hash);
-      filename = `8130-3_${content.block3 || doc.id}.pdf`;
-      break;
-    case "337":
-      pdfBytes = await render337Pdf(content, doc.hash);
-      filename = `Form337_${doc.id}.pdf`;
-      break;
-    case "8010-4":
-      pdfBytes = await render8010Pdf(content, doc.hash);
-      filename = `Form8010-4_${doc.id}.pdf`;
-      break;
-    default:
-      // Fallback: generate a simple text-dump PDF
-      pdfBytes = await render337Pdf(content, doc.hash);
-      filename = `${doc.docType}_${doc.id}.pdf`;
+  try {
+    switch (doc.docType) {
+      case "8130-3":
+        pdfBytes = await render8130Pdf(content, doc.hash);
+        filename = `8130-3_${content.block3 || doc.id}.pdf`;
+        break;
+      case "337":
+        pdfBytes = await render337Pdf(content, doc.hash);
+        filename = `Form337_${doc.id}.pdf`;
+        break;
+      case "8010-4":
+        pdfBytes = await render8010Pdf(content, doc.hash);
+        filename = `Form8010-4_${doc.id}.pdf`;
+        break;
+      default:
+        pdfBytes = await render337Pdf(content, doc.hash);
+        filename = `${doc.docType}_${doc.id}.pdf`;
+    }
+  } catch (err) {
+    console.error("PDF rendering failed:", err);
+    return NextResponse.json(
+      { error: "Failed to render PDF" },
+      { status: 500 }
+    );
   }
 
   return new NextResponse(Buffer.from(pdfBytes), {

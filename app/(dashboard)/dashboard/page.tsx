@@ -61,19 +61,32 @@ export default function DashboardPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [loading, setLoading] = useState(true);
 
+  // Debounce search to avoid firing on every keystroke
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   useEffect(() => {
     async function fetchComponents() {
       setLoading(true);
-      const params = new URLSearchParams();
-      if (search) params.set("search", search);
-      if (statusFilter !== "all") params.set("status", statusFilter);
-      const res = await fetch(apiUrl(`/api/components?${params}`));
-      const data = await res.json();
-      setComponents(data);
-      setLoading(false);
+      try {
+        const params = new URLSearchParams();
+        if (debouncedSearch) params.set("search", debouncedSearch);
+        if (statusFilter !== "all") params.set("status", statusFilter);
+        const res = await fetch(apiUrl(`/api/components?${params}`));
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
+        const data = await res.json();
+        setComponents(data);
+      } catch (err) {
+        console.error("Failed to fetch components:", err);
+      } finally {
+        setLoading(false);
+      }
     }
     fetchComponents();
-  }, [search, statusFilter]);
+  }, [debouncedSearch, statusFilter]);
 
   // Stats
   const statusCounts = components.reduce(

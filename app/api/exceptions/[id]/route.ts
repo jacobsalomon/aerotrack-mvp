@@ -3,12 +3,16 @@
 // Body: { status: "investigating" | "resolved" | "false_positive", resolvedBy?: string, resolutionNotes?: string }
 
 import { prisma } from "@/lib/db";
+import { requireDashboardAuth } from "@/lib/dashboard-auth";
 import { NextResponse } from "next/server";
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const authError = requireDashboardAuth(request);
+  if (authError) return authError;
+
   const { id } = await params;
   const body = await request.json();
 

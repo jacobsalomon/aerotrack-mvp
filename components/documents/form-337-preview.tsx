@@ -173,11 +173,11 @@ export default function Form337Preview({ animate }: Form337PreviewProps) {
         </div>
       </FormRow>
 
-      {/* Row 7: AeroTrack verification footer */}
+      {/* Row 7: AeroVision verification footer */}
       <FormRow delay={d * 7} animate={animate}>
         <div className="px-3 py-2 bg-slate-50 flex items-center justify-between">
           <div className="flex items-center gap-2 text-[10px] text-slate-500">
-            <span className="border border-blue-300 bg-blue-50 px-1.5 py-0.5 rounded text-blue-700 text-[9px] font-sans font-medium">AeroTrack Verified</span>
+            <span className="border border-blue-300 bg-blue-50 px-1.5 py-0.5 rounded text-blue-700 text-[9px] font-sans font-medium">AeroVision Verified</span>
             <span className="font-mono text-slate-400">SHA-256: e7b2...4f1a</span>
           </div>
           <p className="text-[10px] text-slate-400 font-sans">Auto-populated from inspection evidence</p>

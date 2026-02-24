@@ -3,9 +3,13 @@
 // Query params: ?componentId=X&severity=critical&status=open&limit=50
 
 import { prisma } from "@/lib/db";
+import { requireDashboardAuth } from "@/lib/dashboard-auth";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
+  const authError = requireDashboardAuth(request);
+  if (authError) return authError;
+
   const { searchParams } = new URL(request.url);
   const componentId = searchParams.get("componentId");
   const severity = searchParams.get("severity");

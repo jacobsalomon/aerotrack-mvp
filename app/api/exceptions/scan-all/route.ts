@@ -3,9 +3,13 @@
 // Returns fleet-wide summary stats.
 
 import { scanAllComponents } from "@/lib/exception-engine";
+import { requireDashboardAuth } from "@/lib/dashboard-auth";
 import { NextResponse } from "next/server";
 
-export async function POST() {
+export async function POST(request: Request) {
+  const authError = requireDashboardAuth(request);
+  if (authError) return authError;
+
   try {
     const result = await scanAllComponents();
     return NextResponse.json(result);

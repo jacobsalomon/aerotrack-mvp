@@ -8,7 +8,7 @@ export default function Home() {
         {/* Logo */}
         <div className="flex items-center justify-center gap-3 mb-8">
           <Plane className="h-10 w-10 text-blue-400" />
-          <h1 className="text-4xl font-bold tracking-tight">AeroTrack</h1>
+          <h1 className="text-4xl font-bold tracking-tight">AeroVision</h1>
         </div>
 
         {/* Tagline */}
@@ -65,7 +65,7 @@ export default function Home() {
             </li>
             <li className="flex gap-3">
               <span className="text-blue-400 font-bold">2.</span>
-              Works through overhaul, narrating and photographing as they go
+              Smart glasses observe the work — no extra steps required
             </li>
             <li className="flex gap-3">
               <span className="text-blue-400 font-bold">3.</span>
@@ -82,15 +82,12 @@ export default function Home() {
           </ol>
         </div>
 
-        {/* Parker positioning */}
+        {/* Company info */}
         <p className="text-sm text-slate-500 mb-2">
-          Designed to complement Parker&apos;s SkyThread and DUST Identity initiatives
-        </p>
-        <p className="text-sm text-slate-500 mb-1">
-          AeroTrack is the capture layer.
+          AI-powered documentation for aerospace MRO
         </p>
         <p className="text-xs text-slate-600 mt-6">
-          Built for Parker Aerospace — Proof of Concept Demo
+          The Mechanical Vision Corporation
         </p>
       </div>
     </div>

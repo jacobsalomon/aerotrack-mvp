@@ -45,7 +45,7 @@ export default function PrintLabelsPage() {
       {/* Print instructions — hidden when printing */}
       <div className="print:hidden mb-8 text-center">
         <h1 className="text-2xl font-bold text-slate-900 mb-2">
-          AeroTrack Demo Labels
+          AeroVision Demo Labels
         </h1>
         <p className="text-sm text-slate-500 mb-4">
           Print this page, cut out the labels, and tape them to physical objects
@@ -86,7 +86,7 @@ export default function PrintLabelsPage() {
               </p>
               <p className="text-sm text-slate-500">{comp.description}</p>
               <p className="text-xs text-slate-400 uppercase tracking-wide mt-2">
-                AeroTrack Demo — {comp.status}
+                AeroVision Demo — {comp.status}
               </p>
             </div>
           </div>

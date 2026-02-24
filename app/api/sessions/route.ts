@@ -1,11 +1,15 @@
 // GET /api/sessions — List all capture sessions for the web dashboard
 // Includes technician info, evidence counts, and document counts
-// Not authenticated (web dashboard is internal admin tool for PoC)
+// Protected by dashboard auth (passcode cookie)
 
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
+import { requireDashboardAuth } from "@/lib/dashboard-auth";
 
 export async function GET(request: Request) {
+  const authError = requireDashboardAuth(request);
+  if (authError) return authError;
+
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");
 

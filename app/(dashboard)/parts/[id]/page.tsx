@@ -930,7 +930,7 @@ export default function PartDetailPage() {
                   <span className="text-xs font-bold ml-1 text-red-600">~38% documented</span>
                 </div>
                 <p className="text-[10px] text-slate-500 mt-1">
-                  Most aerospace parts have poor documentation — AeroTrack changes that.
+                  Most aerospace parts have poor documentation — AeroVision changes that.
                 </p>
               </div>
             )}

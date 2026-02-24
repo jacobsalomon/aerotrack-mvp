@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────────────
-// AeroTrack MVP — Seed Data
+// AeroVision MVP — Seed Data
 //
 // This populates the database with 8 realistic Parker Aerospace components,
 // each telling a different story about component lifecycle tracking.

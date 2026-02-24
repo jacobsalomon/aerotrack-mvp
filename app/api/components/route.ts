@@ -1,8 +1,13 @@
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
+import { requireDashboardAuth } from "@/lib/dashboard-auth";
 
 // GET /api/components — list all components with optional search
+// Protected by dashboard auth (passcode cookie)
 export async function GET(request: Request) {
+  const authError = requireDashboardAuth(request);
+  if (authError) return authError;
+
   const { searchParams } = new URL(request.url);
   const search = searchParams.get("search") || "";
   const status = searchParams.get("status") || "";

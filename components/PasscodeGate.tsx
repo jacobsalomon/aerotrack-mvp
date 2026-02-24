@@ -1,17 +1,18 @@
 "use client";
 
 import { useState, useEffect, useRef, type ReactNode } from "react";
+import { apiUrl } from "@/lib/api-url";
 
-const PASSCODE = "2206";
 const SESSION_KEY = "demo-unlocked";
 
-// Client-side passcode gate — wraps protected content.
-// Stores unlock state in sessionStorage so the user only
-// enters the code once per browser tab.
+// Passcode gate — wraps protected content.
+// Validates the code server-side (never exposes it in the browser bundle).
+// Sets an HTTP-only cookie on success so API routes can also check auth.
 export default function PasscodeGate({ children }: { children: ReactNode }) {
   const [unlocked, setUnlocked] = useState(false);
   const [digits, setDigits] = useState(["", "", "", ""]);
   const [error, setError] = useState(false);
+  const [checking, setChecking] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Check if already unlocked this session
@@ -24,21 +25,43 @@ export default function PasscodeGate({ children }: { children: ReactNode }) {
   // Auto-submit when all 4 digits are filled
   useEffect(() => {
     const code = digits.join("");
-    if (code.length === 4) {
-      if (code === PASSCODE) {
+    if (code.length === 4 && !checking) {
+      verifyPasscode(code);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [digits]);
+
+  async function verifyPasscode(code: string) {
+    setChecking(true);
+    try {
+      const res = await fetch(apiUrl("/api/auth/verify-passcode"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passcode: code }),
+      });
+
+      if (res.ok) {
         sessionStorage.setItem(SESSION_KEY, "true");
         setUnlocked(true);
       } else {
         setError(true);
-        // Clear after a brief shake animation
         setTimeout(() => {
           setDigits(["", "", "", ""]);
           setError(false);
+          setChecking(false);
           inputRefs.current[0]?.focus();
         }, 600);
       }
+    } catch {
+      setError(true);
+      setTimeout(() => {
+        setDigits(["", "", "", ""]);
+        setError(false);
+        setChecking(false);
+        inputRefs.current[0]?.focus();
+      }, 600);
     }
-  }, [digits]);
+  }
 
   const handleChange = (index: number, value: string) => {
     // Only accept single digits
@@ -96,8 +119,7 @@ export default function PasscodeGate({ children }: { children: ReactNode }) {
               value={digit}
               onChange={(e) => handleChange(i, e.target.value)}
               onKeyDown={(e) => handleKeyDown(i, e)}
-              className={`w-14 h-16 text-center text-2xl font-mono rounded-md outline-none transition-all
-                ${error ? "" : ""}`}
+              className="w-14 h-16 text-center text-2xl font-mono rounded-md outline-none transition-all"
               style={error ? {
                 backgroundColor: 'rgba(255, 255, 255, 0.05)',
                 border: '2px solid rgb(220, 38, 38)',

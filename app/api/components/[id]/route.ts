@@ -1,11 +1,15 @@
 import { prisma } from "@/lib/db";
+import { requireDashboardAuth } from "@/lib/dashboard-auth";
 import { NextResponse } from "next/server";
 
 // GET /api/components/[id] — get single component with full lifecycle
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const authError = requireDashboardAuth(request);
+  if (authError) return authError;
+
   const { id } = await params;
 
   const component = await prisma.component.findUnique({

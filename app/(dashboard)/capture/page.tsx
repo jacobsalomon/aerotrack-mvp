@@ -196,7 +196,7 @@ export default function CapturePage() {
 
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">AeroTrack Capture</h1>
+          <h1 className="text-2xl font-bold text-slate-900">AeroVision Capture</h1>
           <p className="text-sm text-slate-500 mt-1">
             Scan a document or enter a part number to begin
           </p>

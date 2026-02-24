@@ -1,7 +1,7 @@
 "use client";
 
 // Technicians management page — lists all technicians in the organization
-// Shows their status, role, session counts, and API key info
+// Shows their status, role, and session counts
 
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,7 +24,6 @@ interface TechnicianData {
   badgeNumber: string;
   role: string;
   status: string;
-  apiKey: string | null;
   createdAt: string;
   organization: { name: string };
   _count: { captureSessions: number; reviewedDocuments: number };
@@ -47,6 +46,7 @@ export default function TechniciansPage() {
   async function fetchTechnicians() {
     try {
       const res = await fetch(apiUrl("/api/technicians"));
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
       const data = await res.json();
       setTechnicians(data);
     } catch (err) {
@@ -120,7 +120,6 @@ export default function TechniciansPage() {
                   <TableHead>Organization</TableHead>
                   <TableHead className="text-center">Sessions</TableHead>
                   <TableHead className="text-center">Reviews</TableHead>
-                  <TableHead>API Key</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -167,15 +166,6 @@ export default function TechniciansPage() {
                     </TableCell>
                     <TableCell className="text-center text-sm font-medium">
                       {tech._count.reviewedDocuments}
-                    </TableCell>
-                    <TableCell>
-                      {tech.apiKey ? (
-                        <code className="text-xs text-slate-400">
-                          {tech.apiKey.slice(0, 12)}...
-                        </code>
-                      ) : (
-                        <span className="text-xs text-slate-300">Not set</span>
-                      )}
                     </TableCell>
                   </TableRow>
                 ))}

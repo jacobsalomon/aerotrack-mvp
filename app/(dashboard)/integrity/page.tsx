@@ -3,7 +3,7 @@
 // ──────────────────────────────────────────────────────
 // Integrity & Compliance Page
 //
-// This is AeroTrack's "mission control" for data quality.
+// This is AeroVision's "mission control" for data quality.
 // It shows two things:
 // 1. Alerts — existing manual flags (provenance gaps, counterfeit suspects)
 // 2. Exceptions — automated findings from the exception detection engine

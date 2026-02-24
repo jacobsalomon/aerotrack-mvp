@@ -56,7 +56,7 @@ interface HudEvent {
 
 const DEMO_SCRIPT: HudEvent[] = [
   // Part identification
-  { time: 1000, type: "status", text: "INITIALIZING AEROTRACK...", severity: "blue" },
+  { time: 1000, type: "status", text: "INITIALIZING AEROVISION...", severity: "blue" },
   { time: 2500, type: "status", text: "CAMERA ACTIVE | VOICE REC ON", severity: "green" },
   { time: 3500, type: "scan", text: "SCANNING...", detail: "QR code detected in viewport" },
   { time: 5000, type: "scan", text: "PART IDENTIFIED", detail: "P/N 881700-1089 | S/N SN-2024-11432 | HPC-7 Hydraulic Pump" },
@@ -247,11 +247,11 @@ function Form8130({ animate }: { animate: boolean }) {
         </div>
       </FormRow>
 
-      {/* Row 7: AeroTrack verification footer */}
+      {/* Row 7: AeroVision verification footer */}
       <FormRow delay={d * 7} animate={animate}>
         <div className="px-3 py-2 bg-slate-50 flex items-center justify-between">
           <div className="flex items-center gap-2 text-[10px] text-slate-500">
-            <span className="border border-blue-300 bg-blue-50 px-1.5 py-0.5 rounded text-blue-700 text-[9px] font-sans font-medium">AeroTrack Verified</span>
+            <span className="border border-blue-300 bg-blue-50 px-1.5 py-0.5 rounded text-blue-700 text-[9px] font-sans font-medium">AeroVision Verified</span>
             <span className="font-mono text-slate-400">SHA-256: a4f8...c91d</span>
           </div>
           <p className="text-[10px] text-slate-400 font-sans">Tamper-evident | AI-generated v1.0</p>
@@ -542,7 +542,7 @@ export default function GlassesDemoPage() {
 
   // ══════════════════════════════════════════════════════════════════
   // RENDER: GENERATING SCREEN
-  // Brief transition showing AeroTrack processing the captured evidence
+  // Brief transition showing AeroVision processing the captured evidence
   // into FAA documents. Plays for ~3.5 seconds between HUD and doc review.
   // ══════════════════════════════════════════════════════════════════
   if (demoPhase === "generating") {

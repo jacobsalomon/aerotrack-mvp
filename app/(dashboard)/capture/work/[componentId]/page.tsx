@@ -154,7 +154,7 @@ export default function CaptureWorkPage() {
 
   // ── DEMO AUTOPILOT ──
   // Walks through all 6 overhaul steps with realistic data appearing
-  // at timed intervals. Jake narrates live over the top of it.
+  // at timed intervals for presentation purposes.
   // NOTE: This useCallback MUST be above the early returns below so
   // hooks always run in the same order on every render.
   const runDemoAutopilot = useCallback(async () => {
@@ -280,7 +280,7 @@ export default function CaptureWorkPage() {
     addItemToStep("test", "photo", "Test bench setup with gauges", "Pressure and flow gauges connected, test fixture secured");
     await demoPause(700);
     if (demoAbortRef.current) return;
-    addItemToStep("test", "voice", "Test results narration", "Pressure held at 3,000 PSI for 5 minutes, zero leakage. Flow rate 12.4 GPM, within spec. Both tests pass. Ready for release.");
+    addItemToStep("test", "voice", "Test results observation", "Pressure held at 3,000 PSI for 5 minutes, zero leakage. Flow rate 12.4 GPM, within spec. Both tests pass. Ready for release.");
     await demoPause(1200);
 
     // ── STEP 6: RELEASE — THE MAGIC MOMENT ──
@@ -468,7 +468,7 @@ export default function CaptureWorkPage() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-lg font-bold text-slate-900">
-            AeroTrack Capture — {component.partNumber}
+            AeroVision Capture — {component.partNumber}
           </h1>
           <p className="text-sm text-slate-500">
             {component.serialNumber} · {component.description}

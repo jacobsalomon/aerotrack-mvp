@@ -3,7 +3,7 @@
 // ══════════════════════════════════════════════════════════════════════
 // HEICO EXECUTIVE DEMO — Guided 12-Minute Flow
 //
-// This page ties together EVERY AeroTrack feature into a single
+// This page ties together EVERY AeroVision feature into a single
 // narrative designed to make HEICO's CEO say "I need this."
 //
 // 7 steps, each building on the last:
@@ -71,14 +71,14 @@ const PRESENTER_NOTES: Record<string, { points: string[]; questions: { q: string
       "520,000 suspected unapproved parts enter aircraft annually (FAA Suspected Unapproved Parts Program)",
       "44–73% of maintenance errors involve documentation failures (FAA Human Factors in Aviation Maintenance report, 2012)",
       "$114B global MRO market still running on handwritten forms (Oliver Wyman MRO Forecast 2024)",
-      "1 in 3 mechanics will reach retirement age within a decade (Oliver Wyman 2023). When they leave, their tribal knowledge leaves with them. AeroTrack captures that knowledge as they work.",
+      "1 in 3 mechanics will reach retirement age within a decade (Oliver Wyman 2023). When they leave, their tribal knowledge leaves with them. AeroVision captures that knowledge as they work.",
       "Each error can ground an aircraft costing $10K–$150K per hour",
     ],
     questions: [
       { q: "Where do these numbers come from?", a: "McKinsey 'Generative AI in Airline Maintenance' 2024, Oliver Wyman MRO Forecast 2024, FAA Suspected Unapproved Parts (SUP) Program data, FAA Human Factors in Aviation Maintenance report (2012), and Impresa Corp fleet management data." },
       { q: "Is this just paperwork or does it affect safety?", a: "Both. The FAA found that 44–73% of maintenance errors involve documentation failures. Documentation errors are a leading cause of repeat inspections and a key factor in bogus part infiltration." },
-      { q: "What about the AOG Technics scandal?", a: "In 2023, AOG Technics was found to have sold thousands of parts with forged 8130-3 documentation to major airlines. 120+ aircraft were grounded. This happened because there's no automated way to verify documentation at the source — exactly what AeroTrack solves." },
-      { q: "What about the workforce crisis?", a: "Oliver Wyman projects 1 in 3 A&P mechanics will reach retirement age within a decade. AeroTrack preserves tribal knowledge by capturing it during the normal workflow — new mechanics get AI-assisted guidance from day one." },
+      { q: "What about the AOG Technics scandal?", a: "In 2023, AOG Technics was found to have sold thousands of parts with forged 8130-3 documentation to major airlines. 120+ aircraft were grounded. This happened because there's no automated way to verify documentation at the source — exactly what AeroVision solves." },
+      { q: "What about the workforce crisis?", a: "Oliver Wyman projects 1 in 3 A&P mechanics will reach retirement age within a decade. AeroVision preserves tribal knowledge by capturing it during the normal workflow — new mechanics get AI-assisted guidance from day one." },
       { q: "What about European regulations?", a: "EASA is phasing in digital compliance requirements through 2027 under its Part 145 modernization roadmap. Companies that adopt digital documentation now will be ahead; companies that wait will face costly catch-up." },
     ],
   },
@@ -106,7 +106,7 @@ const PRESENTER_NOTES: Record<string, { points: string[]; questions: { q: string
     questions: [
       { q: "Is this legally valid?", a: "The form is generated as a draft. An A&P/IA still reviews and signs it. We automate 95% of the work, they provide the final 5% — the judgment." },
       { q: "What if the AI makes a mistake?", a: "Every field has traceability back to the source evidence. The watermark says 'PENDING REVIEW' until a human signs." },
-      { q: "Is AI-generated documentation legally valid?", a: "Yes. FAA Advisory Circular AC 120-78B explicitly allows electronic signatures and records. AeroTrack follows the 'AI-assisted, human-approved' model — the AI drafts the form, a certified A&P/IA reviews and signs. This is fully compliant." },
+      { q: "Is AI-generated documentation legally valid?", a: "Yes. FAA Advisory Circular AC 120-78B explicitly allows electronic signatures and records. AeroVision follows the 'AI-assisted, human-approved' model — the AI drafts the form, a certified A&P/IA reviews and signs. This is fully compliant." },
       { q: "What about European regulations?", a: "EASA is phasing in digital compliance requirements through 2027 under its Part 145 modernization roadmap. Companies that adopt digital documentation now will be ahead; companies that wait will face costly catch-up." },
     ],
   },
@@ -120,7 +120,7 @@ const PRESENTER_NOTES: Record<string, { points: string[]; questions: { q: string
       "The FAA's SUP Program flags ~520,000 suspected unapproved parts annually — most enter through documentation gaps like Component B.",
     ],
     questions: [
-      { q: "What's a typical trace score?", a: "Most parts have significant documentation gaps. The FAA estimates ~520,000 suspected unapproved parts enter aircraft annually, largely through chain-of-custody breaks. AeroTrack captures everything automatically — gaps become impossible." },
+      { q: "What's a typical trace score?", a: "Most parts have significant documentation gaps. The FAA estimates ~520,000 suspected unapproved parts enter aircraft annually, largely through chain-of-custody breaks. AeroVision captures everything automatically — gaps become impossible." },
       { q: "Can this prevent counterfeit parts?", a: "Not directly — but it makes them visible. If a part shows up with a gap, you investigate before installing it." },
       { q: "What about European regulations?", a: "EASA is phasing in digital compliance requirements through 2027 under its Part 145 modernization roadmap. Companies that adopt digital documentation now will be ahead; companies that wait will face costly catch-up." },
     ],
@@ -148,7 +148,7 @@ const PRESENTER_NOTES: Record<string, { points: string[]; questions: { q: string
       "Ask: 'What would it mean if every part in your network could tell its own story?'",
     ],
     questions: [
-      { q: "What does AeroTrack cost?", a: "We're finalizing pricing tiers — we'll have specifics for the proposal. Our model is designed so the ROI is obvious within the first quarter." },
+      { q: "What does AeroVision cost?", a: "We're finalizing pricing tiers — we'll have specifics for the proposal. Our model is designed so the ROI is obvious within the first quarter." },
       { q: "What's the implementation timeline?", a: "Pilot at one shop in 30 days. Network rollout in 6 months. Full integration in 12 months." },
       { q: "What about European regulations?", a: "EASA is phasing in digital compliance requirements through 2027 under its Part 145 modernization roadmap. Companies that adopt digital documentation now will be ahead; companies that wait will face costly catch-up." },
     ],
@@ -258,7 +258,7 @@ export default function DemoPage() {
             What if every part could tell its own story?
           </h1>
           <p className="text-lg text-slate-500 max-w-2xl mx-auto">
-            AeroTrack captures maintenance evidence at the point of work,
+            AeroVision captures maintenance evidence at the point of work,
             generates documentation automatically, and creates an unbreakable
             digital thread for every component in your fleet.
           </p>
@@ -357,7 +357,7 @@ export default function DemoPage() {
       {/* ── PROGRESS BAR (top) ── */}
       <div className="bg-slate-900 text-white px-4 py-2 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-4">
-          <span className="text-xs text-slate-400">AeroTrack Demo</span>
+          <span className="text-xs text-slate-400">AeroVision Demo</span>
           <div className="flex items-center gap-1">
             {DEMO_STEPS.map((s, i) => (
               <button
@@ -640,7 +640,7 @@ function StepProblem() {
             One company sold parts with <strong className="text-red-100">forged 8130-3 tags</strong> to Delta, United,
             American, and Southwest. <strong className="text-red-100">120+ aircraft were grounded</strong>. This happened
             because there&apos;s no automated way to verify documentation at the source —{" "}
-            <span className="text-white font-medium">exactly what AeroTrack solves.</span>
+            <span className="text-white font-medium">exactly what AeroVision solves.</span>
           </p>
         </div>
 
@@ -847,7 +847,7 @@ function StepDocuments() {
                     <p className="font-bold text-amber-900 text-sm">AI DETECTED: Fleet-Wide Pattern</p>
                     <p className="text-sm text-amber-700 mt-1">
                       881700-4022 seals on units &gt;7,500 hrs show accelerated failure rates.
-                      4 of 12 fleet units required unscheduled replacement. AeroTrack auto-generated
+                      4 of 12 fleet units required unscheduled replacement. AeroVision auto-generated
                       this defect report to alert the FAA — no human had to notice the pattern.
                     </p>
                   </div>
@@ -951,7 +951,7 @@ function StepIntelligence() {
             <h3 className="font-bold text-amber-900">Fleet Intelligence</h3>
           </div>
           <p className="text-sm text-amber-700">
-            AeroTrack doesn&apos;t just capture data — it analyzes it. The exception engine
+            AeroVision doesn&apos;t just capture data — it analyzes it. The exception engine
             scans every component in your fleet for inconsistencies, documentation gaps,
             and compliance issues. What used to take an audit team weeks takes seconds.
           </p>
@@ -1086,7 +1086,7 @@ function StepOpportunity() {
 
   // ── COMPUTED OUTPUTS ──
   // 1. Labor savings: time saved per part × hourly rate
-  const totalMinutesSaved = inputs.partsPerYear * (inputs.minutesPerPart - 3); // 3 min with AeroTrack
+  const totalMinutesSaved = inputs.partsPerYear * (inputs.minutesPerPart - 3); // 3 min with AeroVision
   const totalHoursSaved = Math.round(totalMinutesSaved / 60);
   const laborCostSaved = Math.round(totalHoursSaved * inputs.hourlyRate);
 
@@ -1362,7 +1362,7 @@ function StepOpportunity() {
           <TrendingUp className="h-6 w-6 text-emerald-600 mx-auto mb-2" />
           <p className="text-sm text-slate-700">
             At {inputs.shops} shops processing {inputs.partsPerYear.toLocaleString()} overhauls/year,
-            AeroTrack delivers <strong>${(annualSavings / 1000000).toFixed(1)}M in annual savings</strong> across
+            AeroVision delivers <strong>${(annualSavings / 1000000).toFixed(1)}M in annual savings</strong> across
             labor, AOG avoidance, audit prep, and counterfeit prevention — plus{" "}
             <strong>${(aircraftValue / 1000000).toFixed(1)}M in aircraft value preservation</strong>.
           </p>
