@@ -18,14 +18,18 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const localDbPath = `file:${path.resolve(__dirname, "..", "dev.db")}`;
 
-// Connect to Turso (cloud) when USE_TURSO is explicitly set, otherwise local SQLite
-const dbUrl = process.env.USE_TURSO === "true" && process.env.TURSO_DATABASE_URL
-  ? process.env.TURSO_DATABASE_URL
-  : localDbPath;
+// Use TURSO_DATABASE_URL if set (production or CI), otherwise local dev.db
+// For local file: URLs, resolve to absolute path so libsql finds the right file
+let dbUrl = process.env.TURSO_DATABASE_URL ?? localDbPath;
+if (dbUrl.startsWith("file:") && !dbUrl.startsWith("file:/")) {
+  // Relative file: URL — resolve to absolute path from project root
+  const relativePath = dbUrl.replace("file:", "").replace("./", "");
+  dbUrl = `file:${path.resolve(__dirname, "..", relativePath)}`;
+}
 
 const adapter = new PrismaLibSql({
   url: dbUrl,
-  authToken: process.env.USE_TURSO === "true" ? process.env.TURSO_AUTH_TOKEN : undefined,
+  authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
 const prisma = new PrismaClient({ adapter });
