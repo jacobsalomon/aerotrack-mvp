@@ -693,7 +693,7 @@ function StepMechanic() {
       <div className="max-w-3xl w-full">
         <div className="bg-black rounded-lg border border-green-500/30 p-8 text-center">
           <div className="text-green-400 font-mono mb-6">
-            <p className="text-xs text-green-600 tracking-[0.3em] mb-2">AEROTRACK SMART GLASSES</p>
+            <p className="text-xs text-green-600 tracking-[0.3em] mb-2">AEROVISION SMART GLASSES</p>
             <h3 className="text-2xl font-bold mb-2">HUD Preview</h3>
             <p className="text-sm text-green-600">
               Simulated view through RealWear Navigator 500
@@ -1377,7 +1377,7 @@ function StepOpportunity() {
 function StepExplore({ onNavigate }: { onNavigate: (path: string) => void }) {
   const links = [
     { label: "Dashboard", desc: "Browse all components, alerts, and analytics", path: "/dashboard", icon: Search },
-    { label: "Component Timeline", desc: "See a full back-to-birth digital thread", path: "/parts", icon: Clock },
+    { label: "Component Timeline", desc: "See a full back-to-birth digital thread", path: "/parts/demo-hpc7-overhaul", icon: Clock },
     { label: "Capture Workflow", desc: "Walk through the 6-step overhaul process", path: "/capture", icon: Sparkles },
     { label: "Glasses HUD", desc: "Experience the smart glasses view", path: "/glasses-demo", icon: Glasses },
     { label: "Integrity & Compliance", desc: "See the exception detection engine", path: "/integrity", icon: Shield },

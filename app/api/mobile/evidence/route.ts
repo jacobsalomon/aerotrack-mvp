@@ -22,6 +22,30 @@ export async function POST(request: Request) {
       );
     }
 
+    // Validate blobUrl is an HTTPS URL
+    try {
+      const parsed = new URL(String(blobUrl));
+      if (parsed.protocol !== "https:") {
+        return NextResponse.json(
+          { success: false, error: "blobUrl must be an HTTPS URL" },
+          { status: 400 }
+        );
+      }
+    } catch {
+      return NextResponse.json(
+        { success: false, error: "blobUrl must be a valid URL" },
+        { status: 400 }
+      );
+    }
+
+    // Validate capturedAt is a valid date if provided
+    if (capturedAt && isNaN(new Date(capturedAt).getTime())) {
+      return NextResponse.json(
+        { success: false, error: "capturedAt must be a valid date" },
+        { status: 400 }
+      );
+    }
+
     // Validate evidence type — must be uppercase to match downstream filters
     const validTypes = ["PHOTO", "VIDEO", "AUDIO_CHUNK"];
     const normalizedType = String(type).toUpperCase();
@@ -60,8 +84,8 @@ export async function POST(request: Request) {
         fileSize: fileSize || 0,
         mimeType: mimeType || "application/octet-stream",
         capturedAt: capturedAt ? new Date(capturedAt) : new Date(),
-        gpsLatitude: gpsLatitude ? parseFloat(gpsLatitude) : null,
-        gpsLongitude: gpsLongitude ? parseFloat(gpsLongitude) : null,
+        gpsLatitude: gpsLatitude && !isNaN(parseFloat(gpsLatitude)) ? parseFloat(gpsLatitude) : null,
+        gpsLongitude: gpsLongitude && !isNaN(parseFloat(gpsLongitude)) ? parseFloat(gpsLongitude) : null,
       },
     });
 

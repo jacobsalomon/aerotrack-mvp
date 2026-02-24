@@ -374,7 +374,8 @@ export default function GlassesDemoPage() {
             break;
           case "photo":
             setFlashActive(true);
-            setTimeout(() => setFlashActive(false), 200);
+            const flashTimer = setTimeout(() => setFlashActive(false), 200);
+            timersRef.current.push(flashTimer);
             break;
           case "document":
             setDocStatus(event.text);
@@ -507,7 +508,7 @@ export default function GlassesDemoPage() {
           }}
         />
         <div className="text-center max-w-lg relative z-10">
-          <p className="text-xs text-cyan-500 tracking-[0.3em] mb-4">AEROTRACK SMART GLASSES</p>
+          <p className="text-xs text-cyan-500 tracking-[0.3em] mb-4">AEROVISION SMART GLASSES</p>
           <h1 className="text-3xl font-bold text-green-400 mb-2 tracking-wide">PREVIEW</h1>
           <p className="text-sm text-green-600 mb-8">
             Simulated view through smart glasses during component overhaul
@@ -563,7 +564,7 @@ export default function GlassesDemoPage() {
         />
 
         <div className="relative z-10 max-w-md w-full">
-          <p className="text-xs text-cyan-500 tracking-[0.3em] mb-4 text-center">AEROTRACK AI</p>
+          <p className="text-xs text-cyan-500 tracking-[0.3em] mb-4 text-center">AEROVISION AI</p>
           <h2 className="text-xl font-bold text-green-400 text-center mb-8 tracking-wide animate-pulse">
             PROCESSING CAPTURED EVIDENCE...
           </h2>
@@ -627,7 +628,7 @@ export default function GlassesDemoPage() {
           <div className="max-w-5xl mx-auto">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <p className="text-xs text-blue-600 font-medium tracking-wide mb-1">AEROTRACK AI — DOCUMENT REVIEW</p>
+                <p className="text-xs text-blue-600 font-medium tracking-wide mb-1">AEROVISION AI — DOCUMENT REVIEW</p>
                 <h1 className="text-lg font-bold text-slate-800">
                   3 FAA Documents Auto-Generated
                 </h1>
@@ -793,7 +794,7 @@ export default function GlassesDemoPage() {
               <span className="text-xs text-red-400">REC</span>
             </div>
             <span className="text-xs text-green-600">|</span>
-            <span className="text-xs text-green-500">AEROTRACK v1.0</span>
+            <span className="text-xs text-green-500">AEROVISION v1.0</span>
           </div>
           <div className={`text-sm font-bold tracking-wide ${severityColor(statusColor)}`}>
             {statusLine}
@@ -839,7 +840,7 @@ export default function GlassesDemoPage() {
 
             {/* Camera label */}
             <div className="absolute top-3 left-10 text-xs text-green-600">
-              LIVE FEED — AEROTRACK HUD
+              LIVE FEED — AEROVISION HUD
             </div>
 
             {/* Part info overlay */}

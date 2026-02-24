@@ -128,7 +128,7 @@ export default function SessionsPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <Card className="border-0 shadow-sm">
           <CardContent className="pt-6 pb-6">
             <div className="flex flex-col gap-2">

@@ -546,15 +546,20 @@ export default function PartDetailPage() {
   // Fetch component data and exceptions on mount
   useEffect(() => {
     async function fetchComponent() {
-      const res = await fetch(apiUrl(`/api/components/${params.id}`));
-      if (res.ok) {
+      try {
+        const res = await fetch(apiUrl(`/api/components/${params.id}`));
+        if (!res.ok) throw new Error(`Failed to load component (${res.status})`);
         setComponent(await res.json());
+
+        const exRes = await fetch(apiUrl(`/api/exceptions?componentId=${params.id}`));
+        if (exRes.ok) {
+          setExceptions(await exRes.json());
+        }
+      } catch (err) {
+        console.error("Failed to load component data:", err);
+      } finally {
+        setLoading(false);
       }
-      const exRes = await fetch(apiUrl(`/api/exceptions?componentId=${params.id}`));
-      if (exRes.ok) {
-        setExceptions(await exRes.json());
-      }
-      setLoading(false);
     }
     fetchComponent();
   }, [params.id]);

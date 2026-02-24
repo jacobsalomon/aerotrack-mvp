@@ -114,13 +114,18 @@ export default function IntegrityPage() {
 
   // Fetch both alerts and exceptions on page load
   const fetchData = useCallback(async () => {
-    const [alertsRes, exceptionsRes] = await Promise.all([
-      fetch(apiUrl("/api/alerts")),
-      fetch(apiUrl("/api/exceptions")),
-    ]);
-    setAlerts(await alertsRes.json());
-    setExceptions(await exceptionsRes.json());
-    setLoading(false);
+    try {
+      const [alertsRes, exceptionsRes] = await Promise.all([
+        fetch(apiUrl("/api/alerts")),
+        fetch(apiUrl("/api/exceptions")),
+      ]);
+      if (alertsRes.ok) setAlerts(await alertsRes.json());
+      if (exceptionsRes.ok) setExceptions(await exceptionsRes.json());
+    } catch (err) {
+      console.error("Failed to load integrity data:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {

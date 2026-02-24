@@ -6,11 +6,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { render8130Pdf, render337Pdf, render8010Pdf } from "@/lib/pdf-renderers";
+import { requireDashboardAuth } from "@/lib/dashboard-auth";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Require dashboard authentication
+  const authError = requireDashboardAuth(request);
+  if (authError) return authError;
+
   const { id } = await params;
 
   // Look up the GeneratedDocument
@@ -66,7 +71,7 @@ export async function GET(
   return new NextResponse(Buffer.from(pdfBytes), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Disposition": `attachment; filename="${filename.replace(/[^a-zA-Z0-9._-]/g, "_")}"`,
     },
   });
 }

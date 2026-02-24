@@ -4,6 +4,7 @@
 
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 
 export async function POST(request: Request) {
   try {
@@ -31,7 +32,13 @@ export async function POST(request: Request) {
       },
     });
 
-    if (!technician || technician.apiKey !== apiKey) {
+    // Use timing-safe comparison to prevent side-channel attacks
+    const storedKey = technician?.apiKey || "";
+    const keysMatch =
+      apiKey.length === storedKey.length &&
+      crypto.timingSafeEqual(Buffer.from(apiKey), Buffer.from(storedKey));
+
+    if (!technician || !keysMatch) {
       return NextResponse.json(
         { success: false, error: "Invalid credentials" },
         { status: 401 }
@@ -69,8 +76,6 @@ export async function POST(request: Request) {
           organizationId: technician.organizationId,
         },
         organization: technician.organization,
-        // Return the API key as the token for subsequent requests
-        token: apiKey,
       },
     });
   } catch (error) {

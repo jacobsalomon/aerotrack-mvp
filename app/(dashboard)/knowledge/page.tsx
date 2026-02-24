@@ -24,16 +24,28 @@ export default function KnowledgePage() {
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
+  // Debounce search to avoid firing a fetch on every keystroke
   useEffect(() => {
-    async function fetchEntries() {
-      setLoading(true);
-      const params = search ? `?search=${encodeURIComponent(search)}` : "";
-      const res = await fetch(apiUrl(`/api/knowledge${params}`));
-      setEntries(await res.json());
-      setLoading(false);
-    }
-    fetchEntries();
+    const timer = setTimeout(() => {
+      async function fetchEntries() {
+        setLoading(true);
+        setError("");
+        try {
+          const params = search ? `?search=${encodeURIComponent(search)}` : "";
+          const res = await fetch(apiUrl(`/api/knowledge${params}`));
+          if (!res.ok) throw new Error(`Failed to load (${res.status})`);
+          setEntries(await res.json());
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Failed to load knowledge entries");
+        } finally {
+          setLoading(false);
+        }
+      }
+      fetchEntries();
+    }, 300);
+    return () => clearTimeout(timer);
   }, [search]);
 
   return (
@@ -55,6 +67,12 @@ export default function KnowledgePage() {
           onChange={(e) => setSearch(e.target.value)}
         />
       </div>
+
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       {loading ? (
         <p className="text-center py-8 text-slate-500">Loading knowledge entries...</p>

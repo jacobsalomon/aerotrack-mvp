@@ -52,7 +52,7 @@ model Component {
 model LifecycleEvent {
   id            String   @id @default(cuid())
   componentId   String
-  component     Component @relation(fields: [componentId], references: [id])
+  component     Component @relation(fields: [componentId], references: [id], onDelete: Cascade)
   eventType     String    // "manufacture", "install", "remove", "receiving_inspection",
                           // "teardown", "detailed_inspection", "repair", "reassembly",
                           // "functional_test", "final_inspection", "release_to_service",
@@ -78,6 +78,8 @@ model LifecycleEvent {
   evidence      Evidence[]
   generatedDocs GeneratedDocument[]
   partsConsumed PartConsumed[]
+
+  @@index([componentId])
 }
 
 // ──────────────────────────────────────────────────────
@@ -87,7 +89,7 @@ model LifecycleEvent {
 model Evidence {
   id              String   @id @default(cuid())
   eventId         String
-  event           LifecycleEvent @relation(fields: [eventId], references: [id])
+  event           LifecycleEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
   type            String         // "photo", "video", "voice_note", "document_scan", "measurement"
   fileName        String
   filePath        String
@@ -100,6 +102,8 @@ model Evidence {
   structuredData  String?        // AI-structured version (JSON string)
   hash            String         // SHA-256 hash for tamper evidence
   createdAt       DateTime       @default(now())
+
+  @@index([eventId])
 }
 
 // ──────────────────────────────────────────────────────
@@ -109,7 +113,7 @@ model Evidence {
 model GeneratedDocument {
   id           String    @id @default(cuid())
   eventId      String
-  event        LifecycleEvent @relation(fields: [eventId], references: [id])
+  event        LifecycleEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
   docType      String         // "8130-3", "work_order", "findings_report", "test_results"
   title        String
   content      String         // Full generated document content (JSON)
@@ -120,6 +124,8 @@ model GeneratedDocument {
   signatureRef String?        // Electronic signature reference
   hash         String?        // Document hash
   createdAt    DateTime  @default(now())
+
+  @@index([eventId])
 }
 
 // ──────────────────────────────────────────────────────
@@ -129,13 +135,15 @@ model GeneratedDocument {
 model PartConsumed {
   id           String   @id @default(cuid())
   eventId      String
-  event        LifecycleEvent @relation(fields: [eventId], references: [id])
+  event        LifecycleEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
   partNumber   String         // P/N of the consumed/replacement part
   serialNumber String?        // S/N if serialized
   description  String
   quantity     Int      @default(1)
   sourceDoc    String?        // 8130-3 or CoC reference for the new part
   sourceVendor String?        // Where the part came from
+
+  @@index([eventId])
 }
 
 // ──────────────────────────────────────────────────────
@@ -145,7 +153,7 @@ model PartConsumed {
 model Alert {
   id          String    @id @default(cuid())
   componentId String
-  component   Component @relation(fields: [componentId], references: [id])
+  component   Component @relation(fields: [componentId], references: [id], onDelete: Cascade)
   alertType   String    // "provenance_gap", "counterfeit_suspect", "overdue_inspection",
                         // "record_mismatch", "nff_pattern", "life_limit_approaching"
   severity    String    // "info", "warning", "critical"
@@ -154,6 +162,8 @@ model Alert {
   status      String    @default("open") // "open", "investigating", "resolved", "dismissed"
   createdAt   DateTime  @default(now())
   resolvedAt  DateTime?
+
+  @@index([componentId])
 }
 
 // ──────────────────────────────────────────────────────
@@ -164,7 +174,7 @@ model Alert {
 model Exception {
   id              String    @id @default(cuid())
   componentId     String
-  component       Component @relation(fields: [componentId], references: [id])
+  component       Component @relation(fields: [componentId], references: [id], onDelete: Cascade)
   exceptionType   String    // "serial_number_mismatch", "part_number_mismatch",
                             // "cycle_count_discrepancy", "hour_count_discrepancy",
                             // "documentation_gap", "missing_release_certificate",
@@ -179,6 +189,8 @@ model Exception {
   resolvedAt      DateTime?
   resolvedBy      String?
   resolutionNotes String?
+
+  @@index([componentId])
 }
 
 // ──────────────────────────────────────────────────────
@@ -188,7 +200,7 @@ model Exception {
 model Document {
   id            String   @id @default(cuid())
   componentId   String
-  component     Component @relation(fields: [componentId], references: [id])
+  component     Component @relation(fields: [componentId], references: [id], onDelete: Cascade)
   docType       String    // "cmm", "service_bulletin", "certificate", "legacy_work_order",
                           // "birth_certificate", "8130", "coc"
   title         String
@@ -199,6 +211,8 @@ model Document {
   hash          String?   // File hash
   isLegacy      Boolean   @default(false) // Was this digitized from paper?
   createdAt     DateTime  @default(now())
+
+  @@index([componentId])
 }
 
 // ──────────────────────────────────────────────────────
@@ -255,7 +269,7 @@ model Organization {
 model Technician {
   id              String   @id @default(cuid())
   organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id])
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   firstName       String
   lastName        String
   email           String   @unique
@@ -270,6 +284,8 @@ model Technician {
   captureSessions     CaptureSession[]
   reviewedDocuments   DocumentGeneration2[]  @relation("reviewer")
   auditLog            AuditLogEntry[]
+
+  @@index([organizationId])
 }
 
 // ──────────────────────────────────────────────────────
@@ -279,9 +295,9 @@ model Technician {
 model CaptureSession {
   id              String    @id @default(cuid())
   technicianId    String
-  technician      Technician @relation(fields: [technicianId], references: [id])
+  technician      Technician @relation(fields: [technicianId], references: [id], onDelete: Cascade)
   organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id])
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   componentId     String?                               // Linked after AI identifies the part
   status          String    @default("capturing")       // capturing, processing, documents_generated, submitted, approved, rejected
   description     String?
@@ -294,6 +310,9 @@ model CaptureSession {
   evidence        CaptureEvidence[]
   documents       DocumentGeneration2[]
   analysis        SessionAnalysis?
+
+  @@index([technicianId])
+  @@index([organizationId])
 }
 
 // ──────────────────────────────────────────────────────
@@ -304,7 +323,7 @@ model CaptureSession {
 model CaptureEvidence {
   id              String    @id @default(cuid())
   sessionId       String
-  session         CaptureSession @relation(fields: [sessionId], references: [id])
+  session         CaptureSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   type            String                                // PHOTO, VIDEO, AUDIO_CHUNK
   fileUrl         String                                // URL to file in cloud storage (or local path for PoC)
   fileSize        Int       @default(0)                 // File size in bytes
@@ -320,6 +339,8 @@ model CaptureEvidence {
 
   // Relationships
   videoAnnotations VideoAnnotation[]
+
+  @@index([sessionId])
 }
 
 // ──────────────────────────────────────────────────────
@@ -330,13 +351,15 @@ model CaptureEvidence {
 model VideoAnnotation {
   id          String   @id @default(cuid())
   evidenceId  String
-  evidence    CaptureEvidence @relation(fields: [evidenceId], references: [id])
+  evidence    CaptureEvidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
   timestamp   Float                                     // Seconds into the video chunk
   tag         String                                    // e.g., "part_number", "action", "tool", "text", "condition"
   description String                                    // e.g., "Torque wrench applied to engine mount bolt"
   confidence  Float    @default(0)                      // 0-1 confidence score
   rawResponse String?                                   // Full AI response for debugging
   createdAt   DateTime @default(now())
+
+  @@index([evidenceId])
 }
 
 // ──────────────────────────────────────────────────────
@@ -347,7 +370,7 @@ model VideoAnnotation {
 model SessionAnalysis {
   id              String   @id @default(cuid())
   sessionId       String   @unique
-  session         CaptureSession @relation(fields: [sessionId], references: [id])
+  session         CaptureSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   actionLog       String                                // JSON — timestamped list of actions observed
   partsIdentified String                                // JSON — all part numbers/serials found
   procedureSteps  String                                // JSON — maintenance steps identified
@@ -399,7 +422,7 @@ model ReferenceData {
 model DocumentGeneration2 {
   id                  String    @id @default(cuid())
   sessionId           String
-  session             CaptureSession @relation(fields: [sessionId], references: [id])
+  session             CaptureSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   documentType        String                            // "8130-3", "337", "8010-4", etc. — extensible
   contentJson         String                            // Full form field data as JSON string
   status              String    @default("draft")       // draft, pending_review, approved, rejected
@@ -407,12 +430,15 @@ model DocumentGeneration2 {
   lowConfidenceFields String    @default("[]")          // JSON array of field names AI was uncertain about
   generatedAt         DateTime  @default(now())
   reviewedById        String?
-  reviewedBy          Technician? @relation("reviewer", fields: [reviewedById], references: [id])
+  reviewedBy          Technician? @relation("reviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   reviewedAt          DateTime?
   reviewNotes         String?
   verificationJson    String?                           // JSON — AI verification results (field-level issues, confidence)
   verifiedAt          DateTime?                         // When the independent AI verification completed
   createdAt           DateTime  @default(now())
+
+  @@index([sessionId])
+  @@index([reviewedById])
 }
 
 // ──────────────────────────────────────────────────────
@@ -422,13 +448,16 @@ model DocumentGeneration2 {
 model AuditLogEntry {
   id              String    @id @default(cuid())
   organizationId  String?
-  organization    Organization? @relation(fields: [organizationId], references: [id])
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   technicianId    String?
-  technician      Technician? @relation(fields: [technicianId], references: [id])
+  technician      Technician? @relation(fields: [technicianId], references: [id], onDelete: SetNull)
   action          String                                // "session_started", "evidence_captured", "document_generated",
                                                         // "document_approved", "document_rejected", "technician_created", etc.
   entityType      String?                               // "CaptureSession", "CaptureEvidence", "DocumentGeneration2", etc.
   entityId        String?                               // ID of the affected record
   metadata        String?                               // JSON — additional context
   timestamp       DateTime  @default(now())
+
+  @@index([organizationId])
+  @@index([technicianId])
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireDashboardAuth } from "@/lib/dashboard-auth";
 
 // This API route takes raw voice transcriptions from a mechanic and structures
 // them into maintenance findings. This powers the "live findings summary"
@@ -6,7 +7,16 @@ import { NextRequest, NextResponse } from "next/server";
 // otherwise returns realistic mock structured findings.
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
+  // Require dashboard authentication
+  const authError = requireDashboardAuth(req);
+  if (authError) return authError;
+
+  let body;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const transcription = body.transcription || "";
   const apiKey = process.env.ANTHROPIC_API_KEY;
 

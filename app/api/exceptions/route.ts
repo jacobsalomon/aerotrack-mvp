@@ -40,11 +40,16 @@ export async function GET(request: Request) {
         },
       },
     },
-    orderBy: [
-      { severity: "asc" }, // "critical" sorts before "info" and "warning" alphabetically
-      { detectedAt: "desc" },
-    ],
+    orderBy: { detectedAt: "desc" },
     take: limit,
+  });
+
+  // Sort by severity (critical → warning → info) then by date
+  const severityOrder: Record<string, number> = { critical: 0, warning: 1, info: 2 };
+  exceptions.sort((a, b) => {
+    const sDiff = (severityOrder[a.severity] ?? 99) - (severityOrder[b.severity] ?? 99);
+    if (sDiff !== 0) return sDiff;
+    return b.detectedAt.getTime() - a.detectedAt.getTime();
   });
 
   return NextResponse.json(exceptions);

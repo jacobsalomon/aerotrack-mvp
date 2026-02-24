@@ -29,6 +29,15 @@ export async function POST(request: Request) {
       );
     }
 
+    // Reject images larger than 10MB base64 (~7.5MB actual)
+    const MAX_BASE64_SIZE = 10 * 1024 * 1024;
+    if (typeof imageBase64 !== "string" || imageBase64.length > MAX_BASE64_SIZE) {
+      return NextResponse.json(
+        { success: false, error: "Image too large. Maximum 10MB base64." },
+        { status: 413 }
+      );
+    }
+
     const openaiKey = process.env.OPENAI_API_KEY;
     if (!openaiKey) {
       return NextResponse.json(
@@ -154,11 +163,18 @@ Be precise — these values go directly into FAA compliance documents.`,
     }
 
     // If we have an evidenceId, update the evidence record with the extraction
+    // but only if the evidence belongs to a session owned by this technician
     if (evidenceId) {
-      await prisma.captureEvidence.update({
+      const evidence = await prisma.captureEvidence.findUnique({
         where: { id: evidenceId },
-        data: { aiExtraction: JSON.stringify(extraction) },
+        include: { session: { select: { technicianId: true } } },
       });
+      if (evidence && evidence.session.technicianId === auth.technician.id) {
+        await prisma.captureEvidence.update({
+          where: { id: evidenceId },
+          data: { aiExtraction: JSON.stringify(extraction) },
+        });
+      }
     }
 
     // Try to match a component in our database by part number or serial number
@@ -185,10 +201,11 @@ Be precise — these values go directly into FAA compliance documents.`,
       if (component) {
         componentMatch = component;
 
-        // If we have a sessionId, auto-link the component to the session
+        // If we have a sessionId, auto-link the component — but only if the
+        // session belongs to this technician (prevent cross-session manipulation)
         if (sessionId) {
-          await prisma.captureSession.update({
-            where: { id: sessionId },
+          await prisma.captureSession.updateMany({
+            where: { id: sessionId, technicianId: auth.technician.id },
             data: { componentId: component.id },
           });
         }

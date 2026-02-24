@@ -77,8 +77,8 @@ export default function DashboardPage() {
         if (statusFilter !== "all") params.set("status", statusFilter);
         const res = await fetch(apiUrl(`/api/components?${params}`));
         if (!res.ok) throw new Error(`API error: ${res.status}`);
-        const data = await res.json();
-        setComponents(data);
+        const json = await res.json();
+        setComponents(json.data ?? json);
       } catch (err) {
         console.error("Failed to fetch components:", err);
       } finally {
@@ -218,6 +218,13 @@ export default function DashboardPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
+                    {components.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-12 text-slate-400">
+                          No components found. Try adjusting your search or filters.
+                        </TableCell>
+                      </TableRow>
+                    )}
                     {components.map((comp) => (
                       <TableRow key={comp.id} className="cursor-pointer hover:bg-slate-50/50">
                         <TableCell>

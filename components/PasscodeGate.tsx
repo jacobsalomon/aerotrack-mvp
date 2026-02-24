@@ -10,16 +10,18 @@ const SESSION_KEY = "demo-unlocked";
 // Sets an HTTP-only cookie on success so API routes can also check auth.
 export default function PasscodeGate({ children }: { children: ReactNode }) {
   const [unlocked, setUnlocked] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const [digits, setDigits] = useState(["", "", "", ""]);
   const [error, setError] = useState(false);
   const [checking, setChecking] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Check if already unlocked this session
+  // Check if already unlocked this session (wait for hydration to avoid flash)
   useEffect(() => {
     if (sessionStorage.getItem(SESSION_KEY) === "true") {
       setUnlocked(true);
     }
+    setHydrated(true);
   }, []);
 
   // Auto-submit when all 4 digits are filled
@@ -92,6 +94,9 @@ export default function PasscodeGate({ children }: { children: ReactNode }) {
 
   if (unlocked) return <>{children}</>;
 
+  // Don't render passcode UI until hydration completes (prevents flash)
+  if (!hydrated) return null;
+
   return (
     <div className="flex h-screen w-screen items-center justify-center" style={{ backgroundColor: 'rgb(12, 12, 12)' }}>
       <div className="flex flex-col items-center gap-8">
@@ -119,6 +124,7 @@ export default function PasscodeGate({ children }: { children: ReactNode }) {
               value={digit}
               onChange={(e) => handleChange(i, e.target.value)}
               onKeyDown={(e) => handleKeyDown(i, e)}
+              aria-label={`Passcode digit ${i + 1}`}
               className="w-14 h-16 text-center text-2xl font-mono rounded-md outline-none transition-all"
               style={error ? {
                 backgroundColor: 'rgba(255, 255, 255, 0.05)',

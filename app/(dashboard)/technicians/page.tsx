@@ -70,7 +70,7 @@ export default function TechniciansPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         <Card className="border-0 shadow-sm">
           <CardContent className="pt-6 pb-6">
             <div className="flex flex-col gap-2">

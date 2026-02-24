@@ -19,14 +19,21 @@ interface LabelComponent {
 export default function PrintLabelsPage() {
   const [components, setComponents] = useState<LabelComponent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   // Fetch all seed components from our API
   useEffect(() => {
     async function fetchComponents() {
-      const res = await fetch(apiUrl("/api/components"));
-      const data = await res.json();
-      setComponents(data);
-      setLoading(false);
+      try {
+        const res = await fetch(apiUrl("/api/components"));
+        if (!res.ok) throw new Error(`Failed to load (${res.status})`);
+        const json = await res.json();
+        setComponents(json.data ?? json);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load components");
+      } finally {
+        setLoading(false);
+      }
     }
     fetchComponents();
   }, []);
@@ -35,6 +42,14 @@ export default function PrintLabelsPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-lg text-slate-500">Loading components...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-lg text-red-500">{error}</p>
       </div>
     );
   }

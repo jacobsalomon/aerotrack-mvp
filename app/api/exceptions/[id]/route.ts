@@ -42,7 +42,16 @@ export async function PATCH(
     });
 
     return NextResponse.json(updated);
-  } catch {
-    return NextResponse.json({ error: "Exception not found" }, { status: 404 });
+  } catch (error) {
+    // Prisma P2025 = record not found; anything else is a real server error
+    const isNotFound =
+      error instanceof Error &&
+      "code" in error &&
+      (error as { code: string }).code === "P2025";
+    if (isNotFound) {
+      return NextResponse.json({ error: "Exception not found" }, { status: 404 });
+    }
+    console.error("Exception update error:", error);
+    return NextResponse.json({ error: "Failed to update exception" }, { status: 500 });
   }
 }

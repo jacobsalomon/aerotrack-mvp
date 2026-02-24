@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireDashboardAuth } from "@/lib/dashboard-auth";
 
 // This API route generates an FAA Form 8130-3 (Authorized Release Certificate)
 // from captured maintenance data. It uses the Anthropic Claude API if a key is
 // available, otherwise returns realistic mock data for demo purposes.
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
+  // Require dashboard authentication
+  const authError = requireDashboardAuth(req);
+  if (authError) return authError;
+
+  let body;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
   // Check if we have an Anthropic API key configured
   const apiKey = process.env.ANTHROPIC_API_KEY;

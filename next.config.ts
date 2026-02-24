@@ -5,6 +5,15 @@ const nextConfig: NextConfig = {
   // (mechanicalvisioncorp.com) can proxy here via rewrites.
   basePath: "/aerovision-demo",
 
+  // basePath breaks Next.js Image optimization on Vercel — disable it
+  // and use unoptimized images instead.
+  images: {
+    unoptimized: true,
+  },
+
+  // Don't expose framework info in response headers
+  poweredByHeader: false,
+
   // Expose basePath to client-side fetch() calls via lib/api-url.ts.
   // <Link> and <Image> auto-prepend basePath, but fetch() does not.
   env: {
@@ -25,6 +34,22 @@ const nextConfig: NextConfig = {
     "pdf-lib",
     "@anthropic-ai/sdk",
   ],
+
+  // Security headers for all routes
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-XSS-Protection", value: "1; mode=block" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
+        ],
+      },
+    ];
+  },
 
   experimental: {
     // Tree-shake barrel exports from large icon/component libraries.

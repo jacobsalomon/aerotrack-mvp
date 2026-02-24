@@ -119,11 +119,15 @@ export default function CaptureWorkPage() {
 
   useEffect(() => {
     async function fetchComponent() {
-      const res = await fetch(apiUrl(`/api/components/${params.componentId}`));
-      if (res.ok) {
+      try {
+        const res = await fetch(apiUrl(`/api/components/${params.componentId}`));
+        if (!res.ok) throw new Error(`Failed to load component (${res.status})`);
         setComponent(await res.json());
+      } catch (err) {
+        console.error("Failed to load component:", err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     fetchComponent();
   }, [params.componentId]);
@@ -316,6 +320,8 @@ export default function CaptureWorkPage() {
         fetch(apiUrl("/api/ai/generate-8130"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
         fetch(apiUrl("/api/ai/generate-workorder"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
       ]);
+      if (!form8130Res.ok) throw new Error(`8130 generation failed (${form8130Res.status})`);
+      if (!workOrderRes.ok) throw new Error(`Work order generation failed (${workOrderRes.status})`);
       const form8130 = await form8130Res.json();
       const workOrder = await workOrderRes.json();
       const findingsCount = workOrder.findings?.length || 3;
@@ -412,6 +418,9 @@ export default function CaptureWorkPage() {
           body: JSON.stringify(payload),
         }),
       ]);
+
+      if (!form8130Res.ok) throw new Error(`8130 generation failed (${form8130Res.status})`);
+      if (!workOrderRes.ok) throw new Error(`Work order generation failed (${workOrderRes.status})`);
 
       const form8130 = await form8130Res.json();
       const workOrder = await workOrderRes.json();

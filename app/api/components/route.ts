@@ -28,22 +28,34 @@ export async function GET(request: Request) {
     where.status = status;
   }
 
-  const components = await prisma.component.findMany({
-    where,
-    include: {
-      _count: {
-        select: {
-          events: true,
-          alerts: true,
+  const page = parseInt(searchParams.get("page") || "1", 10);
+  const pageSize = Math.min(parseInt(searchParams.get("pageSize") || "50", 10), 100);
+  const skip = (Math.max(page, 1) - 1) * pageSize;
+
+  const [components, total] = await Promise.all([
+    prisma.component.findMany({
+      where,
+      include: {
+        _count: {
+          select: {
+            events: true,
+            alerts: true,
+          },
+        },
+        alerts: {
+          where: { status: "open" },
+          select: { severity: true },
         },
       },
-      alerts: {
-        where: { status: "open" },
-        select: { severity: true },
-      },
-    },
-    orderBy: { updatedAt: "desc" },
-  });
+      orderBy: { updatedAt: "desc" },
+      take: pageSize,
+      skip,
+    }),
+    prisma.component.count({ where }),
+  ]);
 
-  return NextResponse.json(components);
+  return NextResponse.json({
+    data: components,
+    pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
+  });
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireDashboardAuth } from "@/lib/dashboard-auth";
 
 // This API route extracts structured data from a photo of an aviation
 // maintenance document (8130-3, data plate, work order, etc.) using
@@ -6,7 +7,16 @@ import { NextRequest, NextResponse } from "next/server";
 // realistic mock data that matches the demo component (Component 9).
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
+  // Require dashboard authentication
+  const authError = requireDashboardAuth(req);
+  if (authError) return authError;
+
+  let body;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
   // Validate that we received an image
   if (!body.imageBase64 || !body.mimeType) {

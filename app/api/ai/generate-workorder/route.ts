@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireDashboardAuth } from "@/lib/dashboard-auth";
 
 // This API route generates a structured repair work order from captured
 // maintenance data. Uses Claude API if available, otherwise returns
 // realistic mock data for demo purposes.
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
+  // Require dashboard authentication
+  const authError = requireDashboardAuth(req);
+  if (authError) return authError;
+
+  let body;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
   if (apiKey) {

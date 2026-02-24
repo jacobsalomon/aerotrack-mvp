@@ -167,7 +167,8 @@ export async function scanComponent(componentId: string) {
  * Returns a summary of what was found across the entire fleet.
  */
 export async function scanAllComponents() {
-  const components = await prisma.component.findMany({ select: { id: true } });
+  // Limit to 500 components to prevent runaway scans on large datasets
+  const components = await prisma.component.findMany({ select: { id: true }, take: 500 });
 
   let totalExceptions = 0;
   let componentsWithExceptions = 0;

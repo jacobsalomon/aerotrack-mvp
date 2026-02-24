@@ -85,11 +85,12 @@ export async function POST(request: Request) {
         success: true,
         cached: true,
         data: {
-          documents: existingDocs.map((doc) => ({
-            ...doc,
-            contentJson: JSON.parse(doc.contentJson),
-            lowConfidenceFields: JSON.parse(doc.lowConfidenceFields || "[]"),
-          })),
+          documents: existingDocs.map((doc) => {
+            let contentJson, lowConfidenceFields;
+            try { contentJson = JSON.parse(doc.contentJson); } catch { contentJson = {}; }
+            try { lowConfidenceFields = JSON.parse(doc.lowConfidenceFields || "[]"); } catch { lowConfidenceFields = []; }
+            return { ...doc, contentJson, lowConfidenceFields };
+          }),
           summary: "Documents already generated for this session",
           sessionStatus: session.status,
         },
@@ -112,11 +113,14 @@ export async function POST(request: Request) {
     // 2. Video analysis (from deep analysis Pass 2, if available)
     let videoAnalysis: Record<string, unknown> | null = null;
     if (session.analysis) {
+      const safeParse = (s: string, fallback: unknown = []) => {
+        try { return JSON.parse(s); } catch { return fallback; }
+      };
       videoAnalysis = {
-        actionLog: JSON.parse(session.analysis.actionLog),
-        partsIdentified: JSON.parse(session.analysis.partsIdentified),
-        procedureSteps: JSON.parse(session.analysis.procedureSteps),
-        anomalies: JSON.parse(session.analysis.anomalies),
+        actionLog: safeParse(session.analysis.actionLog),
+        partsIdentified: safeParse(session.analysis.partsIdentified),
+        procedureSteps: safeParse(session.analysis.procedureSteps),
+        anomalies: safeParse(session.analysis.anomalies),
         confidence: session.analysis.confidence,
       };
     }

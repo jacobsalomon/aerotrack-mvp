@@ -74,6 +74,15 @@ export async function PATCH(
     const body = await request.json();
     const { status, description, componentId } = body;
 
+    // Validate status against allowed values
+    const validStatuses = ["capturing", "processing", "completed", "failed"];
+    if (status && !validStatuses.includes(status)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
     const updateData: Record<string, unknown> = {};
     if (status) updateData.status = status;
     if (description !== undefined) updateData.description = description;

@@ -88,8 +88,8 @@ export async function uploadFileToGemini(
   );
 
   if (!startResponse.ok) {
-    const err = await startResponse.text();
-    console.error(`Gemini upload start API error (${startResponse.status}):`, err.slice(0, 500));
+    await startResponse.text(); // drain body
+    console.error(`Gemini upload start failed (status ${startResponse.status})`);
     throw new Error(`Gemini File API upload start failed (status ${startResponse.status})`);
   }
 
@@ -108,8 +108,8 @@ export async function uploadFileToGemini(
   });
 
   if (!uploadResponse.ok) {
-    const err = await uploadResponse.text();
-    console.error(`Gemini upload API error (${uploadResponse.status}):`, err.slice(0, 500));
+    await uploadResponse.text(); // drain body
+    console.error(`Gemini upload failed (status ${uploadResponse.status})`);
     throw new Error(`Gemini File API upload failed (status ${uploadResponse.status})`);
   }
 
@@ -214,8 +214,8 @@ Be thorough — this creates a permanent searchable index of maintenance footage
   );
 
   if (!response.ok) {
-    const err = await response.text();
-    console.error(`Gemini annotation API error (${response.status}):`, err.slice(0, 500));
+    await response.text(); // drain body
+    console.error(`Gemini annotation failed (status ${response.status})`);
     throw new Error(`Gemini annotation failed (status ${response.status})`);
   }
 
@@ -323,8 +323,8 @@ Be thorough and precise — this data feeds into FAA compliance documents.`,
   );
 
   if (!response.ok) {
-    const err = await response.text();
-    console.error(`Gemini deep analysis API error (${response.status}):`, err.slice(0, 500));
+    await response.text(); // drain body
+    console.error(`Gemini deep analysis failed (status ${response.status})`);
     throw new Error(`Gemini deep analysis failed (status ${response.status})`);
   }
 

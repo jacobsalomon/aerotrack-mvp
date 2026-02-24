@@ -4,6 +4,7 @@
 // Sets a cookie on success so subsequent API calls can be authenticated.
 
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 
 const PASSCODE = process.env.PASSCODE || "2206";
 const COOKIE_NAME = "av-session";
@@ -14,7 +15,14 @@ export async function POST(request: Request) {
   try {
     const { passcode } = await request.json();
 
-    if (passcode !== PASSCODE) {
+    // Use timing-safe comparison to prevent side-channel attacks
+    const input = String(passcode || "");
+    const expected = PASSCODE;
+    const isMatch =
+      input.length === expected.length &&
+      crypto.timingSafeEqual(Buffer.from(input), Buffer.from(expected));
+
+    if (!isMatch) {
       return NextResponse.json(
         { success: false, error: "Incorrect passcode" },
         { status: 401 }

@@ -82,15 +82,22 @@ export default function CapturePage() {
     setLookupError("");
     setLookupResult(null);
 
-    const res = await fetch(apiUrl(`/api/components?search=${encodeURIComponent(serialInput.trim())}`));
-    const data = await res.json();
+    try {
+      const res = await fetch(apiUrl(`/api/components?search=${encodeURIComponent(serialInput.trim())}`));
+      if (!res.ok) throw new Error(`Search failed (${res.status})`);
+      const json = await res.json();
+      const data = json.data ?? json;
 
-    if (data.length > 0) {
-      setLookupResult(data[0]);
-    } else {
-      setLookupError("No component found. Check the serial number or part number and try again.");
+      if (data.length > 0) {
+        setLookupResult(data[0]);
+      } else {
+        setLookupError("No component found. Check the serial number or part number and try again.");
+      }
+    } catch (err) {
+      setLookupError(err instanceof Error ? err.message : "Search failed. Please try again.");
+    } finally {
+      setSearching(false);
     }
-    setSearching(false);
   }
 
   // ── RecordSnap: handle image selection from camera or file picker ──

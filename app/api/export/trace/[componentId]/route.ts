@@ -11,6 +11,7 @@ import { calculateTraceCompleteness, formatDuration } from "@/lib/trace-complete
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import { requireDashboardAuth } from "@/lib/dashboard-auth";
 
 // ── Color constants ──
 
@@ -49,9 +50,13 @@ const eventLabels: Record<string, string> = {
 };
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ componentId: string }> }
 ) {
+  // Require dashboard authentication
+  const authError = requireDashboardAuth(request);
+  if (authError) return authError;
+
   const { componentId } = await params;
 
   // Load component with all relations
@@ -796,7 +801,7 @@ export async function GET(
   return new NextResponse(Buffer.from(pdfBytes), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="trace-report-${component.serialNumber}.pdf"`,
+      "Content-Disposition": `attachment; filename="trace-report-${component.serialNumber.replace(/[^a-zA-Z0-9._-]/g, "_")}.pdf"`,
     },
   });
 }

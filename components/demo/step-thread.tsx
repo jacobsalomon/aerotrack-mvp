@@ -342,7 +342,7 @@ function TimelineColumn({
         <CardContent className="pt-6">
           <div className="flex items-center gap-2 mb-3">
             <div className={`w-3 h-3 rounded-full ${dotColor}`} />
-            <h4 className={`font-bold text-${traceColor}-800`}>{title}</h4>
+            <h4 className={`font-bold ${traceColor === "green" ? "text-green-800" : "text-red-800"}`}>{title}</h4>
           </div>
           <p className="text-sm text-slate-500">
             Unable to load component data. Check the database connection.
@@ -388,7 +388,7 @@ function TimelineColumn({
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <div className={`w-3 h-3 rounded-full ${dotColor}`} />
-            <h4 className={`font-bold text-${traceColor === "green" ? "green" : "red"}-800`}>
+            <h4 className={`font-bold ${traceColor === "green" ? "text-green-800" : "text-red-800"}`}>
               {title}
             </h4>
           </div>
@@ -541,7 +541,7 @@ function TimelineColumn({
           href={`/parts/${component.id}`}
           target="_blank"
           rel="noopener noreferrer"
-          className={`inline-flex items-center gap-1 text-sm text-${traceColor === "green" ? "green" : "red"}-600 hover:underline`}
+          className={`inline-flex items-center gap-1 text-sm ${traceColor === "green" ? "text-green-600" : "text-red-600"} hover:underline`}
         >
           View Digital Thread <ExternalLink className="h-3 w-3" />
         </a>
