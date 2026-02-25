@@ -291,6 +291,7 @@ export default function CapturePage() {
                 {capturedImage && extracting && (
                   <div className="border rounded-lg overflow-hidden">
                     <div className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- base64 data URL from camera capture */}
                       <img
                         src={capturedImage}
                         alt="Captured document"
@@ -311,6 +312,7 @@ export default function CapturePage() {
                   <div className="border rounded-lg overflow-hidden">
                     {/* Photo preview with a close button */}
                     <div className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- base64 data URL from camera capture */}
                       <img
                         src={capturedImage}
                         alt="Captured document"
