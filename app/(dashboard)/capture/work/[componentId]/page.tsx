@@ -377,7 +377,7 @@ export default function CaptureWorkPage() {
   }
 
   function openCameraForPhoto(label: string, detail: string) {
-    if (navigator.mediaDevices?.getUserMedia) {
+    if (typeof navigator.mediaDevices?.getUserMedia === "function") {
       setPendingPhotoLabel(label);
       setPendingPhotoDetail(detail);
       setCameraOpen(true);
