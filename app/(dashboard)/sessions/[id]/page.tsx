@@ -9,6 +9,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { apiUrl } from "@/lib/api-url";
 import {
   ArrowLeft,
@@ -28,6 +29,10 @@ import {
   Loader2,
   X,
   Image as ImageIcon,
+  Plus,
+  FileCheck,
+  FilePlus2,
+  Sparkles,
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────
@@ -213,6 +218,13 @@ export default function SessionDetailPage() {
   const [rejectNotes, setRejectNotes] = useState("");
   const [showRejectDialog, setShowRejectDialog] = useState<string | null>(null);
 
+  // Create document state
+  const [showCreateDoc, setShowCreateDoc] = useState(false);
+  const [selectedDocType, setSelectedDocType] = useState<string | null>(null);
+  const [docDescription, setDocDescription] = useState("");
+  const [creatingDoc, setCreatingDoc] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
   const fetchSession = useCallback(async () => {
     try {
       const res = await fetch(apiUrl(`/api/sessions/${sessionId}`));
@@ -265,6 +277,36 @@ export default function SessionDetailPage() {
       console.error("Review failed:", err);
     } finally {
       setReviewingDoc(null);
+    }
+  }
+
+  // Create a document manually by type + optional description
+  async function handleCreateDocument() {
+    if (!selectedDocType) return;
+    setCreatingDoc(true);
+    setCreateError(null);
+    try {
+      const res = await fetch(apiUrl(`/api/sessions/${sessionId}/create-document`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          documentType: selectedDocType,
+          description: docDescription || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || `Failed (${res.status})`);
+      }
+      // Refresh session to show the new document
+      await fetchSession();
+      setShowCreateDoc(false);
+      setSelectedDocType(null);
+      setDocDescription("");
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Failed to create document");
+    } finally {
+      setCreatingDoc(false);
     }
   }
 
@@ -688,11 +730,113 @@ export default function SessionDetailPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {session.documents.length === 0 ? (
-            <p className="text-sm text-center py-8" style={{ color: "rgb(140, 140, 140)" }}>
-              No documents generated yet
-            </p>
-          ) : (
+          {/* Create New Document button — always visible */}
+          <div className="flex justify-end mb-4">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              onClick={() => setShowCreateDoc(!showCreateDoc)}
+            >
+              <Plus className="h-3.5 w-3.5" /> Create New Document
+            </Button>
+          </div>
+
+          {/* Create Document Panel */}
+          {showCreateDoc && (
+            <div className="border rounded-lg p-4 mb-4" style={{ borderColor: "rgb(220, 220, 220)", backgroundColor: "rgb(252, 252, 252)" }}>
+              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: "rgb(20, 20, 20)" }}>
+                <FilePlus2 className="h-4 w-4" /> Create a New Document
+              </h3>
+              <p className="text-xs mb-4" style={{ color: "rgb(120, 120, 120)" }}>
+                Select a document type and optionally describe what you need. The AI will generate the document using your session evidence.
+              </p>
+
+              {/* Document type selection */}
+              <div className="space-y-2 mb-4">
+                {Object.entries(DOC_TYPE_LABELS).map(([type, label]) => {
+                  const descriptions: Record<string, string> = {
+                    "8130-3": "Authorized Release Certificate for returning a part to service after maintenance.",
+                    "337": "Required when major repairs or alterations have been performed.",
+                    "8010-4": "Report malfunctions or defects found during maintenance.",
+                  };
+                  const isSelected = selectedDocType === type;
+                  return (
+                    <button
+                      key={type}
+                      className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                        isSelected
+                          ? "border-blue-400 bg-blue-50"
+                          : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                      }`}
+                      onClick={() => setSelectedDocType(isSelected ? null : type)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <FileCheck className={`h-4 w-4 ${isSelected ? "text-blue-600" : "text-gray-400"}`} />
+                        <span className="text-sm font-medium" style={{ color: "rgb(20, 20, 20)" }}>{label}</span>
+                      </div>
+                      <p className="text-xs mt-1 ml-6" style={{ color: "rgb(120, 120, 120)" }}>
+                        {descriptions[type]}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Description input */}
+              {selectedDocType && (
+                <div className="mb-4">
+                  <label className="text-xs font-medium block mb-1.5" style={{ color: "rgb(80, 80, 80)" }}>
+                    Description (optional)
+                  </label>
+                  <Textarea
+                    placeholder="Describe any specific details for this document... e.g. 'Hydraulic pump overhaul with bearing replacement, all tests passed per CMM 29-10-01'"
+                    value={docDescription}
+                    onChange={(e) => setDocDescription(e.target.value)}
+                    rows={3}
+                    className="text-sm"
+                  />
+                </div>
+              )}
+
+              {createError && (
+                <p className="text-xs text-red-600 mb-3">{createError}</p>
+              )}
+
+              <div className="flex gap-2 justify-end">
+                <Button size="sm" variant="ghost" onClick={() => { setShowCreateDoc(false); setSelectedDocType(null); setDocDescription(""); setCreateError(null); }}>
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={!selectedDocType || creatingDoc}
+                  onClick={handleCreateDocument}
+                  className="gap-1.5"
+                >
+                  {creatingDoc ? (
+                    <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating...</>
+                  ) : (
+                    <><Sparkles className="h-3.5 w-3.5" /> Generate Document</>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {session.documents.length === 0 && !showCreateDoc ? (
+            <div className="text-center py-8">
+              <FileText className="h-10 w-10 mx-auto mb-3" style={{ color: "rgb(200, 200, 200)" }} />
+              <p className="text-sm font-medium mb-1" style={{ color: "rgb(100, 100, 100)" }}>
+                No documents generated yet
+              </p>
+              <p className="text-xs mb-4" style={{ color: "rgb(160, 160, 160)" }}>
+                Create a document manually or retry auto-generation with more evidence.
+              </p>
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowCreateDoc(true)}>
+                <Plus className="h-3.5 w-3.5" /> Create New Document
+              </Button>
+            </div>
+          ) : session.documents.length === 0 ? null : (
             <div className="space-y-4">
               {session.documents.map((doc) => {
                 const isExpanded = expandedDoc === doc.id;

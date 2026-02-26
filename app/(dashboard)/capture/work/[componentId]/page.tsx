@@ -28,6 +28,7 @@ import {
   Square,
 } from "lucide-react";
 import Form8130Preview, { type Form8130Data } from "@/components/documents/form-8130-preview";
+import CameraViewfinder from "@/components/camera-viewfinder";
 
 // The 6 overhaul steps
 const STEPS = [
@@ -111,6 +112,11 @@ export default function CaptureWorkPage() {
 
   // Signing state
   const [signed, setSigned] = useState(false);
+
+  // Camera viewfinder state
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [pendingPhotoLabel, setPendingPhotoLabel] = useState("");
+  const [pendingPhotoDetail, setPendingPhotoDetail] = useState("");
 
   // Demo autopilot state — when active, the system auto-plays through
   // all 6 overhaul steps with realistic data appearing on a timer
@@ -370,6 +376,24 @@ export default function CaptureWorkPage() {
     ]);
   }
 
+  function openCameraForPhoto(label: string, detail: string) {
+    if (typeof navigator.mediaDevices?.getUserMedia === "function") {
+      setPendingPhotoLabel(label);
+      setPendingPhotoDetail(detail);
+      setCameraOpen(true);
+    } else {
+      // Fallback: add a simulated photo entry if no camera API
+      addItem("photo", label, detail);
+    }
+  }
+
+  function handleCameraCapture() {
+    setCameraOpen(false);
+    addItem("photo", pendingPhotoLabel, pendingPhotoDetail + " (photo captured)");
+    setPendingPhotoLabel("");
+    setPendingPhotoDetail("");
+  }
+
   function addTextNote() {
     if (!textNote.trim()) return;
     addItem("text_note", textNote);
@@ -454,6 +478,15 @@ export default function CaptureWorkPage() {
 
   return (
     <div className="max-w-5xl mx-auto">
+      {/* Live camera viewfinder with zoom */}
+      {cameraOpen && (
+        <CameraViewfinder
+          onCapture={handleCameraCapture}
+          onClose={() => setCameraOpen(false)}
+          facingMode="environment"
+        />
+      )}
+
       {/* ITAR Banner */}
       {restrictedMode && (
         <div className="bg-yellow-100 border border-yellow-300 text-yellow-800 px-4 py-2 rounded-lg mb-4 text-sm font-medium flex items-center gap-2">
@@ -590,7 +623,7 @@ export default function CaptureWorkPage() {
                       variant="outline"
                       size="sm"
                       className="w-full justify-start gap-2"
-                      onClick={() => addItem("photo", "As-received condition photo", "Photo of component upon arrival")}
+                      onClick={() => openCameraForPhoto("As-received condition photo", "Photo of component upon arrival")}
                     >
                       <Camera className="h-4 w-4" /> Photo — As-Received Condition
                     </Button>
@@ -633,7 +666,7 @@ export default function CaptureWorkPage() {
                     <Button
                       variant="outline"
                       className="w-full justify-start gap-2"
-                      onClick={() => addItem("photo", `Photo — ${currentStepKey}`, "Simulated photo capture")}
+                      onClick={() => openCameraForPhoto(`Photo — ${currentStepKey}`, `Photo captured during ${currentStepKey}`)}
                     >
                       <Camera className="h-4 w-4" /> Take Photo
                     </Button>
@@ -734,7 +767,7 @@ export default function CaptureWorkPage() {
                     </div>
                   ))}
                   {!restrictedMode && (
-                    <Button variant="outline" className="gap-2" onClick={() => addItem("photo", "Test setup photo", "Photo of test bench setup")}>
+                    <Button variant="outline" className="gap-2" onClick={() => openCameraForPhoto("Test setup photo", "Photo of test bench setup")}>
                       <Camera className="h-4 w-4" /> Photo of Test Setup
                     </Button>
                   )}
@@ -893,7 +926,7 @@ export default function CaptureWorkPage() {
                       size="sm"
                       variant="outline"
                       className="gap-1.5"
-                      onClick={() => addItem("photo", `Photo — ${currentStepKey}`, "Quick capture from evidence panel")}
+                      onClick={() => openCameraForPhoto(`Photo — ${currentStepKey}`, "Quick capture from evidence panel")}
                     >
                       <Camera className="h-3.5 w-3.5" /> Quick Photo
                     </Button>

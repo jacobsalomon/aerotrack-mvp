@@ -21,6 +21,7 @@ import {
   AlertCircle,
   CheckCircle2,
 } from "lucide-react";
+import CameraViewfinder from "@/components/camera-viewfinder";
 
 // Shape of the data extracted from a scanned document by the AI
 interface ExtractedDocData {
@@ -71,9 +72,11 @@ export default function CapturePage() {
   // Error message if extraction fails
   const [extractError, setExtractError] = useState("");
 
-  // Hidden file input — we trigger it programmatically when the user
-  // clicks the "Scan a Document" button
+  // Hidden file input — fallback for when camera API is unavailable
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Live camera viewfinder state
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   // ── Manual lookup handler (unchanged) ──
   async function handleLookup() {
@@ -173,6 +176,32 @@ export default function CapturePage() {
     setExtracting(false);
   }
 
+  // ── RecordSnap: handle capture from the live camera viewfinder ──
+  function handleCameraCapture(data: { dataUrl: string; base64: string; mimeType: string }) {
+    setCameraOpen(false);
+    setCapturedImage(data.dataUrl);
+    setCapturedImageBase64(data.base64);
+    setCapturedMimeType(data.mimeType);
+    setExtractedData(null);
+    setExtractError("");
+    setLookupResult(null);
+    setLookupError("");
+    extractDocument(data.base64, data.mimeType);
+  }
+
+  // ── Open the camera: prefer live viewfinder, fall back to file input ──
+  function openCamera() {
+    // Check if getUserMedia is available (live camera with zoom).
+    // In insecure contexts or very old browsers, mediaDevices may not exist.
+    const hasGetUserMedia = typeof navigator.mediaDevices?.getUserMedia === "function";
+    if (hasGetUserMedia) {
+      setCameraOpen(true);
+    } else {
+      // Fall back to native file input (no zoom, but works everywhere)
+      fileInputRef.current?.click();
+    }
+  }
+
   // ── RecordSnap: reset everything so the user can scan again ──
   function clearCapture() {
     setCapturedImage(null);
@@ -183,7 +212,16 @@ export default function CapturePage() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      {/* Hidden file input — opens camera on mobile, file picker on desktop */}
+      {/* Live camera viewfinder with zoom — opens as a fullscreen overlay */}
+      {cameraOpen && (
+        <CameraViewfinder
+          onCapture={handleCameraCapture}
+          onClose={() => setCameraOpen(false)}
+          facingMode="environment"
+        />
+      )}
+
+      {/* Hidden file input — fallback for when getUserMedia is unavailable */}
       <input
         type="file"
         accept="image/*"
@@ -236,7 +274,7 @@ export default function CapturePage() {
                 {/* State 1: No image captured — show the scan button */}
                 {!capturedImage && !extracting && (
                   <button
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={openCamera}
                     className="border-2 border-dashed border-slate-300 rounded-lg p-8 flex flex-col items-center justify-center text-center bg-slate-50 hover:bg-slate-100 hover:border-blue-400 transition-colors cursor-pointer w-full"
                   >
                     <Camera className="h-12 w-12 text-blue-500 mb-3" />
@@ -253,6 +291,7 @@ export default function CapturePage() {
                 {capturedImage && extracting && (
                   <div className="border rounded-lg overflow-hidden">
                     <div className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- base64 data URL from camera capture */}
                       <img
                         src={capturedImage}
                         alt="Captured document"
@@ -273,6 +312,7 @@ export default function CapturePage() {
                   <div className="border rounded-lg overflow-hidden">
                     {/* Photo preview with a close button */}
                     <div className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- base64 data URL from camera capture */}
                       <img
                         src={capturedImage}
                         alt="Captured document"
@@ -394,8 +434,7 @@ export default function CapturePage() {
                           className="w-full gap-1.5 mt-1"
                           onClick={() => {
                             clearCapture();
-                            // Small delay so the file input resets before re-opening
-                            setTimeout(() => fileInputRef.current?.click(), 100);
+                            setTimeout(() => openCamera(), 100);
                           }}
                         >
                           <Camera className="h-3.5 w-3.5" /> Scan Another Document

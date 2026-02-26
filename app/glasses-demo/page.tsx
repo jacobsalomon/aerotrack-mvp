@@ -815,6 +815,7 @@ export default function GlassesDemoPage() {
         <div className="flex-1 flex flex-col gap-3 mr-4">
           {/* Simulated camera viewport */}
           <div className="flex-1 border border-green-500/20 relative bg-black rounded-sm overflow-hidden">
+            {/* eslint-disable-next-line @next/next/no-img-element -- dynamic demo image source */}
             <img
               src={currentImage}
               alt="Smart glasses camera feed"

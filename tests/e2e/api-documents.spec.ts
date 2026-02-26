@@ -7,6 +7,7 @@ import { url, authHeaders } from "./helpers";
 test.describe("POST /api/documents/render-8130-pdf", () => {
   test("renders a PDF from valid form data", async ({ request }) => {
     const res = await request.post(url("/api/documents/render-8130-pdf"), {
+      headers: authHeaders,
       data: {
         data: {
           block1: "FAA",
@@ -45,6 +46,7 @@ test.describe("POST /api/documents/render-8130-pdf", () => {
 
   test("returns 400 when form data is missing", async ({ request }) => {
     const res = await request.post(url("/api/documents/render-8130-pdf"), {
+      headers: authHeaders,
       data: {},
     });
     expect(res.status()).toBe(400);
@@ -56,6 +58,7 @@ test.describe("POST /api/documents/render-8130-pdf", () => {
       .join("\n");
 
     const res = await request.post(url("/api/documents/render-8130-pdf"), {
+      headers: authHeaders,
       data: {
         data: {
           block1: "FAA",
@@ -88,7 +91,9 @@ test.describe("POST /api/documents/render-8130-pdf", () => {
 
 test.describe("GET /api/documents/download/[id]", () => {
   test("returns 404 for non-existent document", async ({ request }) => {
-    const res = await request.get(url("/api/documents/download/nonexistent-id"));
+    const res = await request.get(url("/api/documents/download/nonexistent-id"), {
+      headers: authHeaders,
+    });
     expect(res.status()).toBe(404);
   });
 
@@ -108,7 +113,9 @@ test.describe("GET /api/documents/download/[id]", () => {
 
     if (!docId) return; // Skip if no docs found
 
-    const res = await request.get(url(`/api/documents/download/${docId}`));
+    const res = await request.get(url(`/api/documents/download/${docId}`), {
+      headers: authHeaders,
+    });
     expect(res.status()).toBe(200);
     expect(res.headers()["content-type"]).toBe("application/pdf");
 

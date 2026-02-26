@@ -76,6 +76,8 @@ export async function POST(request: Request) {
           organizationId: technician.organizationId,
         },
         organization: technician.organization,
+        // Return the API key as token so the mobile app can store it for future requests
+        token: apiKey,
       },
     });
   } catch (error) {

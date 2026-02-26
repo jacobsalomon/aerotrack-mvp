@@ -11,7 +11,9 @@ test.describe("GET /api/components", () => {
     const res = await request.get(API, { headers: authHeaders });
     expect(res.status()).toBe(200);
 
-    const data = await res.json();
+    const body = await res.json();
+    // API returns { data: [...], pagination: {...} }
+    const data = body.data;
     expect(Array.isArray(data)).toBe(true);
     expect(data.length).toBeGreaterThan(0);
 
@@ -27,28 +29,28 @@ test.describe("GET /api/components", () => {
 
   test("searches by part number", async ({ request }) => {
     const res = await request.get(`${API}?search=881700`, { headers: authHeaders });
-    const data = await res.json();
+    const body = await res.json();
 
     expect(res.status()).toBe(200);
-    expect(data.length).toBeGreaterThan(0);
+    expect(body.data.length).toBeGreaterThan(0);
   });
 
   test("filters by status", async ({ request }) => {
     const res = await request.get(`${API}?status=serviceable`, { headers: authHeaders });
-    const data = await res.json();
+    const body = await res.json();
 
     expect(res.status()).toBe(200);
-    for (const c of data) {
+    for (const c of body.data) {
       expect(c.status).toBe("serviceable");
     }
   });
 
   test("returns empty array for non-matching search", async ({ request }) => {
     const res = await request.get(`${API}?search=NONEXISTENT12345`, { headers: authHeaders });
-    const data = await res.json();
+    const body = await res.json();
 
     expect(res.status()).toBe(200);
-    expect(data).toEqual([]);
+    expect(body.data).toEqual([]);
   });
 });
 

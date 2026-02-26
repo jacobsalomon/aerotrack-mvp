@@ -280,7 +280,7 @@ export async function POST(request: Request) {
         summary:
           savedDocuments.length > 0
             ? result.summary || "Documents generated"
-            : "No compliance documents could be determined from the captured evidence. You can retry after adding more evidence.",
+            : "No compliance documents could be determined from the captured evidence. You can create a document manually or retry after adding more evidence.",
         sessionStatus: finalStatus,
         verification,
         evidenceSources: {
@@ -290,6 +290,28 @@ export async function POST(request: Request) {
           hasCmmReference: !!cmmReference,
           hasReferenceData: !!referenceDataText,
         },
+        // When no documents are auto-generated, provide available types so the client
+        // can offer manual creation
+        ...(savedDocuments.length === 0 && {
+          availableDocumentTypes: [
+            {
+              type: "8130-3",
+              label: "FAA 8130-3 — Airworthiness Approval Tag",
+              description: "Authorized Release Certificate for returning a part to service.",
+            },
+            {
+              type: "337",
+              label: "FAA Form 337 — Major Repair and Alteration",
+              description: "Required for major repairs or alterations performed.",
+            },
+            {
+              type: "8010-4",
+              label: "FAA 8010-4 — Malfunction/Defect Report",
+              description: "Report malfunctions or defects found during maintenance.",
+            },
+          ],
+          createDocumentEndpoint: "/api/mobile/create-document",
+        }),
       },
     });
   } catch (error) {
