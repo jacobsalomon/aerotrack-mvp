@@ -34,16 +34,16 @@ export async function POST(req: NextRequest) {
     // Send the image to Claude's vision API and ask it to extract
     // structured fields from the maintenance document
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const response = await fetch(`${process.env.ANTHROPIC_API_BASE || "https://api.anthropic.com"}/v1/messages`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
+          "anthropic-version": process.env.ANTHROPIC_API_VERSION || "2023-06-01",
         },
         signal: AbortSignal.timeout(25000),
         body: JSON.stringify({
-          model: "claude-sonnet-4-5-20250929",
+          model: process.env.DOCUMENT_EXTRACTION_MODEL || "claude-sonnet-4-5-20250929",
           max_tokens: 2048,
           messages: [
             {

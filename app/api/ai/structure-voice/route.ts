@@ -24,16 +24,16 @@ export async function POST(req: NextRequest) {
     // ── REAL AI STRUCTURING ──
     // Uses Haiku for speed — findings should update within 1-2 seconds
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const response = await fetch(`${process.env.ANTHROPIC_API_BASE || "https://api.anthropic.com"}/v1/messages`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
+          "anthropic-version": process.env.ANTHROPIC_API_VERSION || "2023-06-01",
         },
         signal: AbortSignal.timeout(25000),
         body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
+          model: process.env.VOICE_STRUCTURE_MODEL || "claude-haiku-4-5-20251001",
           max_tokens: 1024,
           messages: [
             {

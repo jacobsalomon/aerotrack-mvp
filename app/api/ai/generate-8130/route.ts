@@ -24,16 +24,16 @@ export async function POST(req: NextRequest) {
     // ── REAL AI GENERATION ──
     // Send all captured data to Claude and get back a structured 8130-3
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const response = await fetch(`${process.env.ANTHROPIC_API_BASE || "https://api.anthropic.com"}/v1/messages`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
+          "anthropic-version": process.env.ANTHROPIC_API_VERSION || "2023-06-01",
         },
         signal: AbortSignal.timeout(25000),
         body: JSON.stringify({
-          model: "claude-sonnet-4-5-20250929",
+          model: process.env.DOCUMENT_GENERATION_MODEL || "claude-sonnet-4-5-20250929",
           max_tokens: 4096,
           messages: [
             {
