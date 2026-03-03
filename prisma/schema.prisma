@@ -435,6 +435,7 @@ model DocumentGeneration2 {
   reviewedBy          Technician? @relation("reviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   reviewedAt          DateTime?
   reviewNotes         String?
+  evidenceLineage     String?                           // JSON — maps each field to its evidence source, detail, and confidence
   verificationJson    String?                           // JSON — AI verification results (field-level issues, confidence)
   verifiedAt          DateTime?                         // When the independent AI verification completed
   createdAt           DateTime  @default(now())

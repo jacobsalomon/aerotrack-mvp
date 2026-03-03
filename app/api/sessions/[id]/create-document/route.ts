@@ -47,7 +47,10 @@ export async function POST(
     const session = await prisma.captureSession.findUnique({
       where: { id: sessionId },
       include: {
-        evidence: { orderBy: { capturedAt: "asc" } },
+        evidence: {
+          include: { videoAnnotations: { orderBy: { timestamp: "asc" } } },
+          orderBy: { capturedAt: "asc" },
+        },
         technician: true,
         organization: true,
         analysis: true,
@@ -85,6 +88,17 @@ export async function POST(
         confidence: session.analysis.confidence,
       };
     }
+
+    const videoAnnotations = session.evidence
+      .filter((e) => e.type === "VIDEO")
+      .flatMap((e) =>
+        (e.videoAnnotations || []).map((a) => ({
+          timestamp: a.timestamp,
+          tag: a.tag,
+          description: a.description,
+          confidence: a.confidence,
+        }))
+      );
 
     const audioChunks = session.evidence
       .filter((e) => e.type === "AUDIO_CHUNK" && e.transcription)
@@ -125,6 +139,7 @@ export async function POST(
       componentInfo,
       photoExtractions,
       videoAnalysis,
+      videoAnnotations,
       audioTranscript,
       cmmReference,
       referenceData: [
@@ -140,6 +155,7 @@ export async function POST(
     const contentJson = doc?.contentJson || { note: "Generated with limited evidence. Please review and complete all fields." };
     const confidence = doc ? clampConfidence(doc.confidence) : 0.3;
     const lowConfidenceFields = doc?.lowConfidenceFields || ["all fields"];
+    const evidenceLineage = doc?.evidenceLineage || null;
 
     const saved = await prisma.documentGeneration2.create({
       data: {
@@ -149,6 +165,7 @@ export async function POST(
         status: "draft",
         confidence,
         lowConfidenceFields: JSON.stringify(lowConfidenceFields),
+        evidenceLineage: evidenceLineage ? JSON.stringify(evidenceLineage) : null,
       },
     });
 
