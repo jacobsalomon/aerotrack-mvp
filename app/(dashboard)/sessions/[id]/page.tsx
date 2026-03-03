@@ -45,6 +45,9 @@ import {
   ArrowRightLeft,
   Info,
   AlertCircle,
+  Pencil,
+  Save,
+  Eye,
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────
@@ -70,6 +73,30 @@ interface Evidence {
   videoAnnotations: VideoAnnotation[];
 }
 
+interface EvidenceLineageEntry {
+  source: "photo_extraction" | "video_analysis" | "video_annotation" | "audio_transcript" | "cmm_reference" | "ai_inferred";
+  detail: string;
+  confidence: number;
+}
+
+interface VerificationIssue {
+  field: string;
+  issue: string;
+  severity: "info" | "warning" | "critical";
+}
+
+interface VerificationData {
+  verified?: boolean;
+  overallConfidence?: number;
+  confidence?: number;
+  issues?: VerificationIssue[];
+  documentReviews?: Array<{
+    documentType: string;
+    issues: VerificationIssue[];
+    confidence: number;
+  }>;
+}
+
 interface DocumentData {
   id: string;
   documentType: string;
@@ -77,6 +104,7 @@ interface DocumentData {
   status: string;
   confidence: number;
   lowConfidenceFields: string;
+  evidenceLineage: string | null;
   generatedAt: string;
   reviewedAt: string | null;
   reviewNotes: string | null;
@@ -267,6 +295,12 @@ export default function SessionDetailPage() {
   const [creatingDoc, setCreatingDoc] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
+  // Document field editing state
+  const [editingField, setEditingField] = useState<{ docId: string; field: string } | null>(null);
+  const [editingValue, setEditingValue] = useState("");
+  const [savingField, setSavingField] = useState(false);
+  const [editedFields, setEditedFields] = useState<Record<string, Set<string>>>({});
+
   // Expected Steps (SOP) editing state
   const [expectedStepsText, setExpectedStepsText] = useState("");
   const [expectedStepsEditing, setExpectedStepsEditing] = useState(false);
@@ -384,6 +418,33 @@ export default function SessionDetailPage() {
       setCreateError(err instanceof Error ? err.message : "Failed to create document");
     } finally {
       setCreatingDoc(false);
+    }
+  }
+
+  // Save an edited document field via PATCH
+  async function handleSaveField(docId: string, fieldName: string, newValue: string) {
+    setSavingField(true);
+    try {
+      const res = await fetch(apiUrl(`/api/sessions/${sessionId}/documents/${docId}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fields: { [fieldName]: newValue } }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      // Track edited fields for visual indicator
+      setEditedFields((prev) => {
+        const copy = { ...prev };
+        if (!copy[docId]) copy[docId] = new Set();
+        copy[docId] = new Set(copy[docId]).add(fieldName);
+        return copy;
+      });
+      setEditingField(null);
+      setEditingValue("");
+      await fetchSession();
+    } catch (err) {
+      console.error("Failed to save field:", err);
+    } finally {
+      setSavingField(false);
     }
   }
 
@@ -1363,7 +1424,20 @@ export default function SessionDetailPage() {
                 const isExpanded = expandedDoc === doc.id;
                 const contentFields = safeParseJson(doc.contentJson) as Record<string, string> | null;
                 const lowFields = safeParseJson(doc.lowConfidenceFields) as string[] | null;
-                const verification = safeParseJson(doc.verificationJson) as Record<string, unknown> | null;
+                const lineage = safeParseJson(doc.evidenceLineage) as Record<string, EvidenceLineageEntry> | null;
+                const verification = safeParseJson(doc.verificationJson) as VerificationData | null;
+                const isEditable = doc.status === "draft" || doc.status === "pending_review";
+                const docEditedFields = editedFields[doc.id];
+
+                // Source badge icons and colors for evidence lineage
+                const sourceConfig: Record<string, { icon: React.ReactNode; label: string; color: string; bg: string }> = {
+                  photo_extraction: { icon: <Camera className="h-2.5 w-2.5" />, label: "Photo", color: "rgb(37, 99, 235)", bg: "rgb(239, 246, 255)" },
+                  video_analysis: { icon: <Video className="h-2.5 w-2.5" />, label: "Video", color: "rgb(124, 58, 237)", bg: "rgb(245, 243, 255)" },
+                  video_annotation: { icon: <Eye className="h-2.5 w-2.5" />, label: "Video Tag", color: "rgb(124, 58, 237)", bg: "rgb(245, 243, 255)" },
+                  audio_transcript: { icon: <Mic className="h-2.5 w-2.5" />, label: "Audio", color: "rgb(14, 116, 144)", bg: "rgb(236, 254, 255)" },
+                  cmm_reference: { icon: <BookOpen className="h-2.5 w-2.5" />, label: "CMM", color: "rgb(21, 128, 61)", bg: "rgb(240, 253, 244)" },
+                  ai_inferred: { icon: <Sparkles className="h-2.5 w-2.5" />, label: "AI Inferred", color: "rgb(217, 119, 6)", bg: "rgb(255, 251, 235)" },
+                };
 
                 return (
                   <div
@@ -1415,25 +1489,100 @@ export default function SessionDetailPage() {
                     {/* Expanded content */}
                     {isExpanded && (
                       <div className="border-t px-4 py-4" style={{ borderColor: "rgb(240, 240, 240)" }}>
-                        {/* Form fields */}
+                        {/* Form fields with evidence lineage + inline editing */}
                         {contentFields && (
                           <div className="mb-4">
                             <h4 className="text-xs font-semibold mb-3" style={{ color: "rgb(80, 80, 80)" }}>Form Fields</h4>
                             <div className="grid md:grid-cols-2 gap-2">
                               {Object.entries(contentFields).map(([key, val]) => {
                                 const isLowConf = lowFields?.includes(key);
+                                const fieldLineage = lineage?.[key];
+                                const src = fieldLineage ? sourceConfig[fieldLineage.source] : null;
+                                const isCurrentlyEditing = editingField?.docId === doc.id && editingField?.field === key;
+                                const wasEdited = docEditedFields?.has(key);
+
                                 return (
                                   <div
                                     key={key}
-                                    className="flex items-start gap-2 text-xs p-2 rounded"
+                                    className="group flex items-start gap-2 text-xs p-2 rounded relative"
                                     style={{
                                       backgroundColor: isLowConf ? "rgb(255, 250, 230)" : "rgb(248, 248, 248)",
-                                      border: isLowConf ? "1px solid rgb(253, 224, 71)" : "none",
+                                      border: isLowConf ? "1px solid rgb(253, 224, 71)" : "1px solid transparent",
                                     }}
                                   >
                                     <span className="font-medium shrink-0 min-w-24" style={{ color: "rgb(80, 80, 80)" }}>{key}:</span>
-                                    <span style={{ color: "rgb(40, 40, 40)" }}>{String(val) || "—"}</span>
-                                    {isLowConf && <AlertTriangle className="h-3 w-3 shrink-0" style={{ color: "rgb(202, 138, 4)" }} />}
+
+                                    {/* Inline edit mode */}
+                                    {isCurrentlyEditing ? (
+                                      <div className="flex-1 flex items-center gap-1.5">
+                                        <input
+                                          type="text"
+                                          value={editingValue}
+                                          onChange={(e) => setEditingValue(e.target.value)}
+                                          className="flex-1 text-xs border rounded px-2 py-1"
+                                          style={{ borderColor: "rgb(180, 180, 180)" }}
+                                          autoFocus
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") handleSaveField(doc.id, key, editingValue);
+                                            if (e.key === "Escape") { setEditingField(null); setEditingValue(""); }
+                                          }}
+                                        />
+                                        <button
+                                          onClick={() => handleSaveField(doc.id, key, editingValue)}
+                                          disabled={savingField}
+                                          className="p-1 rounded hover:bg-green-100"
+                                          title="Save"
+                                        >
+                                          {savingField ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" style={{ color: "rgb(34, 197, 94)" }} />}
+                                        </button>
+                                        <button
+                                          onClick={() => { setEditingField(null); setEditingValue(""); }}
+                                          className="p-1 rounded hover:bg-red-100"
+                                          title="Cancel"
+                                        >
+                                          <X className="h-3 w-3" style={{ color: "rgb(220, 50, 50)" }} />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <span className="flex-1" style={{ color: "rgb(40, 40, 40)" }}>{String(val) || "—"}</span>
+
+                                        {/* Badges: low-confidence, edited, evidence source */}
+                                        <div className="flex items-center gap-1 shrink-0">
+                                          {wasEdited && (
+                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ backgroundColor: "rgb(219, 234, 254)", color: "rgb(37, 99, 235)" }}>
+                                              edited
+                                            </span>
+                                          )}
+                                          {isLowConf && <AlertTriangle className="h-3 w-3" style={{ color: "rgb(202, 138, 4)" }} />}
+                                          {src && fieldLineage && (
+                                            <span
+                                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium cursor-help"
+                                              style={{
+                                                backgroundColor: fieldLineage.confidence < 0.7 ? "rgb(255, 251, 235)" : src.bg,
+                                                color: fieldLineage.confidence < 0.7 ? "rgb(217, 119, 6)" : src.color,
+                                              }}
+                                              title={`${src.label}: ${fieldLineage.detail} (${Math.round(fieldLineage.confidence * 100)}%)`}
+                                            >
+                                              {src.icon} {src.label}
+                                            </span>
+                                          )}
+                                          {/* Edit button — only for draft/pending documents */}
+                                          {isEditable && (
+                                            <button
+                                              className="p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-200"
+                                              title="Edit field"
+                                              onClick={() => {
+                                                setEditingField({ docId: doc.id, field: key });
+                                                setEditingValue(String(val));
+                                              }}
+                                            >
+                                              <Pencil className="h-3 w-3" style={{ color: "rgb(100, 100, 100)" }} />
+                                            </button>
+                                          )}
+                                        </div>
+                                      </>
+                                    )}
                                   </div>
                                 );
                               })}
@@ -1441,15 +1590,80 @@ export default function SessionDetailPage() {
                           </div>
                         )}
 
-                        {/* Verification results */}
+                        {/* Verification results — structured cards */}
                         {verification && (
                           <div className="mb-4">
                             <h4 className="text-xs font-semibold mb-2 flex items-center gap-1.5" style={{ color: "rgb(80, 80, 80)" }}>
                               <Shield className="h-3.5 w-3.5" /> AI Verification
                             </h4>
-                            <pre className="text-xs p-3 rounded overflow-x-auto" style={{ backgroundColor: "rgb(248, 248, 248)", color: "rgb(60, 60, 60)" }}>
-                              {JSON.stringify(verification, null, 2)}
-                            </pre>
+                            {/* Overall status bar */}
+                            <div
+                              className="flex items-center gap-3 p-3 rounded-lg mb-3"
+                              style={{
+                                backgroundColor: verification.verified !== false ? "rgb(240, 253, 244)" : "rgb(254, 242, 242)",
+                                border: `1px solid ${verification.verified !== false ? "rgb(187, 247, 208)" : "rgb(252, 165, 165)"}`,
+                              }}
+                            >
+                              {verification.verified !== false ? (
+                                <CheckCircle2 className="h-5 w-5 shrink-0" style={{ color: "rgb(34, 197, 94)" }} />
+                              ) : (
+                                <XCircle className="h-5 w-5 shrink-0" style={{ color: "rgb(220, 38, 38)" }} />
+                              )}
+                              <div className="flex-1">
+                                <p className="text-sm font-medium" style={{ color: verification.verified !== false ? "rgb(21, 128, 61)" : "rgb(153, 27, 27)" }}>
+                                  {verification.verified !== false ? "Verification Passed" : "Issues Found"}
+                                </p>
+                              </div>
+                              {(verification.overallConfidence ?? verification.confidence) !== undefined && (
+                                <span
+                                  className="text-sm font-bold"
+                                  style={{ color: confidenceColor(verification.overallConfidence ?? verification.confidence ?? 0) }}
+                                >
+                                  {Math.round((verification.overallConfidence ?? verification.confidence ?? 0) * 100)}%
+                                </span>
+                              )}
+                            </div>
+                            {/* Issue cards */}
+                            {(() => {
+                              const issues = verification.issues || verification.documentReviews?.flatMap((r) => r.issues) || [];
+                              if (issues.length === 0) {
+                                return (
+                                  <p className="text-xs py-2" style={{ color: "rgb(34, 197, 94)" }}>
+                                    No issues found — all fields verified against evidence.
+                                  </p>
+                                );
+                              }
+                              const sevStyles: Record<string, { bg: string; text: string; border: string; icon: React.ReactNode }> = {
+                                critical: { bg: "rgb(254, 242, 242)", text: "rgb(220, 38, 38)", border: "rgb(252, 165, 165)", icon: <AlertTriangle className="h-3.5 w-3.5" /> },
+                                warning: { bg: "rgb(255, 251, 235)", text: "rgb(217, 119, 6)", border: "rgb(253, 224, 71)", icon: <AlertCircle className="h-3.5 w-3.5" /> },
+                                info: { bg: "rgb(239, 246, 255)", text: "rgb(37, 99, 235)", border: "rgb(191, 219, 254)", icon: <Info className="h-3.5 w-3.5" /> },
+                              };
+                              return (
+                                <div className="space-y-2">
+                                  {issues.map((issue, i) => {
+                                    const sev = sevStyles[issue.severity] || sevStyles.info;
+                                    return (
+                                      <div
+                                        key={i}
+                                        className="flex items-start gap-2.5 p-3 rounded-lg border text-xs"
+                                        style={{ backgroundColor: sev.bg, borderColor: sev.border }}
+                                      >
+                                        <span className="shrink-0 mt-0.5" style={{ color: sev.text }}>{sev.icon}</span>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center gap-2 mb-0.5">
+                                            <span className="font-bold uppercase tracking-wide text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: `${sev.text}15`, color: sev.text }}>
+                                              {issue.severity}
+                                            </span>
+                                            <span className="font-medium" style={{ color: "rgb(60, 60, 60)" }}>{issue.field}</span>
+                                          </div>
+                                          <p style={{ color: "rgb(80, 80, 80)" }}>{issue.issue}</p>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })()}
                           </div>
                         )}
 

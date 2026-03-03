@@ -48,7 +48,10 @@ export async function POST(request: Request) {
     const session = await prisma.captureSession.findUnique({
       where: { id: sessionId },
       include: {
-        evidence: { orderBy: { capturedAt: "asc" } },
+        evidence: {
+          include: { videoAnnotations: { orderBy: { timestamp: "asc" } } },
+          orderBy: { capturedAt: "asc" },
+        },
         technician: true,
         organization: true,
         analysis: true,
@@ -125,6 +128,18 @@ export async function POST(request: Request) {
       };
     }
 
+    // 2b. Video annotations (timestamped tags from video annotation pass)
+    const videoAnnotations = session.evidence
+      .filter((e) => e.type === "VIDEO")
+      .flatMap((e) =>
+        (e.videoAnnotations || []).map((a) => ({
+          timestamp: a.timestamp,
+          tag: a.tag,
+          description: a.description,
+          confidence: a.confidence,
+        }))
+      );
+
     // 3. Audio transcript (stitched from all audio chunks)
     const audioChunks = session.evidence
       .filter((e) => e.type === "AUDIO_CHUNK" && e.transcription)
@@ -199,6 +214,7 @@ export async function POST(request: Request) {
       componentInfo,
       photoExtractions,
       videoAnalysis,
+      videoAnnotations,
       audioTranscript,
       cmmReference,
       referenceData: referenceDataText,
@@ -217,12 +233,14 @@ export async function POST(request: Request) {
           status: "draft",
           confidence: clampConfidence(doc.confidence),
           lowConfidenceFields: JSON.stringify(doc.lowConfidenceFields || []),
+          evidenceLineage: doc.evidenceLineage ? JSON.stringify(doc.evidenceLineage) : null,
         },
       });
       savedDocuments.push({
         ...saved,
         contentJson: doc.contentJson,
         lowConfidenceFields: doc.lowConfidenceFields || [],
+        evidenceLineage: doc.evidenceLineage || null,
       });
     }
 

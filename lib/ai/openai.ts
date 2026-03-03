@@ -53,6 +53,12 @@ export interface TranscriptionResult {
   model: string;
 }
 
+export interface EvidenceLineageEntry {
+  source: "photo_extraction" | "video_analysis" | "video_annotation" | "audio_transcript" | "cmm_reference" | "ai_inferred";
+  detail: string;
+  confidence: number;
+}
+
 export interface DocumentGenerationResult {
   documents: Array<{
     documentType: string; // "8130-3", "337", "8010-4"
@@ -61,6 +67,7 @@ export interface DocumentGenerationResult {
     confidence: number;
     lowConfidenceFields: string[];
     reasoning: string;
+    evidenceLineage?: Record<string, EvidenceLineageEntry>;
   }>;
   summary: string;
 }
@@ -202,6 +209,7 @@ export async function generateDocuments(opts: {
   } | null;
   photoExtractions: Array<Record<string, unknown>>;
   videoAnalysis: Record<string, unknown> | null;
+  videoAnnotations?: Array<{ timestamp: number; tag: string; description: string; confidence: number }>;
   audioTranscript: string | null;
   cmmReference: string | null;
   referenceData: string | null; // Formatted reference data text (procedures, limits, specs)
@@ -249,12 +257,23 @@ ${opts.referenceData ? `${opts.referenceData}
 
 Use this reference data to ensure generated documents include correct procedures, torque values, wear limits, and service bulletin references. Cross-reference evidence against these specifications.` : ""}
 
+HOW TO USE EVIDENCE:
+- Use PHOTO ANALYSIS for part numbers, serial numbers, data plate info, and visual condition
+- Use VIDEO ANALYSIS action log to populate work-performed sections with specific timestamped actions
+- Use VIDEO ANALYSIS procedure steps to verify CMM compliance in remarks — reference step completion status
+- Use VIDEO ANALYSIS anomalies to flag defects or non-conformances in the appropriate document fields
+- Use VIDEO ANNOTATIONS for precise timestamps of when specific parts, tools, or actions were observed
+- Use AUDIO TRANSCRIPT for technician observations, measurements, and verbal notes
+- Use CMM REFERENCE to ensure correct manual citations and revision numbers
+
 DOCUMENT TYPES YOU CAN GENERATE:
 - "8130-3": FAA Form 8130-3 (Authorized Release Certificate) — use when work is complete and part is being released
 - "337": FAA Form 337 (Major Repair and Alteration) — use when major repairs or alterations were performed
 - "8010-4": FAA Form 8010-4 (Malfunction/Defect Report) — use when defects were found
 
 For each document, generate complete form field data as JSON. Include a confidence score (0-1) and list any fields you're uncertain about.
+
+IMPORTANT: For each document, also return an "evidenceLineage" object that maps each form field name to its evidence source. This creates an audit trail showing WHERE each field's data came from.
 
 Return JSON with this exact structure:
 {
@@ -265,7 +284,14 @@ Return JSON with this exact structure:
       "contentJson": { ...all form fields... },
       "confidence": 0.85,
       "lowConfidenceFields": ["fieldName1"],
-      "reasoning": "Why this document type was chosen"
+      "reasoning": "Why this document type was chosen",
+      "evidenceLineage": {
+        "fieldName": {
+          "source": "photo_extraction" | "video_analysis" | "video_annotation" | "audio_transcript" | "cmm_reference" | "ai_inferred",
+          "detail": "Brief description of which specific evidence (e.g. 'Photo 1: data plate showing P/N 881700-1089')",
+          "confidence": 0.95
+        }
+      }
     }
   ],
   "summary": "Brief summary of what was done"
@@ -281,10 +307,13 @@ Today's date is ${new Date().toISOString().split("T")[0]}.`,
 ${opts.photoExtractions.length > 0 ? `PHOTO ANALYSIS (AI-extracted from images):
 ${JSON.stringify(opts.photoExtractions, null, 2)}` : "No photo evidence."}
 
-${opts.videoAnalysis ? `VIDEO ANALYSIS (AI analysis of maintenance video):
+${opts.videoAnalysis ? `VIDEO ANALYSIS (AI deep analysis of maintenance video — includes action log, procedure steps, parts identified, anomalies):
 ${JSON.stringify(opts.videoAnalysis, null, 2)}` : "No video analysis available."}
 
-${opts.audioTranscript ? `AUDIO TRANSCRIPT:
+${opts.videoAnnotations && opts.videoAnnotations.length > 0 ? `VIDEO ANNOTATIONS (timestamped observations from video — when specific parts, tools, and actions were seen):
+${JSON.stringify(opts.videoAnnotations, null, 2)}` : ""}
+
+${opts.audioTranscript ? `AUDIO TRANSCRIPT (technician verbal observations during maintenance):
 ${opts.audioTranscript}` : "No audio transcript available."}
 
 Generate the appropriate FAA compliance documents based on this evidence.`,

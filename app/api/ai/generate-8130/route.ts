@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { prisma } from "@/lib/db";
 
 // This API route generates an FAA Form 8130-3 (Authorized Release Certificate)
 // from captured maintenance data. It uses the Anthropic Claude API if a key is
 // available, otherwise returns realistic mock data for demo purposes.
+// Optionally accepts a sessionId to pull in full evidence pipeline data.
 
 export async function POST(req: NextRequest) {
   // Require dashboard authentication
@@ -15,6 +17,68 @@ export async function POST(req: NextRequest) {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  // If a sessionId is provided, load session evidence to enrich the prompt
+  let sessionContext = "";
+  if (body.sessionId) {
+    try {
+      const session = await prisma.captureSession.findUnique({
+        where: { id: body.sessionId },
+        include: {
+          evidence: {
+            include: { videoAnnotations: { orderBy: { timestamp: "asc" } } },
+            orderBy: { capturedAt: "asc" },
+          },
+          analysis: true,
+        },
+      });
+      if (session) {
+        // Photo extractions
+        const photos = session.evidence
+          .filter((e) => e.type === "PHOTO" && e.aiExtraction)
+          .map((e) => { try { return JSON.parse(e.aiExtraction!); } catch { return { raw: e.aiExtraction }; } });
+
+        // Video analysis (deep analysis from Pass 2)
+        let videoAnalysis: Record<string, unknown> | null = null;
+        if (session.analysis) {
+          const safeParse = (s: string, fallback: unknown = []) => { try { return JSON.parse(s); } catch { return fallback; } };
+          videoAnalysis = {
+            actionLog: safeParse(session.analysis.actionLog),
+            partsIdentified: safeParse(session.analysis.partsIdentified),
+            procedureSteps: safeParse(session.analysis.procedureSteps),
+            anomalies: safeParse(session.analysis.anomalies),
+            confidence: session.analysis.confidence,
+          };
+        }
+
+        // Video annotations (timestamped tags)
+        const videoAnnotations = session.evidence
+          .filter((e) => e.type === "VIDEO")
+          .flatMap((e) => (e.videoAnnotations || []).map((a) => ({
+            timestamp: a.timestamp, tag: a.tag, description: a.description, confidence: a.confidence,
+          })));
+
+        // Audio transcript
+        const audioChunks = session.evidence
+          .filter((e) => e.type === "AUDIO_CHUNK" && e.transcription)
+          .map((e) => e.transcription!);
+        const audioTranscript = audioChunks.length > 0 ? audioChunks.join("\n") : null;
+
+        // Build context block for the prompt
+        const parts: string[] = [];
+        if (photos.length > 0) parts.push(`PHOTO ANALYSIS:\n${JSON.stringify(photos, null, 2)}`);
+        if (videoAnalysis) parts.push(`VIDEO ANALYSIS (action log, procedure steps, parts identified, anomalies):\n${JSON.stringify(videoAnalysis, null, 2)}`);
+        if (videoAnnotations.length > 0) parts.push(`VIDEO ANNOTATIONS (timestamped observations):\n${JSON.stringify(videoAnnotations, null, 2)}`);
+        if (audioTranscript) parts.push(`AUDIO TRANSCRIPT:\n${audioTranscript}`);
+        if (parts.length > 0) {
+          sessionContext = `\n\n=== SESSION EVIDENCE (from capture session) ===\n${parts.join("\n\n")}`;
+        }
+      }
+    } catch (e) {
+      // Session context is best-effort — don't fail the whole request
+      console.warn("Failed to load session context:", e instanceof Error ? e.message : e);
+    }
   }
 
   // Check if we have an Anthropic API key configured
@@ -70,7 +134,7 @@ For Block 7 (Remarks), write in proper aerospace maintenance language:
 Return ONLY a JSON object (no markdown code fences) with keys: block1 through block14, plus narrative_summary.
 
 Maintenance data:
-${JSON.stringify(body, null, 2)}`,
+${JSON.stringify(body, null, 2)}${sessionContext}`,
             },
           ],
         }),
