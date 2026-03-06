@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+  <rect width="1200" height="800" fill="#172554"/>
+  <circle cx="410" cy="400" r="195" fill="#e2e8f0"/>
+  <circle cx="410" cy="400" r="150" fill="#ffffff"/>
+  <line x1="410" y1="400" x2="510" y2="285" stroke="#dc2626" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="410" cy="400" r="18" fill="#0f172a"/>
+  <text x="290" y="635" fill="#e2e8f0" font-family="Courier New, monospace" font-size="34">3000 PSI</text>
+  <rect x="650" y="210" width="320" height="150" rx="24" fill="#d1fae5"/>
+  <text x="710" y="300" fill="#065f46" font-family="Courier New, monospace" font-size="56">12.4</text>
+  <text x="735" y="345" fill="#065f46" font-family="Courier New, monospace" font-size="28">GPM</text>
+  <text x="650" y="500" fill="#f8fafc" font-family="Courier New, monospace" font-size="32">Leak hold: 15 min</text>
+  <text x="650" y="550" fill="#86efac" font-family="Courier New, monospace" font-size="32">Observed: No leaks</text>
+</svg>

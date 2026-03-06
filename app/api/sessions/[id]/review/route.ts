@@ -5,6 +5,10 @@
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import {
+  parseDocumentReviewState,
+  serializeDocumentReviewState,
+} from "@/lib/document-review-state";
 
 export async function POST(
   request: Request,
@@ -61,6 +65,8 @@ export async function POST(
     );
   }
 
+  const reviewState = parseDocumentReviewState(doc.reviewNotes);
+
   // Update the document status
   const newStatus = action === "approve" ? "approved" : "rejected";
   const updatedDoc = await prisma.documentGeneration2.update({
@@ -68,7 +74,10 @@ export async function POST(
     data: {
       status: newStatus,
       reviewedAt: new Date(),
-      reviewNotes: action === "reject" ? (notes || null) : doc.reviewNotes,
+      reviewNotes: serializeDocumentReviewState({
+        ...reviewState,
+        rejectionNote: action === "reject" ? notes || null : null,
+      }),
     },
   });
 

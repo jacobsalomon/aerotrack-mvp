@@ -7,6 +7,7 @@ import { url } from "./helpers";
 // Seeded technician credentials (from prisma/seed.ts)
 const BADGE = "PAM-1001";
 const API_KEY = "av_demo_mike_chen_2026";
+const SECONDARY_API_KEY = "av_demo_juan_ramirez_2026";
 
 // ══════════════════════════════════════════════════════════════
 // Auth rejection tests (existing US-005)
@@ -184,6 +185,28 @@ test.describe("Mobile capture pipeline — happy path", () => {
     const body = await res.json();
     expect(body.success).toBe(true);
     expect(body.data.status).toBe("capture_complete");
+  });
+
+  test("accepts analysis_complete as a valid post-processing status", async ({ request }) => {
+    const res = await request.patch(url(`/api/mobile/sessions/${sessionId}`), {
+      headers: authHeaders,
+      data: { status: "analysis_complete" },
+    });
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.data.status).toBe("analysis_complete");
+  });
+
+  test("rejects document verification for another technician's session", async ({ request }) => {
+    const res = await request.post(url("/api/mobile/verify-documents"), {
+      headers: { Authorization: `Bearer ${SECONDARY_API_KEY}` },
+      data: { sessionId },
+    });
+    expect(res.status()).toBe(403);
+    const body = await res.json();
+    expect(body.success).toBe(false);
+    expect(body.error).toContain("Not authorized");
   });
 
   test("generate endpoint responds (mocked AI — may fail gracefully)", async ({ request }) => {

@@ -4,8 +4,8 @@
 // Determines which documents are needed (8130-3, 337, 8010-4) and generates them
 // Protected by API key authentication
 
-// Allow up to 60 seconds for GPT-4o document generation + verification
-export const maxDuration = 60;
+// Allow up to 120 seconds for multi-model generation + verification
+export const maxDuration = 120;
 
 import { prisma } from "@/lib/db";
 import { authenticateRequest } from "@/lib/mobile-auth";
@@ -89,12 +89,14 @@ export async function POST(request: Request) {
         cached: true,
         data: {
           documents: existingDocs.map((doc) => {
-            let contentJson, lowConfidenceFields;
+            let contentJson, lowConfidenceFields, provenanceJson;
             try { contentJson = JSON.parse(doc.contentJson); } catch { contentJson = {}; }
             try { lowConfidenceFields = JSON.parse(doc.lowConfidenceFields || "[]"); } catch { lowConfidenceFields = []; }
-            return { ...doc, contentJson, lowConfidenceFields };
+            try { provenanceJson = JSON.parse(doc.provenanceJson || "{}"); } catch { provenanceJson = {}; }
+            return { ...doc, contentJson, lowConfidenceFields, provenanceJson };
           }),
           summary: "Documents already generated for this session",
+          discrepancies: [],
           sessionStatus: session.status,
         },
       });
@@ -145,7 +147,8 @@ export async function POST(request: Request) {
       .filter((e) => e.type === "AUDIO_CHUNK" && e.transcription)
       .map((e) => e.transcription!);
     const audioTranscript =
-      audioChunks.length > 0 ? audioChunks.join("\n") : null;
+      session.analysis?.audioTranscript ||
+      (audioChunks.length > 0 ? audioChunks.join("\n") : null);
 
     // 4. Component info (if identified)
     let componentInfo: {
@@ -225,6 +228,8 @@ export async function POST(request: Request) {
     // === Save generated documents to database ===
     const savedDocuments = [];
     for (const doc of result.documents || []) {
+      const docProvenance = doc.provenance || doc.evidenceLineage || {};
+      const docDiscrepancies = doc.discrepancies || [];
       const saved = await prisma.documentGeneration2.create({
         data: {
           sessionId,
@@ -234,6 +239,7 @@ export async function POST(request: Request) {
           confidence: clampConfidence(doc.confidence),
           lowConfidenceFields: JSON.stringify(doc.lowConfidenceFields || []),
           evidenceLineage: doc.evidenceLineage ? JSON.stringify(doc.evidenceLineage) : null,
+          provenanceJson: JSON.stringify(docProvenance),
         },
       });
       savedDocuments.push({
@@ -241,13 +247,15 @@ export async function POST(request: Request) {
         contentJson: doc.contentJson,
         lowConfidenceFields: doc.lowConfidenceFields || [],
         evidenceLineage: doc.evidenceLineage || null,
+        provenanceJson: docProvenance,
+        discrepancies: docDiscrepancies,
       });
     }
 
-    // Update session status — only mark "documents_generated" if we actually produced documents.
-    // If AI couldn't determine what docs to generate, reset to "capture_complete" so user can retry.
-    const finalStatus =
-      savedDocuments.length > 0 ? "documents_generated" : "capture_complete";
+    const discrepancies = result.discrepancies || [];
+
+    // Mark this stage complete even if document count is low.
+    const finalStatus = "documents_generated";
     await prisma.captureSession.update({
       where: { id: sessionId },
       data: { status: finalStatus },
@@ -262,10 +270,13 @@ export async function POST(request: Request) {
         entityType: "CaptureSession",
         entityId: sessionId,
         metadata: JSON.stringify({
-          model: process.env.GENERATION_MODEL || "openai/gpt-4o",
+          model: result.modelUsed,
           documentCount: savedDocuments.length,
           documentTypes: savedDocuments.map((d) => d.documentType),
+          discrepancyCount: discrepancies.length,
           latencyMs,
+          fallbackUsed: !!result.fallbackUsed,
+          fallbackReason: result.fallbackReason || null,
           hasReferenceData: !!referenceDataText,
           evidenceSources: {
             photoExtractions: photoExtractions.length,
@@ -280,9 +291,11 @@ export async function POST(request: Request) {
     // === Auto-trigger verification (best-effort — don't fail generation if this breaks) ===
     // Direct function call instead of HTTP self-call (more reliable on serverless)
     let verification = null;
+    let verifiedSessionStatus: string | null = null;
     try {
       const verifyResult = await verifyDocuments(sessionId, auth.technician.id);
       verification = verifyResult.verification;
+      verifiedSessionStatus = verifyResult.sessionStatus;
     } catch (verifyError) {
       // Verification is best-effort — log but don't fail
       console.warn(
@@ -299,8 +312,9 @@ export async function POST(request: Request) {
           savedDocuments.length > 0
             ? result.summary || "Documents generated"
             : "No compliance documents could be determined from the captured evidence. You can create a document manually or retry after adding more evidence.",
-        sessionStatus: finalStatus,
+        sessionStatus: verifiedSessionStatus || finalStatus,
         verification,
+        discrepancies,
         evidenceSources: {
           photoExtractions: photoExtractions.length,
           hasVideoAnalysis: !!videoAnalysis,

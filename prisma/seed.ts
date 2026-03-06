@@ -1516,6 +1516,299 @@ async function main() {
     },
   });
 
+  const comp9VoiceTranscript = [
+    "HPC-7 hydraulic pump on the bench, part number 881700-1089, serial number SN-2024-11432.",
+    "Bore on the piston assembly measured 2.4985 inches against a 2.500 plus or minus 0.002 specification, serviceable.",
+    "Inlet port seal kit 881700-4022 removed for age degradation and replaced during overhaul.",
+    "Functional test complete at 3000 PSI and 12.4 GPM with no leaks during the 15 minute hold.",
+  ].join(" ");
+
+  const comp9Doc8130Provenance = {
+    block6b: {
+      value: "881700-1089",
+      provenance: [
+        {
+          sourceType: "photo",
+          evidenceId: "photo_1",
+          excerpt: "Data plate photo shows P/N 881700-1089",
+          confidence: 0.97,
+        },
+        {
+          sourceType: "audio",
+          evidenceId: "voice_1",
+          timestamp: 3,
+          excerpt: "part number 881700-1089",
+          confidence: 0.95,
+        },
+        {
+          sourceType: "video",
+          excerpt: "Technician centers the camera on the data plate and reads off 881700-1089",
+          confidence: 0.88,
+        },
+      ],
+      overallConfidence: 0.93,
+      corroborationLevel: "triple",
+      discrepancy: {
+        detected: true,
+        field: "block6b",
+        description: "One OCR pass on the data plate image transposed the last two digits and read 881700-1098, but the mechanic narration and direct plate read both confirm 881700-1089.",
+        values: [
+          {
+            sourceType: "audio",
+            value: "881700-1089",
+            confidence: 0.95,
+          },
+          {
+            sourceType: "photo",
+            value: "881700-1098",
+            confidence: 0.74,
+          },
+        ],
+        resolution: "REVIEW REQUIRED — use the spoken callout and direct plate read",
+      },
+    },
+    block6c: {
+      value: "SN-2024-11432",
+      provenance: [
+        {
+          sourceType: "photo",
+          evidenceId: "photo_1",
+          excerpt: "Serial number line on data plate: SN-2024-11432",
+          confidence: 0.96,
+        },
+        {
+          sourceType: "audio",
+          evidenceId: "voice_1",
+          timestamp: 6,
+          excerpt: "serial number SN-2024-11432",
+          confidence: 0.94,
+        },
+      ],
+      overallConfidence: 0.95,
+      corroborationLevel: "double",
+    },
+    block7: {
+      value: "Full overhaul narrative with measurements, seal replacement, and test results",
+      provenance: [
+        {
+          sourceType: "audio",
+          evidenceId: "voice_1",
+          timestamp: 11,
+          excerpt: "Bore on the piston assembly measured 2.4985 inches",
+          confidence: 0.93,
+        },
+        {
+          sourceType: "photo",
+          evidenceId: "photo_3",
+          excerpt: "Dial bore gauge display captured at 2.4985 in",
+          confidence: 0.91,
+        },
+        {
+          sourceType: "measurement",
+          evidenceId: "measurement_1",
+          excerpt: "pressureTest=3000 PSI; flowRate=12.4 GPM; leakTest=No leaks",
+          confidence: 0.96,
+        },
+      ],
+      overallConfidence: 0.93,
+      corroborationLevel: "triple",
+    },
+    narrative_summary: {
+      value: "Full overhaul of HPC-7 Hydraulic Pump completed. Inlet seal replaced due to degradation. All tests passed.",
+      provenance: [
+        {
+          sourceType: "audio",
+          evidenceId: "voice_1",
+          timestamp: 19,
+          excerpt: "seal kit 881700-4022 removed for age degradation and replaced during overhaul",
+          confidence: 0.9,
+        },
+        {
+          sourceType: "photo",
+          evidenceId: "photo_2",
+          excerpt: "Close-up image of worn inlet seal showing heat checking and hardening",
+          confidence: 0.89,
+        },
+        {
+          sourceType: "measurement",
+          evidenceId: "measurement_1",
+          excerpt: "Functional test PASS with no leaks",
+          confidence: 0.95,
+        },
+      ],
+      overallConfidence: 0.91,
+      corroborationLevel: "triple",
+    },
+  };
+
+  const comp9Doc337Provenance = {
+    "appliance.model": {
+      value: "881700-1089",
+      provenance: [
+        {
+          sourceType: "photo",
+          evidenceId: "photo_1",
+          excerpt: "Data plate confirms 881700-1089",
+          confidence: 0.97,
+        },
+        {
+          sourceType: "audio",
+          evidenceId: "voice_1",
+          timestamp: 3,
+          excerpt: "part number 881700-1089",
+          confidence: 0.95,
+        },
+        {
+          sourceType: "video",
+          excerpt: "Over-the-shoulder plate verification before teardown",
+          confidence: 0.88,
+        },
+      ],
+      overallConfidence: 0.93,
+      corroborationLevel: "triple",
+      discrepancy: {
+        detected: true,
+        field: "appliance.model",
+        description: "A low-confidence OCR pass read the part number as 881700-1098, but the narration and direct plate review confirm 881700-1089.",
+        values: [
+          { sourceType: "audio", value: "881700-1089", confidence: 0.95 },
+          { sourceType: "photo", value: "881700-1098", confidence: 0.74 },
+        ],
+        resolution: "REVIEW REQUIRED",
+      },
+    },
+    "appliance.serialNumber": {
+      value: "SN-2024-11432",
+      provenance: [
+        {
+          sourceType: "photo",
+          evidenceId: "photo_1",
+          excerpt: "Data plate serial line: SN-2024-11432",
+          confidence: 0.96,
+        },
+        {
+          sourceType: "audio",
+          evidenceId: "voice_1",
+          timestamp: 6,
+          excerpt: "serial number SN-2024-11432",
+          confidence: 0.94,
+        },
+      ],
+      overallConfidence: 0.95,
+      corroborationLevel: "double",
+    },
+    workDescription: {
+      value: "Major repair of HPC-7 Hydraulic Pump overhaul work description",
+      provenance: [
+        {
+          sourceType: "audio",
+          evidenceId: "voice_1",
+          timestamp: 11,
+          excerpt: "Bore on the piston assembly measured 2.4985 inches ... serviceable",
+          confidence: 0.93,
+        },
+        {
+          sourceType: "photo",
+          evidenceId: "photo_2",
+          excerpt: "Worn inlet seal documented before replacement",
+          confidence: 0.89,
+        },
+        {
+          sourceType: "measurement",
+          evidenceId: "measurement_1",
+          excerpt: "Functional test 3000 PSI / 12.4 GPM / no leaks",
+          confidence: 0.96,
+        },
+        {
+          sourceType: "cmm",
+          excerpt: "CMM 881700-OH Rev. 12 overhaul sequence §70-00 through §70-90",
+          confidence: 0.92,
+        },
+      ],
+      overallConfidence: 0.93,
+      corroborationLevel: "triple",
+    },
+  };
+
+  const comp9Doc8010Provenance = {
+    "componentAssembly.partNumber": {
+      value: "881700-1089",
+      provenance: [
+        {
+          sourceType: "photo",
+          evidenceId: "photo_1",
+          excerpt: "Data plate shows P/N 881700-1089",
+          confidence: 0.97,
+        },
+        {
+          sourceType: "audio",
+          evidenceId: "voice_1",
+          timestamp: 3,
+          excerpt: "part number 881700-1089",
+          confidence: 0.95,
+        },
+      ],
+      overallConfidence: 0.96,
+      corroborationLevel: "double",
+      discrepancy: {
+        detected: true,
+        field: "componentAssembly.partNumber",
+        description: "One image OCR pass suggested 881700-1098, but the mechanic callout and direct plate image support 881700-1089.",
+        values: [
+          { sourceType: "audio", value: "881700-1089", confidence: 0.95 },
+          { sourceType: "photo", value: "881700-1098", confidence: 0.74 },
+        ],
+        resolution: "REVIEW REQUIRED",
+      },
+    },
+    "componentAssembly.serialNumber": {
+      value: "SN-2024-11432",
+      provenance: [
+        {
+          sourceType: "photo",
+          evidenceId: "photo_1",
+          excerpt: "Serial line on plate: SN-2024-11432",
+          confidence: 0.96,
+        },
+        {
+          sourceType: "audio",
+          evidenceId: "voice_1",
+          timestamp: 6,
+          excerpt: "serial number SN-2024-11432",
+          confidence: 0.94,
+        },
+      ],
+      overallConfidence: 0.95,
+      corroborationLevel: "double",
+    },
+    comments: {
+      value: "Defect narrative with degradation pattern and recommendations",
+      provenance: [
+        {
+          sourceType: "photo",
+          evidenceId: "photo_2",
+          excerpt: "Seal lip shows thermal checking and flattening",
+          confidence: 0.89,
+        },
+        {
+          sourceType: "audio",
+          evidenceId: "voice_1",
+          timestamp: 19,
+          excerpt: "seal kit 881700-4022 removed for age degradation and replaced during overhaul",
+          confidence: 0.9,
+        },
+        {
+          sourceType: "measurement",
+          evidenceId: "measurement_1",
+          excerpt: "Leak test remained dry for 15 minutes at pressure",
+          confidence: 0.96,
+        },
+      ],
+      overallConfidence: 0.92,
+      corroborationLevel: "triple",
+    },
+  };
+
   // Generated compliance documents — these are the same forms shown in the glasses demo
   await prisma.generatedDocument.createMany({
     data: [
@@ -1527,6 +1820,7 @@ async function main() {
         approvedBy: "M. Thompson",
         approvedAt: new Date("2024-02-08"),
         hash: makeHash("comp9-8130-3"),
+        provenanceJson: JSON.stringify(comp9Doc8130Provenance),
         content: JSON.stringify({
           block1: "FAA / United States",
           block2: "Authorized Release Certificate",
@@ -1557,6 +1851,7 @@ async function main() {
         approvedBy: "M. Thompson",
         approvedAt: new Date("2024-02-08"),
         hash: makeHash("comp9-337"),
+        provenanceJson: JSON.stringify(comp9Doc337Provenance),
         content: JSON.stringify({
           formType: "337",
           aircraft: { registration: "N89247", serialNumber: "42891", make: "Boeing", model: "737-800" },
@@ -1583,6 +1878,7 @@ async function main() {
         approvedBy: "M. Thompson",
         approvedAt: new Date("2024-02-08"),
         hash: makeHash("comp9-8010-4"),
+        provenanceJson: JSON.stringify(comp9Doc8010Provenance),
         content: JSON.stringify({
           formType: "8010-4",
           aircraft: { registration: "N89247", manufacturer: "Boeing", model: "737-800", serialNumber: "42891" },
@@ -1760,32 +2056,90 @@ async function main() {
       {
         eventId: comp9ReleaseEvent.id,
         type: "photo",
-        fileName: "comp9-final-assembly-001.jpg",
-        filePath: "/evidence/2024/comp9-final-assembly-001.jpg",
-        mimeType: "image/jpeg",
-        capturedAt: new Date("2024-02-08T14:30:00Z"),
+        fileName: "comp9-data-plate.svg",
+        filePath: "/demo/evidence/comp9-data-plate.svg",
+        mimeType: "image/svg+xml",
+        capturedAt: new Date("2024-02-08T12:42:00Z"),
         capturedBy: "M. Thompson",
         capturedByBadge: "A&P/IA #2847291",
         location: "ST Engineering Aerospace, Burlingame CA",
+        structuredData: JSON.stringify({
+          partNumber: "881700-1089",
+          serialNumber: "SN-2024-11432",
+          plateText: "Parker Aerospace HPC-7 Hydraulic Pump",
+          ocrVariants: ["881700-1089", "881700-1098"],
+        }),
         hash: makeHash("comp9-evidence-photo"),
       },
       {
         eventId: comp9ReleaseEvent.id,
-        type: "document_scan",
-        fileName: "comp9-8130-signed-scan.pdf",
-        filePath: "/evidence/2024/comp9-8130-signed-scan.pdf",
-        mimeType: "application/pdf",
-        capturedAt: new Date("2024-02-08T15:45:00Z"),
+        type: "photo",
+        fileName: "comp9-worn-seal.svg",
+        filePath: "/demo/evidence/comp9-worn-seal.svg",
+        mimeType: "image/svg+xml",
+        capturedAt: new Date("2024-02-08T13:04:00Z"),
         capturedBy: "M. Thompson",
         capturedByBadge: "A&P/IA #2847291",
         location: "ST Engineering Aerospace, Burlingame CA",
-        hash: makeHash("comp9-evidence-scan"),
+        structuredData: JSON.stringify({
+          finding: "Inlet port seal hardened and heat checked",
+          partNumber: "881700-4022",
+          disposition: "replace",
+        }),
+        hash: makeHash("comp9-evidence-seal-photo"),
+      },
+      {
+        eventId: comp9ReleaseEvent.id,
+        type: "photo",
+        fileName: "comp9-bore-gauge.svg",
+        filePath: "/demo/evidence/comp9-bore-gauge.svg",
+        mimeType: "image/svg+xml",
+        capturedAt: new Date("2024-02-08T13:22:00Z"),
+        capturedBy: "M. Thompson",
+        capturedByBadge: "A&P/IA #2847291",
+        location: "ST Engineering Aerospace, Burlingame CA",
+        structuredData: JSON.stringify({
+          measurement: "2.4985 in",
+          spec: "2.500 +/- 0.002",
+          result: "serviceable",
+        }),
+        hash: makeHash("comp9-evidence-bore-photo"),
+      },
+      {
+        eventId: comp9ReleaseEvent.id,
+        type: "photo",
+        fileName: "comp9-test-gauge.svg",
+        filePath: "/demo/evidence/comp9-test-gauge.svg",
+        mimeType: "image/svg+xml",
+        capturedAt: new Date("2024-02-08T14:18:00Z"),
+        capturedBy: "M. Thompson",
+        capturedByBadge: "A&P/IA #2847291",
+        location: "ST Engineering Aerospace, Burlingame CA",
+        structuredData: JSON.stringify({
+          pressure: "3000 PSI",
+          flowRate: "12.4 GPM",
+          leakTest: "No leaks",
+        }),
+        hash: makeHash("comp9-evidence-gauge-photo"),
+      },
+      {
+        eventId: comp9ReleaseEvent.id,
+        type: "voice_note",
+        fileName: "comp9-overhaul-voice-note.txt",
+        filePath: "/demo/evidence/comp9-overhaul-voice-note.txt",
+        mimeType: "text/plain",
+        capturedAt: new Date("2024-02-08T14:05:00Z"),
+        capturedBy: "M. Thompson",
+        capturedByBadge: "A&P/IA #2847291",
+        location: "ST Engineering Aerospace, Burlingame CA",
+        transcription: comp9VoiceTranscript,
+        hash: makeHash("comp9-evidence-voice-note"),
       },
       {
         eventId: comp9ReleaseEvent.id,
         type: "measurement",
         fileName: "comp9-test-bench-data.csv",
-        filePath: "/evidence/2024/comp9-test-bench-data.csv",
+        filePath: "/demo/evidence/comp9-test-bench-data.csv",
         mimeType: "text/csv",
         capturedAt: new Date("2024-02-08T13:15:00Z"),
         capturedBy: "M. Thompson",
@@ -2500,6 +2854,223 @@ async function main() {
 
   console.log(`✅ Demo organization created: ${demoOrg.name}`);
   console.log(`   Technicians: ${techMike.firstName} ${techMike.lastName}, ${techSarah.firstName} ${techSarah.lastName}, ${techJuan.firstName} ${techJuan.lastName}`);
+
+  await prisma.captureSession.create({
+    data: {
+      id: "test-session-reviewer-cockpit",
+      technicianId: techMike.id,
+      organizationId: demoOrg.id,
+      status: "submitted",
+      description: "Reviewer cockpit demo session — HPC-7 hydraulic pump overhaul",
+      expectedSteps: "Verify part identity, reconcile overhaul findings, and approve release paperwork.",
+      startedAt: new Date("2026-03-05T14:00:00Z"),
+      completedAt: new Date("2026-03-05T14:18:00Z"),
+      evidence: {
+        create: [
+          {
+            type: "PHOTO",
+            fileUrl: "/demo/evidence/comp9-data-plate.svg",
+            fileSize: 18234,
+            mimeType: "image/svg+xml",
+            aiExtraction: JSON.stringify({
+              partNumber: "881700-1089",
+              serialNumber: "SN-2024-11432",
+            }),
+            capturedAt: new Date("2026-03-05T14:03:00Z"),
+          },
+          {
+            type: "AUDIO_CHUNK",
+            fileUrl: "/demo/evidence/reviewer-cockpit-voice.m4a",
+            fileSize: 248000,
+            mimeType: "audio/mp4",
+            durationSeconds: 41,
+            transcription:
+              "HPC-7 hydraulic pump, part number 881700-1089, serial number SN-2024-11432. Piston bore 2.4985 inches, serviceable. Seal kit replaced. Final test passed at 3000 PSI and 12.4 GPM.",
+            capturedAt: new Date("2026-03-05T14:06:00Z"),
+          },
+        ],
+      },
+      analysis: {
+        create: {
+          actionLog: JSON.stringify([
+            { timestamp: 12, action: "Data plate verified", details: "Technician reads part and serial number aloud." },
+            { timestamp: 88, action: "Inspection complete", details: "Bore measurement recorded at 2.4985 inches." },
+            { timestamp: 171, action: "Functional test complete", details: "Pressure 3000 PSI, flow 12.4 GPM, no leaks." },
+          ]),
+          partsIdentified: JSON.stringify([
+            {
+              partNumber: "881700-1089",
+              serialNumber: "SN-2024-11432",
+              description: "HPC-7 Hydraulic Pump",
+              confidence: 0.95,
+            },
+          ]),
+          procedureSteps: JSON.stringify([
+            { step: 1, description: "Confirm part identity against data plate", status: "completed", cmmRef: "CMM 881700-OH Rev. 12 §70-00" },
+            { step: 2, description: "Inspect piston bore and internal wear surfaces", status: "completed", cmmRef: "CMM 881700-OH Rev. 12 §70-20" },
+            { step: 3, description: "Replace inlet port seal kit", status: "completed", cmmRef: "CMM 881700-OH Rev. 12 §70-40" },
+            { step: 4, description: "Reassemble and torque hardware", status: "completed", cmmRef: "CMM 881700-OH Rev. 12 §70-70" },
+            { step: 5, description: "Run pressure and flow test", status: "completed", cmmRef: "CMM 881700-OH Rev. 12 §70-80" },
+          ]),
+          anomalies: JSON.stringify([
+            {
+              description: "One OCR pass transposed the last two digits of the part number and requires reviewer confirmation.",
+              severity: "warning",
+              timestamp: 14,
+            },
+          ]),
+          confidence: 0.84,
+          verificationSource: "expected_steps",
+          modelUsed: "gemini-3.1-pro-preview",
+        },
+      },
+      documents: {
+        create: [
+          {
+            id: "test-doc-reviewer-cockpit-8130",
+            documentType: "8130-3",
+            status: "pending_review",
+            confidence: 0.63,
+            contentJson: JSON.stringify({
+              block1: "FAA / United States",
+              block2: "Authorized Release Certificate",
+              block3: "RC-2026-0001",
+              block4: "Precision Aerospace MRO\n2800 Airport Blvd, Suite 100\nAustin, TX 78719",
+              block5: "WO-RC-2026-0001",
+              block6a: "HPC-7 Hydraulic Pump",
+              block6b: "881700-1098",
+              block6c: "SN-2024-11432",
+              block6d: "1",
+              block6e: "Overhauled",
+              block7: "Overhauled per CMM 881700-OH Rev. 12. Seal kit replaced. Final test passed at 3000 PSI and 12.4 GPM.",
+              block11: "Y4PR509K",
+              block12: "2026-03-05",
+              block13: "Mike Chen",
+            }),
+            lowConfidenceFields: JSON.stringify(["block6b"]),
+            evidenceLineage: JSON.stringify({
+              block6b: {
+                source: "photo_extraction",
+                detail: "OCR read from data plate photo",
+                confidence: 0.58,
+              },
+            }),
+            provenanceJson: JSON.stringify({
+              block6b: {
+                sources: [
+                  { type: "photo", label: "Data plate photo" },
+                  { type: "audio", label: "Technician narration" },
+                ],
+                discrepancy: {
+                  detected: true,
+                  field: "block6b",
+                  description: "OCR read 1098 but supporting evidence indicates 1089.",
+                },
+              },
+            }),
+            verificationJson: JSON.stringify({
+              verified: false,
+              documentReviews: [
+                {
+                  documentType: "8130-3",
+                  confidence: 0.61,
+                  issues: [
+                    {
+                      field: "block6b",
+                      issue: "Part number mismatch requires reviewer verification.",
+                      severity: "critical",
+                    },
+                  ],
+                },
+              ],
+            }),
+            generatedAt: new Date("2026-03-05T14:12:00Z"),
+          },
+          {
+            id: "test-doc-reviewer-cockpit-337",
+            documentType: "337",
+            status: "pending_review",
+            confidence: 0.72,
+            contentJson: JSON.stringify({
+              "aircraft.registration": "N89247",
+              "aircraft.serialNumber": "42891",
+              "aircraft.make": "Boeing",
+              "aircraft.model": "737-800",
+              "owner.name": "Southwest Airlines Co.",
+              "owner.address": "2702 Love Field Dr, Dallas, TX 75235",
+              repairType: "Repair",
+              unit: "APPLIANCE",
+              "appliance.make": "Parker Aerospace",
+              "appliance.model": "881700-1089",
+              "appliance.serialNumber": "SN-2024-11432",
+              "appliance.type": "Hydraulic Pump",
+              "conformity.agency": "Precision Aerospace MRO",
+              "conformity.agencyKind": "Repair Station",
+              "conformity.certificateNumber": "Y4PR509K",
+              "conformity.signedBy": "Sarah Okafor",
+              "conformity.date": "2026-03-05",
+              "approval.status": "Pending Review",
+              "approval.type": "Repair Station",
+              "approval.certificate": "Y4PR509K",
+              "approval.signedBy": "Sarah Okafor",
+              "approval.date": "2026-03-05",
+              workDescription: "Major repair and overhaul of HPC-7 hydraulic pump with seal replacement and functional test.",
+            }),
+            lowConfidenceFields: JSON.stringify(["approval.status"]),
+            evidenceLineage: JSON.stringify({
+              "appliance.model": {
+                source: "audio_transcript",
+                detail: "Technician narrated the confirmed part number.",
+                confidence: 0.91,
+              },
+              "approval.status": {
+                source: "ai_inferred",
+                detail: "Approval state inferred before supervisor signoff.",
+                confidence: 0.49,
+              },
+            }),
+            provenanceJson: JSON.stringify({
+              "appliance.model": {
+                sources: [
+                  { type: "audio", label: "Technician narration" },
+                  { type: "photo", label: "Data plate photo" },
+                ],
+              },
+              "approval.status": {
+                sources: [
+                  { type: "ai", label: "Draft approval prediction" },
+                ],
+                discrepancy: {
+                  detected: true,
+                  field: "approval.status",
+                  description: "Approval status was inferred as ready before supervisor review was complete.",
+                },
+              },
+            }),
+            verificationJson: JSON.stringify({
+              verified: false,
+              documentReviews: [
+                {
+                  documentType: "337",
+                  confidence: 0.66,
+                  issues: [
+                    {
+                      field: "approval.status",
+                      issue: "Approval section still requires certifier confirmation.",
+                      severity: "critical",
+                    },
+                  ],
+                },
+              ],
+            }),
+            generatedAt: new Date("2026-03-05T14:13:00Z"),
+          },
+        ],
+      },
+    },
+  });
+
+  console.log("✅ Reviewer cockpit demo session created: test-session-reviewer-cockpit");
 
   // ════════════════════════════════════════════════════
   // REFERENCE DATA — Per-part-number reference info for AI context
