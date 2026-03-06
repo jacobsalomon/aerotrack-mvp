@@ -1,0 +1,45 @@
+{
+  "verified": false,
+  "overallConfidence": 0.87,
+  "documentReviews": [
+    {
+      "documentType": "8130-3",
+      "issues": [],
+      "confidence": 0.93
+    },
+    {
+      "documentType": "337",
+      "issues": [
+        {
+          "field": "section5_description",
+          "issue": "Work description references 'CMM 73-11-01 Rev. 12' but no CMM document was provided for verification — revision number cannot be independently confirmed",
+          "severity": "info"
+        }
+      ],
+      "confidence": 0.89
+    },
+    {
+      "documentType": "8010-4",
+      "issues": [
+        {
+          "field": "section2_part_number",
+          "issue": "CRITICAL: Part number 881700-1098 in 8010-4 does not match the part number 881700-1089 confirmed by photo evidence (data plate) and audio transcript. Digits appear transposed (1098 vs 1089). Must be corrected before submission.",
+          "severity": "critical"
+        },
+        {
+          "field": "section6_component_tsn",
+          "issue": "Total time since new (4,250 hours / 2,100 cycles) not directly confirmed by any evidence source — appears to be AI-inferred. Should be verified against maintenance records.",
+          "severity": "warning"
+        }
+      ],
+      "confidence": 0.78
+    }
+  ],
+  "crossDocumentConsistency": {
+    "partNumberConsistent": false,
+    "serialNumberConsistent": true,
+    "findingsMatchActions": true,
+    "measurementsConsistent": true,
+    "note": "Part number inconsistency: 8130-3 and Form 337 correctly show 881700-1089, but 8010-4 shows 881700-1098. This is likely a transcription error in the 8010-4 form generation."
+  }
+}

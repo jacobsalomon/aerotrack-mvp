@@ -1,0 +1,4 @@
+parameter,value,unit,spec,result
+pressure_test,3000,PSI,2800-3200,PASS
+flow_rate,12.4,GPM,11.5-13.0,PASS
+leak_test,No leaks,text,15 minute hold,PASS

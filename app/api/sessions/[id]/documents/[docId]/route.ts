@@ -8,6 +8,12 @@ export const maxDuration = 60;
 
 import { prisma } from "@/lib/db";
 import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { getValueAtPath, setValueAtPath } from "@/lib/document-field-layout";
+import {
+  type FieldDispositionStatus,
+  parseDocumentReviewState,
+  serializeDocumentReviewState,
+} from "@/lib/document-review-state";
 import { verifyDocuments } from "@/lib/ai/verify";
 import { NextResponse } from "next/server";
 
@@ -20,16 +26,63 @@ export async function PATCH(
 
   const { id: sessionId, docId } = await params;
 
-  let fields: Record<string, string>;
+  let fields: Record<string, string> | null = null;
+  let fieldDisposition:
+    | {
+        fieldKey: string;
+        status: FieldDispositionStatus | null;
+        rationale?: string | null;
+      }
+    | null = null;
   try {
     const body = await request.json();
-    fields = body.fields;
+    if (body.fields && typeof body.fields === "object") {
+      fields = body.fields as Record<string, string>;
+    }
+    if (body.fieldDisposition && typeof body.fieldDisposition === "object") {
+      fieldDisposition = body.fieldDisposition as {
+        fieldKey: string;
+        status: FieldDispositionStatus | null;
+        rationale?: string | null;
+      };
+    }
   } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  if (!fields || typeof fields !== "object" || Object.keys(fields).length === 0) {
-    return NextResponse.json({ error: "fields object is required with at least one field" }, { status: 400 });
+  const hasFieldEdits = !!fields && Object.keys(fields).length > 0;
+  const hasDispositionUpdate = !!fieldDisposition;
+
+  if (!hasFieldEdits && !hasDispositionUpdate) {
+    return NextResponse.json(
+      { error: "Provide either fields or fieldDisposition updates." },
+      { status: 400 }
+    );
+  }
+
+  if (fieldDisposition) {
+    if (!fieldDisposition.fieldKey || typeof fieldDisposition.fieldKey !== "string") {
+      return NextResponse.json({ error: "fieldDisposition.fieldKey is required" }, { status: 400 });
+    }
+
+    if (
+      fieldDisposition.status !== null &&
+      fieldDisposition.status !== "manually_verified" &&
+      fieldDisposition.status !== "accepted_with_rationale" &&
+      fieldDisposition.status !== "needs_additional_evidence"
+    ) {
+      return NextResponse.json({ error: "Invalid fieldDisposition.status" }, { status: 400 });
+    }
+
+    const requiresRationale =
+      fieldDisposition.status === "accepted_with_rationale" ||
+      fieldDisposition.status === "needs_additional_evidence";
+    if (requiresRationale && !(fieldDisposition.rationale || "").trim()) {
+      return NextResponse.json(
+        { error: "A rationale is required for this certifier disposition." },
+        { status: 400 }
+      );
+    }
   }
 
   try {
@@ -63,43 +116,86 @@ export async function PATCH(
       existingContent = {};
     }
 
+    const reviewState = parseDocumentReviewState(doc.reviewNotes);
+
     // Track old values for audit log
     const changes: Record<string, { old: unknown; new: string }> = {};
-    for (const [key, newVal] of Object.entries(fields)) {
-      changes[key] = { old: existingContent[key] ?? null, new: newVal };
-      existingContent[key] = newVal;
+    if (fields) {
+      for (const [key, newVal] of Object.entries(fields)) {
+        changes[key] = { old: getValueAtPath(existingContent, key) ?? null, new: newVal };
+        setValueAtPath(existingContent, key, newVal);
+      }
     }
 
-    // Save updated contentJson
+    if (fieldDisposition) {
+      if (fieldDisposition.status === null) {
+        delete reviewState.fieldDispositions[fieldDisposition.fieldKey];
+      } else {
+        reviewState.fieldDispositions[fieldDisposition.fieldKey] = {
+          status: fieldDisposition.status,
+          rationale: fieldDisposition.rationale?.trim() || null,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+    }
+
+    const nextReviewNotes = serializeDocumentReviewState(reviewState);
+
+    // Save updated contentJson and/or review state
     const updated = await prisma.documentGeneration2.update({
       where: { id: docId },
       data: {
         contentJson: JSON.stringify(existingContent),
+        reviewNotes: nextReviewNotes,
       },
     });
 
-    // Audit log — record which fields were changed
-    await prisma.auditLogEntry.create({
-      data: {
-        organizationId: doc.session.organizationId,
-        technicianId: doc.session.technicianId,
-        action: "document_fields_edited",
-        entityType: "DocumentGeneration2",
-        entityId: docId,
-        metadata: JSON.stringify({ sessionId, changes }),
-      },
-    });
+    if (hasFieldEdits) {
+      await prisma.auditLogEntry.create({
+        data: {
+          organizationId: doc.session.organizationId,
+          technicianId: doc.session.technicianId,
+          action: "document_fields_edited",
+          entityType: "DocumentGeneration2",
+          entityId: docId,
+          metadata: JSON.stringify({ sessionId, changes }),
+        },
+      });
+    }
+
+    if (fieldDisposition) {
+      await prisma.auditLogEntry.create({
+        data: {
+          organizationId: doc.session.organizationId,
+          technicianId: doc.session.technicianId,
+          action:
+            fieldDisposition.status === null
+              ? "document_field_disposition_cleared"
+              : "document_field_disposition_set",
+          entityType: "DocumentGeneration2",
+          entityId: docId,
+          metadata: JSON.stringify({
+            sessionId,
+            fieldKey: fieldDisposition.fieldKey,
+            status: fieldDisposition.status,
+            rationale: fieldDisposition.rationale?.trim() || null,
+          }),
+        },
+      });
+    }
 
     // Auto re-verify (best-effort — don't fail the save if verification breaks)
     let verification = null;
-    try {
-      const verifyResult = await verifyDocuments(sessionId, doc.session.technicianId);
-      verification = verifyResult.verification;
-    } catch (verifyError) {
-      console.warn(
-        "Re-verification after edit failed (non-blocking):",
-        verifyError instanceof Error ? verifyError.message : verifyError
-      );
+    if (hasFieldEdits) {
+      try {
+        const verifyResult = await verifyDocuments(sessionId, doc.session.technicianId);
+        verification = verifyResult.verification;
+      } catch (verifyError) {
+        console.warn(
+          "Re-verification after edit failed (non-blocking):",
+          verifyError instanceof Error ? verifyError.message : verifyError
+        );
+      }
     }
 
     return NextResponse.json({
@@ -107,6 +203,7 @@ export async function PATCH(
       documentType: updated.documentType,
       status: updated.status,
       contentJson: existingContent,
+      reviewNotes: updated.reviewNotes,
       verification,
     });
   } catch (error) {

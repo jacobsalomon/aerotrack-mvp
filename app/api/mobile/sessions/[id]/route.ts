@@ -4,6 +4,10 @@
 
 import { prisma } from "@/lib/db";
 import { authenticateRequest } from "@/lib/mobile-auth";
+import {
+  MOBILE_SESSION_MUTABLE_STATUS_VALUES,
+  isMobileMutableSessionStatus,
+} from "@/lib/session-status";
 import { NextResponse } from "next/server";
 
 // Get full session details including all evidence and generated documents
@@ -79,10 +83,12 @@ export async function PATCH(
     const { status, description, componentId, expectedSteps } = body;
 
     // Validate status against allowed values (must match all statuses used by mobile app + results screen)
-    const validStatuses = ["capturing", "capture_complete", "processing", "documents_generated", "completed", "failed", "cancelled"];
-    if (status && !validStatuses.includes(status)) {
+    if (status && !isMobileMutableSessionStatus(status)) {
       return NextResponse.json(
-        { success: false, error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` },
+        {
+          success: false,
+          error: `Invalid status. Must be one of: ${MOBILE_SESSION_MUTABLE_STATUS_VALUES.join(", ")}`,
+        },
         { status: 400 }
       );
     }

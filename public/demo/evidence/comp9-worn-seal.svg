@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+  <rect width="1200" height="800" fill="#111827"/>
+  <circle cx="600" cy="400" r="220" fill="#6b7280"/>
+  <circle cx="600" cy="400" r="130" fill="#111827"/>
+  <path d="M455 275 C520 320 690 280 760 340" stroke="#ef4444" stroke-width="18" fill="none" stroke-linecap="round"/>
+  <path d="M410 430 C470 390 730 470 790 420" stroke="#f59e0b" stroke-width="16" fill="none" stroke-linecap="round"/>
+  <text x="130" y="120" fill="#f8fafc" font-family="Courier New, monospace" font-size="34">INLET PORT SEAL KIT 881700-4022</text>
+  <text x="130" y="165" fill="#fca5a5" font-family="Courier New, monospace" font-size="26">Heat checking and hardened lip documented before replacement</text>
+</svg>

@@ -10,6 +10,28 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  EvidenceChainDrawer,
+  type DocumentProvenancePayload,
+} from "@/components/evidence-chain-drawer";
+import {
+  getDocumentFieldSections,
+  humanizeFieldLabel,
+} from "@/lib/document-field-layout";
+import {
+  type FieldDispositionStatus,
+  getDispositionLabel,
+  parseDocumentReviewState,
+} from "@/lib/document-review-state";
+import {
+  normalizeProcedureSteps,
+  type ProcedureStepInput,
+} from "@/lib/session-analysis";
+import { deriveReviewerCockpitSummary } from "@/lib/reviewer-cockpit";
+import {
+  SESSION_STATUS_COLORS,
+  SESSION_STATUS_LABELS,
+} from "@/lib/session-status";
 import { apiUrl } from "@/lib/api-url";
 import {
   ArrowLeft,
@@ -43,6 +65,7 @@ import {
   BookOpen,
   ExternalLink,
   ArrowRightLeft,
+  ArrowRight,
   Info,
   AlertCircle,
   Pencil,
@@ -97,6 +120,12 @@ interface VerificationData {
   }>;
 }
 
+interface FieldDispositionComposer {
+  docId: string;
+  fieldKey: string;
+  status: Exclude<FieldDispositionStatus, "manually_verified">;
+}
+
 interface DocumentData {
   id: string;
   documentType: string;
@@ -105,6 +134,7 @@ interface DocumentData {
   confidence: number;
   lowConfidenceFields: string;
   evidenceLineage: string | null;
+  provenanceJson: string | null;
   generatedAt: string;
   reviewedAt: string | null;
   reviewNotes: string | null;
@@ -134,15 +164,9 @@ interface ParsedActionLogEntry {
 interface ParsedPart {
   partNumber: string;
   serialNumber?: string;
-  description: string;
-  confidence: number;
-}
-
-interface ParsedProcedureStep {
-  stepNumber: number;
-  description: string;
-  completed: boolean;
-  cmmReference?: string;
+  description?: string;
+  type?: string;
+  confidence?: number;
 }
 
 interface ParsedAnomaly {
@@ -184,26 +208,12 @@ interface AuditEntry {
 
 // ─── Status helpers ────────────────────────────────────────────────────
 
-const STATUS_COLORS: Record<string, string> = {
-  capturing: "bg-blue-100 text-blue-700",
-  capture_complete: "bg-cyan-100 text-cyan-700",
-  processing: "bg-amber-100 text-amber-700",
-  documents_generated: "bg-emerald-100 text-emerald-700",
-  submitted: "bg-purple-100 text-purple-700",
-  approved: "bg-green-100 text-green-700",
-  rejected: "bg-red-100 text-red-700",
+const DOCUMENT_STATUS_COLORS: Record<string, string> = {
   draft: "bg-slate-100 text-slate-600",
   pending_review: "bg-purple-100 text-purple-700",
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  capturing: "Capturing",
-  capture_complete: "Capture Complete",
-  processing: "Processing",
-  documents_generated: "Docs Ready",
-  submitted: "Submitted",
-  approved: "Approved",
-  rejected: "Rejected",
+const DOCUMENT_STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
   pending_review: "Pending Review",
 };
@@ -250,6 +260,14 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function fieldAnchorId(docId: string, fieldKey: string): string {
+  return `field-${docId}-${fieldKey.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+}
+
+function fieldSaveKey(docId: string, fieldKey: string): string {
+  return `${docId}:${fieldKey}`;
+}
+
 function safeParseJson(str: string | null): unknown {
   if (!str) return null;
   try {
@@ -283,8 +301,10 @@ export default function SessionDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [expandedDoc, setExpandedDoc] = useState<string | null>(null);
+  const [hasAutoExpanded, setHasAutoExpanded] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
   const [reviewingDoc, setReviewingDoc] = useState<string | null>(null);
+  const [bulkApproving, setBulkApproving] = useState(false);
   const [rejectNotes, setRejectNotes] = useState("");
   const [showRejectDialog, setShowRejectDialog] = useState<string | null>(null);
 
@@ -300,6 +320,13 @@ export default function SessionDetailPage() {
   const [editingValue, setEditingValue] = useState("");
   const [savingField, setSavingField] = useState(false);
   const [editedFields, setEditedFields] = useState<Record<string, Set<string>>>({});
+  const [documentProvenance, setDocumentProvenance] = useState<Record<string, DocumentProvenancePayload | null>>({});
+  const [loadingProvenance, setLoadingProvenance] = useState<Record<string, boolean>>({});
+  const [activeEvidenceField, setActiveEvidenceField] = useState<{ docId: string; fieldKey: string } | null>(null);
+  const [fieldDispositionComposer, setFieldDispositionComposer] = useState<FieldDispositionComposer | null>(null);
+  const [fieldDispositionRationale, setFieldDispositionRationale] = useState("");
+  const [savingDispositionKey, setSavingDispositionKey] = useState<string | null>(null);
+  const [showAllBlockers, setShowAllBlockers] = useState(false);
 
   // Expected Steps (SOP) editing state
   const [expectedStepsText, setExpectedStepsText] = useState("");
@@ -320,9 +347,57 @@ export default function SessionDetailPage() {
     }
   }, [sessionId]);
 
+  const fetchDocumentProvenance = useCallback(async (documentId: string) => {
+    if (documentProvenance[documentId] !== undefined || loadingProvenance[documentId]) {
+      return;
+    }
+
+    setLoadingProvenance((prev) => ({ ...prev, [documentId]: true }));
+    try {
+      const res = await fetch(apiUrl(`/api/documents/${documentId}/provenance`));
+      if (!res.ok) {
+        setDocumentProvenance((prev) => ({ ...prev, [documentId]: null }));
+        return;
+      }
+
+      const data = (await res.json()) as DocumentProvenancePayload;
+      setDocumentProvenance((prev) => ({ ...prev, [documentId]: data }));
+    } catch (err) {
+      console.warn("Failed to load provenance:", err);
+      setDocumentProvenance((prev) => ({ ...prev, [documentId]: null }));
+    } finally {
+      setLoadingProvenance((prev) => ({ ...prev, [documentId]: false }));
+    }
+  }, [documentProvenance, loadingProvenance]);
+
   useEffect(() => {
     fetchSession();
   }, [fetchSession]);
+
+  useEffect(() => {
+    if (!session || !["processing", "analyzing"].includes(session.status)) return;
+
+    const intervalId = window.setInterval(() => {
+      void fetchSession();
+    }, 5000);
+
+    return () => window.clearInterval(intervalId);
+  }, [fetchSession, session]);
+
+  useEffect(() => {
+    if (!session || hasAutoExpanded || expandedDoc) return;
+
+    const firstReviewTarget =
+      session.documents.find((doc) => doc.status !== "approved" && doc.status !== "rejected")
+      || session.documents[0];
+
+    if (firstReviewTarget) {
+      setExpandedDoc(firstReviewTarget.id);
+      void fetchDocumentProvenance(firstReviewTarget.id);
+    }
+
+    setHasAutoExpanded(true);
+  }, [expandedDoc, fetchDocumentProvenance, hasAutoExpanded, session]);
 
   // Sync expected steps text when session loads
   useEffect(() => {
@@ -371,7 +446,7 @@ export default function SessionDetailPage() {
   }, [auditOpen, sessionId]);
 
   // Approve or reject a document
-  async function handleReview(documentId: string, action: "approve" | "reject", notes?: string) {
+  async function handleReview(documentId: string, action: "approve" | "reject", notes?: string, refreshSession = true) {
     setReviewingDoc(documentId);
     try {
       const res = await fetch(apiUrl(`/api/sessions/${sessionId}/review`), {
@@ -381,7 +456,9 @@ export default function SessionDetailPage() {
       });
       if (!res.ok) throw new Error("Review failed");
       // Refresh session data to reflect the update
-      await fetchSession();
+      if (refreshSession) {
+        await fetchSession();
+      }
       setShowRejectDialog(null);
       setRejectNotes("");
     } catch (err) {
@@ -448,6 +525,37 @@ export default function SessionDetailPage() {
     }
   }
 
+  async function handleSetFieldDisposition(
+    docId: string,
+    fieldKey: string,
+    status: FieldDispositionStatus | null,
+    rationale?: string
+  ) {
+    const saveKey = fieldSaveKey(docId, fieldKey);
+    setSavingDispositionKey(saveKey);
+    try {
+      const res = await fetch(apiUrl(`/api/sessions/${sessionId}/documents/${docId}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fieldDisposition: {
+            fieldKey,
+            status,
+            rationale: rationale?.trim() || null,
+          },
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to save certifier disposition");
+      setFieldDispositionComposer(null);
+      setFieldDispositionRationale("");
+      await fetchSession();
+    } catch (err) {
+      console.error("Failed to save field disposition:", err);
+    } finally {
+      setSavingDispositionKey(null);
+    }
+  }
+
   // ─── Loading / error states ──────────────────────────────────────────
 
   if (loading) {
@@ -486,7 +594,8 @@ export default function SessionDetailPage() {
   const analysis = session.analysis;
   const actionLog = safeParseJson(analysis?.actionLog ?? null) as ParsedActionLogEntry[] | null;
   const partsIdentified = safeParseJson(analysis?.partsIdentified ?? null) as ParsedPart[] | null;
-  const procedureSteps = safeParseJson(analysis?.procedureSteps ?? null) as ParsedProcedureStep[] | null;
+  const procedureStepsRaw = safeParseJson(analysis?.procedureSteps ?? null) as ProcedureStepInput[] | null;
+  const procedureSteps = normalizeProcedureSteps(procedureStepsRaw);
   const anomalies = safeParseJson(analysis?.anomalies ?? null) as ParsedAnomaly[] | null;
 
   // Compute session duration for summary
@@ -500,6 +609,71 @@ export default function SessionDetailPage() {
   // Count completed procedure steps
   const completedSteps = procedureSteps?.filter((s) => s.completed).length ?? 0;
   const totalSteps = procedureSteps?.length ?? 0;
+  const reviewerCockpit = deriveReviewerCockpitSummary(
+    session.documents.map((doc) => ({
+      id: doc.id,
+      documentType: doc.documentType,
+      status: doc.status,
+      lowConfidenceFields: doc.lowConfidenceFields,
+      verificationJson: doc.verificationJson,
+      evidenceLineage: doc.evidenceLineage,
+      provenanceJson: doc.provenanceJson,
+      reviewNotes: doc.reviewNotes,
+    }))
+  );
+  const visibleBlockers = showAllBlockers
+    ? reviewerCockpit.blockers
+    : reviewerCockpit.blockers.slice(0, 6);
+
+  async function handleApproveReadyDocuments() {
+    if (!session) return;
+
+    const readyDocs = session.documents.filter(
+      (doc) => reviewerCockpit.documents[doc.id]?.readyToApprove
+    );
+
+    if (readyDocs.length === 0) return;
+
+    setBulkApproving(true);
+    try {
+      for (const doc of readyDocs) {
+        const res = await fetch(apiUrl(`/api/sessions/${sessionId}/review`), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ documentId: doc.id, action: "approve" }),
+        });
+
+        if (!res.ok) {
+          throw new Error(`Failed to approve ${doc.id}`);
+        }
+      }
+
+      await fetchSession();
+    } catch (err) {
+      console.error("Bulk approve failed:", err);
+    } finally {
+      setBulkApproving(false);
+    }
+  }
+
+  function focusDocument(docId: string, fieldKey?: string | null) {
+    setExpandedDoc(docId);
+    void fetchDocumentProvenance(docId);
+
+    requestAnimationFrame(() => {
+      const targetId = fieldKey ? fieldAnchorId(docId, fieldKey) : `document-${docId}`;
+      const target = document.getElementById(targetId) || document.getElementById(`document-${docId}`);
+
+      target?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+
+      if (fieldKey) {
+        setActiveEvidenceField({ docId, fieldKey });
+      }
+    });
+  }
 
   return (
     <div>
@@ -589,12 +763,16 @@ export default function SessionDetailPage() {
           </div>
           <span
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${
-              STATUS_COLORS[session.status] || "bg-slate-100 text-slate-700"
+              SESSION_STATUS_COLORS[
+                session.status as keyof typeof SESSION_STATUS_COLORS
+              ] || "bg-slate-100 text-slate-700"
             }`}
           >
             {session.status === "approved" && <CheckCircle2 className="h-4 w-4" />}
             {session.status === "rejected" && <XCircle className="h-4 w-4" />}
-            {STATUS_LABELS[session.status] || session.status}
+            {SESSION_STATUS_LABELS[
+              session.status as keyof typeof SESSION_STATUS_LABELS
+            ] || session.status}
           </span>
         </div>
         <div className="flex gap-6 mt-4 text-sm" style={{ color: "rgb(80, 80, 80)" }}>
@@ -622,6 +800,265 @@ export default function SessionDetailPage() {
           </Link>
         )}
       </div>
+
+      {/* ═══ REVIEWER COCKPIT ═══ */}
+      <Card className="border-0 shadow-sm mb-6">
+        <CardHeader>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <CardTitle className="text-lg font-bold flex items-center gap-2" style={{ fontFamily: "var(--font-space-grotesk)", color: "rgb(20, 20, 20)" }}>
+                <Shield className="h-5 w-5" /> Reviewer Cockpit
+              </CardTitle>
+              <p className="text-sm mt-1" style={{ color: "rgb(100, 100, 100)" }}>
+                Review readiness, blockers, and the next document to approve from one place.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium"
+                style={{
+                  backgroundColor:
+                    reviewerCockpit.readiness === "Review Complete"
+                      ? "rgb(220, 252, 231)"
+                      : reviewerCockpit.readiness === "Blocked"
+                      ? "rgb(254, 242, 242)"
+                      : reviewerCockpit.readiness === "Awaiting Documents"
+                      ? "rgb(241, 245, 249)"
+                      : "rgb(239, 246, 255)",
+                  color:
+                    reviewerCockpit.readiness === "Review Complete"
+                      ? "rgb(21, 128, 61)"
+                      : reviewerCockpit.readiness === "Blocked"
+                      ? "rgb(185, 28, 28)"
+                      : reviewerCockpit.readiness === "Awaiting Documents"
+                      ? "rgb(71, 85, 105)"
+                      : "rgb(29, 78, 216)",
+                }}
+              >
+                {reviewerCockpit.readiness === "Blocked" ? (
+                  <AlertTriangle className="h-4 w-4" />
+                ) : reviewerCockpit.readiness === "Review Complete" ? (
+                  <CheckCircle2 className="h-4 w-4" />
+                ) : (
+                  <FileCheck className="h-4 w-4" />
+                )}
+                {reviewerCockpit.readiness}
+              </span>
+              {reviewerCockpit.nextDocumentId && (
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => focusDocument(reviewerCockpit.nextDocumentId as string)}
+                >
+                  Review Next Document
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              )}
+              {reviewerCockpit.counts.readyToApprove > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  disabled={bulkApproving}
+                  onClick={handleApproveReadyDocuments}
+                >
+                  {bulkApproving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                  Approve All Ready ({reviewerCockpit.counts.readyToApprove})
+                </Button>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-7">
+            {[
+              {
+                label: "Documents",
+                value: reviewerCockpit.counts.totalDocuments,
+                tone: "rgb(20, 20, 20)",
+              },
+              {
+                label: "Evidence Items",
+                value: session.evidence.length,
+                tone: "rgb(71, 85, 105)",
+              },
+              {
+                label: "Pending Review",
+                value: reviewerCockpit.counts.pendingReview,
+                tone: "rgb(29, 78, 216)",
+              },
+              {
+                label: "Approved",
+                value: reviewerCockpit.counts.approved,
+                tone: "rgb(21, 128, 61)",
+              },
+              {
+                label: "Rejected",
+                value: reviewerCockpit.counts.rejected,
+                tone: "rgb(185, 28, 28)",
+              },
+              {
+                label: "High-Risk Fields",
+                value: reviewerCockpit.counts.highRiskFields,
+                tone: "rgb(217, 119, 6)",
+              },
+              {
+                label: "Docs With Blockers",
+                value: reviewerCockpit.counts.docsWithBlockers,
+                tone: reviewerCockpit.counts.docsWithBlockers > 0 ? "rgb(185, 28, 28)" : "rgb(71, 85, 105)",
+              },
+              {
+                label: "Ready To Approve",
+                value: reviewerCockpit.counts.readyToApprove,
+                tone: reviewerCockpit.counts.readyToApprove > 0 ? "rgb(21, 128, 61)" : "rgb(71, 85, 105)",
+              },
+            ].map((item) => (
+              <div key={item.label} className="rounded-xl p-4" style={{ backgroundColor: "rgb(248, 250, 252)" }}>
+                <p className="text-xs font-medium mb-1" style={{ color: "rgb(120, 120, 120)" }}>{item.label}</p>
+                <p className="text-2xl font-bold" style={{ color: item.tone }}>{item.value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
+            <div className="rounded-xl border p-4" style={{ borderColor: "rgb(235, 235, 235)" }}>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <h3 className="text-sm font-semibold" style={{ color: "rgb(40, 40, 40)" }}>Review Blockers</h3>
+                <span className="text-xs" style={{ color: "rgb(120, 120, 120)" }}>
+                  {reviewerCockpit.blockers.length} item{reviewerCockpit.blockers.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              {reviewerCockpit.blockers.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-4 text-sm" style={{ borderColor: "rgb(220, 220, 220)", color: "rgb(100, 100, 100)" }}>
+                  No blockers detected. Documents are ready for reviewer approval.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {visibleBlockers.map((blocker) => {
+                    const doc = session.documents.find((item) => item.id === blocker.docId);
+                    const severityColors = {
+                      critical: {
+                        bg: "rgb(254, 242, 242)",
+                        border: "rgb(252, 165, 165)",
+                        text: "rgb(185, 28, 28)",
+                      },
+                      warning: {
+                        bg: "rgb(255, 251, 235)",
+                        border: "rgb(253, 224, 71)",
+                        text: "rgb(180, 83, 9)",
+                      },
+                      info: {
+                        bg: "rgb(239, 246, 255)",
+                        border: "rgb(191, 219, 254)",
+                        text: "rgb(29, 78, 216)",
+                      },
+                    }[blocker.severity];
+
+                    return (
+                      <button
+                        key={blocker.id}
+                        className="w-full rounded-lg border p-3 text-left transition-colors hover:opacity-90"
+                        style={{
+                          backgroundColor: severityColors.bg,
+                          borderColor: severityColors.border,
+                        }}
+                        onClick={() => focusDocument(blocker.docId, blocker.fieldKey)}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span
+                                className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em]"
+                                style={{
+                                  backgroundColor: `${severityColors.text}18`,
+                                  color: severityColors.text,
+                                }}
+                              >
+                                {blocker.severity}
+                              </span>
+                              <span className="text-xs font-medium" style={{ color: "rgb(70, 70, 70)" }}>
+                                {doc ? (DOC_TYPE_LABELS[doc.documentType] || doc.documentType) : "Document"}
+                              </span>
+                            </div>
+                            <p className="text-sm font-medium" style={{ color: "rgb(35, 35, 35)" }}>
+                              {blocker.message}
+                            </p>
+                            <p className="text-xs mt-1" style={{ color: "rgb(110, 110, 110)" }}>
+                              {blocker.fieldKey ? "Resolve blocker at field level" : "Resolve blocker in document review"}
+                            </p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                              style={{ backgroundColor: `${severityColors.text}18`, color: severityColors.text }}
+                            >
+                              Resolve
+                              <ChevronRight className="h-3.5 w-3.5" />
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {reviewerCockpit.blockers.length > 6 && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="w-full justify-center text-xs"
+                      onClick={() => setShowAllBlockers((prev) => !prev)}
+                    >
+                      {showAllBlockers
+                        ? "Show fewer blockers"
+                        : `Show all blockers (${reviewerCockpit.blockers.length})`}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-xl border p-4" style={{ borderColor: "rgb(235, 235, 235)" }}>
+              <h3 className="text-sm font-semibold mb-3" style={{ color: "rgb(40, 40, 40)" }}>Next Actions</h3>
+              <div className="space-y-3 text-sm">
+                <div className="rounded-lg p-3" style={{ backgroundColor: "rgb(248, 250, 252)" }}>
+                  <p className="font-medium" style={{ color: "rgb(30, 30, 30)" }}>1. Review pending documents</p>
+                  <p style={{ color: "rgb(100, 100, 100)" }}>
+                    {reviewerCockpit.counts.pendingReview} document{reviewerCockpit.counts.pendingReview === 1 ? "" : "s"} still need a reviewer decision.
+                  </p>
+                </div>
+                <div className="rounded-lg p-3" style={{ backgroundColor: "rgb(248, 250, 252)" }}>
+                  <p className="font-medium" style={{ color: "rgb(30, 30, 30)" }}>2. Resolve blockers first</p>
+                  <p style={{ color: "rgb(100, 100, 100)" }}>
+                    {reviewerCockpit.counts.docsWithBlockers} document{reviewerCockpit.counts.docsWithBlockers === 1 ? "" : "s"} still have unresolved blocker states.
+                  </p>
+                </div>
+                <div className="rounded-lg p-3" style={{ backgroundColor: "rgb(248, 250, 252)" }}>
+                  <p className="font-medium" style={{ color: "rgb(30, 30, 30)" }}>3. Verify high-risk fields</p>
+                  <p style={{ color: "rgb(100, 100, 100)" }}>
+                    {reviewerCockpit.counts.highRiskFields} low-confidence field{reviewerCockpit.counts.highRiskFields === 1 ? "" : "s"} were flagged for human verification.
+                  </p>
+                </div>
+                <div className="rounded-lg p-3" style={{ backgroundColor: "rgb(248, 250, 252)" }}>
+                  <p className="font-medium" style={{ color: "rgb(30, 30, 30)" }}>4. Inspect evidence lineage</p>
+                  <p style={{ color: "rgb(100, 100, 100)" }}>
+                    Field-level evidence links remain available on every generated document field with provenance coverage.
+                  </p>
+                </div>
+                {reviewerCockpit.counts.readyToApprove > 0 && (
+                  <Button
+                    variant="outline"
+                    className="justify-start gap-2"
+                    disabled={bulkApproving}
+                    onClick={handleApproveReadyDocuments}
+                  >
+                    {bulkApproving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                    Approve all ready documents
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* ═══ EXPECTED STEPS (SOP) ═══ */}
       <Card className="border-0 shadow-sm mb-6">
@@ -1016,9 +1453,10 @@ export default function SessionDetailPage() {
                   const relatedParts = !isAnomaly && partsIdentified
                     ? partsIdentified.filter((p) => {
                         const text = `${title} ${details || ""}`.toLowerCase();
+                        const desc = p.description || p.type || "";
                         return text.includes(p.partNumber.toLowerCase()) ||
                           (p.serialNumber && text.includes(p.serialNumber.toLowerCase())) ||
-                          text.includes(p.description.toLowerCase());
+                          (desc && text.includes(desc.toLowerCase()));
                       })
                     : [];
 
@@ -1266,8 +1704,8 @@ export default function SessionDetailPage() {
                             {part.serialNumber && (
                               <p className="text-xs" style={{ color: "rgb(100, 100, 100)" }}>S/N: {part.serialNumber}</p>
                             )}
-                            {part.description && (
-                              <p className="text-xs" style={{ color: "rgb(100, 100, 100)" }}>{part.description}</p>
+                            {(part.description || part.type) && (
+                              <p className="text-xs" style={{ color: "rgb(100, 100, 100)" }}>{part.description || part.type}</p>
                             )}
                             {part.confidence !== undefined && (
                               <p className="text-xs mt-1">
@@ -1426,8 +1864,28 @@ export default function SessionDetailPage() {
                 const lowFields = safeParseJson(doc.lowConfidenceFields) as string[] | null;
                 const lineage = safeParseJson(doc.evidenceLineage) as Record<string, EvidenceLineageEntry> | null;
                 const verification = safeParseJson(doc.verificationJson) as VerificationData | null;
+                const provenance = documentProvenance[doc.id];
+                const provenanceLoading = !!loadingProvenance[doc.id];
+                const fieldSections = contentFields
+                  ? getDocumentFieldSections(doc.documentType, contentFields)
+                  : [];
+                const docSummary = reviewerCockpit.documents[doc.id];
+                const docHasBlockers = (docSummary?.blockerCount || 0) > 0;
+                const docReadyToApprove = !!docSummary?.readyToApprove;
                 const isEditable = doc.status === "draft" || doc.status === "pending_review";
                 const docEditedFields = editedFields[doc.id];
+                const reviewState = parseDocumentReviewState(doc.reviewNotes);
+                const rejectionNote = reviewState.rejectionNote;
+                const fieldDispositions = reviewState.fieldDispositions;
+                const verificationIssues = [
+                  ...(verification?.issues || []),
+                  ...((verification?.documentReviews || []).flatMap((review) => review.issues || [])),
+                ];
+                const issuesByField = verificationIssues.reduce<Record<string, VerificationIssue[]>>((acc, issue) => {
+                  if (!issue.field) return acc;
+                  acc[issue.field] = [...(acc[issue.field] || []), issue];
+                  return acc;
+                }, {});
 
                 // Source badge icons and colors for evidence lineage
                 const sourceConfig: Record<string, { icon: React.ReactNode; label: string; color: string; bg: string }> = {
@@ -1442,13 +1900,20 @@ export default function SessionDetailPage() {
                 return (
                   <div
                     key={doc.id}
+                    id={`document-${doc.id}`}
                     className="border rounded-lg overflow-hidden"
                     style={{ borderColor: "rgb(230, 230, 230)" }}
                   >
                     {/* Document header */}
                     <div
                       className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors"
-                      onClick={() => setExpandedDoc(isExpanded ? null : doc.id)}
+                      onClick={() => {
+                        const nextExpanded = isExpanded ? null : doc.id;
+                        setExpandedDoc(nextExpanded);
+                        if (nextExpanded) {
+                          void fetchDocumentProvenance(doc.id);
+                        }
+                      }}
                     >
                       <div className="flex items-center gap-3">
                         <button className="text-slate-400">
@@ -1465,23 +1930,61 @@ export default function SessionDetailPage() {
                                 {Math.round(doc.confidence * 100)}%
                               </span>
                             </span>
-                            {lowFields && lowFields.length > 0 && (
+                            {(docSummary?.lowConfidenceCount || 0) > 0 && (
                               <span className="flex items-center gap-1" style={{ color: "rgb(202, 138, 4)" }}>
                                 <AlertTriangle className="h-3 w-3" />
-                                {lowFields.length} low-confidence fields
+                                {docSummary?.lowConfidenceCount} low-confidence field{docSummary?.lowConfidenceCount === 1 ? "" : "s"}
                               </span>
                             )}
+                            {reviewerCockpit.documents[doc.id]?.verificationIssueCount ? (
+                              <span className="flex items-center gap-1" style={{ color: "rgb(220, 38, 38)" }}>
+                                <Shield className="h-3 w-3" />
+                                {reviewerCockpit.documents[doc.id]?.verificationIssueCount} verification issue{reviewerCockpit.documents[doc.id]?.verificationIssueCount === 1 ? "" : "s"}
+                              </span>
+                            ) : null}
+                            {reviewerCockpit.documents[doc.id]?.provenanceFieldCount ? (
+                              <span className="flex items-center gap-1" style={{ color: "rgb(37, 99, 235)" }}>
+                                <ArrowRightLeft className="h-3 w-3" />
+                                {reviewerCockpit.documents[doc.id]?.provenanceFieldCount} evidence-linked field{reviewerCockpit.documents[doc.id]?.provenanceFieldCount === 1 ? "" : "s"}
+                              </span>
+                            ) : null}
+                            {reviewerCockpit.documents[doc.id]?.provenanceDiscrepancyCount ? (
+                              <span className="flex items-center gap-1" style={{ color: "rgb(180, 83, 9)" }}>
+                                <AlertTriangle className="h-3 w-3" />
+                                {reviewerCockpit.documents[doc.id]?.provenanceDiscrepancyCount}{" "}
+                                {reviewerCockpit.documents[doc.id]?.provenanceDiscrepancyCount === 1
+                                  ? "provenance discrepancy"
+                                  : "provenance discrepancies"}
+                              </span>
+                            ) : null}
                             <span>{formatDate(doc.generatedAt)}</span>
                           </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
+                        {docReadyToApprove && (
+                          <span
+                            className="px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                            style={{ backgroundColor: "rgb(220, 252, 231)", color: "rgb(21, 128, 61)" }}
+                          >
+                            Ready to approve
+                          </span>
+                        )}
+                        {docHasBlockers && (
+                          <span
+                            className="px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                            style={{ backgroundColor: "rgb(254, 242, 242)", color: "rgb(185, 28, 28)" }}
+                          >
+                            Resolve blockers
+                          </span>
+                        )}
                         <span
                           className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                            STATUS_COLORS[doc.status] || "bg-slate-100 text-slate-600"
+                            DOCUMENT_STATUS_COLORS[doc.status] ||
+                            "bg-slate-100 text-slate-600"
                           }`}
                         >
-                          {STATUS_LABELS[doc.status] || doc.status}
+                          {DOCUMENT_STATUS_LABELS[doc.status] || doc.status}
                         </span>
                       </div>
                     </div>
@@ -1489,103 +1992,415 @@ export default function SessionDetailPage() {
                     {/* Expanded content */}
                     {isExpanded && (
                       <div className="border-t px-4 py-4" style={{ borderColor: "rgb(240, 240, 240)" }}>
+                        <div
+                          className="mb-4 rounded-xl border p-3"
+                          style={{
+                            backgroundColor: docReadyToApprove ? "rgb(240, 253, 244)" : "rgb(255, 251, 235)",
+                            borderColor: docReadyToApprove ? "rgb(187, 247, 208)" : "rgb(253, 224, 71)",
+                          }}
+                        >
+                          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <div>
+                              <p
+                                className="text-sm font-semibold"
+                                style={{ color: docReadyToApprove ? "rgb(21, 128, 61)" : "rgb(161, 98, 7)" }}
+                              >
+                                {docReadyToApprove ? "Document is ready for certifier approval." : "Resolve blockers before approval."}
+                              </p>
+                              <p className="text-xs mt-1" style={{ color: "rgb(100, 100, 100)" }}>
+                                {docReadyToApprove
+                                  ? "Verification checks and confidence thresholds are clear for this document."
+                                  : `${docSummary?.blockerCount || 0} blocker pattern${(docSummary?.blockerCount || 0) === 1 ? "" : "s"} still require reviewer attention.`}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {docReadyToApprove ? (
+                                <Button
+                                  size="sm"
+                                  disabled={reviewingDoc === doc.id}
+                                  onClick={() => handleReview(doc.id, "approve")}
+                                  className="gap-1.5"
+                                  style={{ backgroundColor: "rgb(34, 197, 94)", color: "white" }}
+                                >
+                                  {reviewingDoc === doc.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <CheckCircle2 className="h-4 w-4" />
+                                  )}
+                                  Approve document
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-1.5"
+                                  onClick={() => focusDocument(
+                                    doc.id,
+                                    reviewerCockpit.blockers.find((blocker) => blocker.docId === doc.id && blocker.fieldKey)?.fieldKey
+                                  )}
+                                >
+                                  Resolve blockers
+                                  <ArrowRight className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
                         {/* Form fields with evidence lineage + inline editing */}
                         {contentFields && (
                           <div className="mb-4">
-                            <h4 className="text-xs font-semibold mb-3" style={{ color: "rgb(80, 80, 80)" }}>Form Fields</h4>
-                            <div className="grid md:grid-cols-2 gap-2">
-                              {Object.entries(contentFields).map(([key, val]) => {
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                              <h4 className="text-xs font-semibold" style={{ color: "rgb(80, 80, 80)" }}>Form Fields</h4>
+                              {provenanceLoading && (
+                                <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: "rgb(120, 120, 120)" }}>
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                  Loading evidence chain...
+                                </span>
+                              )}
+                            </div>
+                            <div className="space-y-4">
+                              {fieldSections.map((section) => (
+                                <div key={section.title}>
+                                  <div className="mb-2 flex items-center justify-between gap-3">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "rgb(120, 120, 120)" }}>
+                                      {section.title}
+                                    </p>
+                                    <div className="h-px flex-1" style={{ backgroundColor: "rgb(235, 235, 235)" }} />
+                                  </div>
+                                  <div className="grid md:grid-cols-2 gap-2">
+                              {section.entries.map((field) => {
+                                const key = field.key;
+                                const val = field.value;
                                 const isLowConf = lowFields?.includes(key);
                                 const fieldLineage = lineage?.[key];
+                                const fieldProvenance = provenance?.provenanceByField?.[key];
+                                const hasProvenance = !!fieldProvenance;
+                                const provenanceCount = fieldProvenance?.sources.length || 0;
+                                const hasDiscrepancy = (fieldProvenance?.discrepancies.length || 0) > 0;
                                 const src = fieldLineage ? sourceConfig[fieldLineage.source] : null;
                                 const isCurrentlyEditing = editingField?.docId === doc.id && editingField?.field === key;
                                 const wasEdited = docEditedFields?.has(key);
+                                const fieldIssues = issuesByField[key] || [];
+                                const currentDisposition = fieldDispositions[key];
+                                const hasOpenComposer =
+                                  fieldDispositionComposer?.docId === doc.id &&
+                                  fieldDispositionComposer?.fieldKey === key;
+                                const dispositionSaveKey = fieldSaveKey(doc.id, key);
+                                const attentionReasons = [
+                                  isLowConf ? "Low confidence" : null,
+                                  hasDiscrepancy ? "Provenance discrepancy" : null,
+                                  fieldIssues.length > 0
+                                    ? `${fieldIssues.length} verification issue${fieldIssues.length === 1 ? "" : "s"}`
+                                    : null,
+                                  currentDisposition?.status === "needs_additional_evidence"
+                                    ? "Additional evidence requested"
+                                    : null,
+                                ].filter(Boolean) as string[];
+                                const showDispositionPanel =
+                                  attentionReasons.length > 0 || !!currentDisposition;
 
                                 return (
                                   <div
                                     key={key}
-                                    className="group flex items-start gap-2 text-xs p-2 rounded relative"
+                                    id={fieldAnchorId(doc.id, key)}
+                                    className="group text-xs p-2 rounded relative"
                                     style={{
                                       backgroundColor: isLowConf ? "rgb(255, 250, 230)" : "rgb(248, 248, 248)",
-                                      border: isLowConf ? "1px solid rgb(253, 224, 71)" : "1px solid transparent",
+                                      border: hasDiscrepancy
+                                        ? "1px solid rgb(252, 165, 165)"
+                                        : isLowConf
+                                        ? "1px solid rgb(253, 224, 71)"
+                                        : "1px solid transparent",
+                                      cursor: hasProvenance && !isCurrentlyEditing ? "pointer" : "default",
+                                    }}
+                                    onClick={() => {
+                                      if (!hasProvenance || isCurrentlyEditing) return;
+                                      setActiveEvidenceField({ docId: doc.id, fieldKey: key });
                                     }}
                                   >
-                                    <span className="font-medium shrink-0 min-w-24" style={{ color: "rgb(80, 80, 80)" }}>{key}:</span>
+                                    <div className="flex items-start gap-2">
+                                      <span className="font-medium shrink-0 min-w-24" style={{ color: "rgb(80, 80, 80)" }}>{humanizeFieldLabel(key)}:</span>
 
-                                    {/* Inline edit mode */}
-                                    {isCurrentlyEditing ? (
-                                      <div className="flex-1 flex items-center gap-1.5">
-                                        <input
-                                          type="text"
-                                          value={editingValue}
-                                          onChange={(e) => setEditingValue(e.target.value)}
-                                          className="flex-1 text-xs border rounded px-2 py-1"
-                                          style={{ borderColor: "rgb(180, 180, 180)" }}
-                                          autoFocus
-                                          onKeyDown={(e) => {
-                                            if (e.key === "Enter") handleSaveField(doc.id, key, editingValue);
-                                            if (e.key === "Escape") { setEditingField(null); setEditingValue(""); }
-                                          }}
-                                        />
-                                        <button
-                                          onClick={() => handleSaveField(doc.id, key, editingValue)}
-                                          disabled={savingField}
-                                          className="p-1 rounded hover:bg-green-100"
-                                          title="Save"
-                                        >
-                                          {savingField ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" style={{ color: "rgb(34, 197, 94)" }} />}
-                                        </button>
-                                        <button
-                                          onClick={() => { setEditingField(null); setEditingValue(""); }}
-                                          className="p-1 rounded hover:bg-red-100"
-                                          title="Cancel"
-                                        >
-                                          <X className="h-3 w-3" style={{ color: "rgb(220, 50, 50)" }} />
-                                        </button>
-                                      </div>
-                                    ) : (
-                                      <>
-                                        <span className="flex-1" style={{ color: "rgb(40, 40, 40)" }}>{String(val) || "—"}</span>
+                                      {/* Inline edit mode */}
+                                      {isCurrentlyEditing ? (
+                                        <div className="flex-1 flex items-center gap-1.5">
+                                          <input
+                                            type="text"
+                                            value={editingValue}
+                                            onChange={(e) => setEditingValue(e.target.value)}
+                                            className="flex-1 text-xs border rounded px-2 py-1"
+                                            style={{ borderColor: "rgb(180, 180, 180)" }}
+                                            autoFocus
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") handleSaveField(doc.id, key, editingValue);
+                                              if (e.key === "Escape") { setEditingField(null); setEditingValue(""); }
+                                            }}
+                                          />
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleSaveField(doc.id, key, editingValue);
+                                            }}
+                                            disabled={savingField}
+                                            className="p-1 rounded hover:bg-green-100"
+                                            title="Save"
+                                          >
+                                            {savingField ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" style={{ color: "rgb(34, 197, 94)" }} />}
+                                          </button>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setEditingField(null);
+                                              setEditingValue("");
+                                            }}
+                                            className="p-1 rounded hover:bg-red-100"
+                                            title="Cancel"
+                                          >
+                                            <X className="h-3 w-3" style={{ color: "rgb(220, 50, 50)" }} />
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <>
+                                          <span className="flex-1" style={{ color: "rgb(40, 40, 40)" }}>{val || "—"}</span>
 
-                                        {/* Badges: low-confidence, edited, evidence source */}
-                                        <div className="flex items-center gap-1 shrink-0">
-                                          {wasEdited && (
-                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ backgroundColor: "rgb(219, 234, 254)", color: "rgb(37, 99, 235)" }}>
-                                              edited
-                                            </span>
-                                          )}
-                                          {isLowConf && <AlertTriangle className="h-3 w-3" style={{ color: "rgb(202, 138, 4)" }} />}
-                                          {src && fieldLineage && (
-                                            <span
-                                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium cursor-help"
-                                              style={{
-                                                backgroundColor: fieldLineage.confidence < 0.7 ? "rgb(255, 251, 235)" : src.bg,
-                                                color: fieldLineage.confidence < 0.7 ? "rgb(217, 119, 6)" : src.color,
-                                              }}
-                                              title={`${src.label}: ${fieldLineage.detail} (${Math.round(fieldLineage.confidence * 100)}%)`}
-                                            >
-                                              {src.icon} {src.label}
-                                            </span>
-                                          )}
-                                          {/* Edit button — only for draft/pending documents */}
-                                          {isEditable && (
-                                            <button
-                                              className="p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-200"
-                                              title="Edit field"
-                                              onClick={() => {
-                                                setEditingField({ docId: doc.id, field: key });
-                                                setEditingValue(String(val));
-                                              }}
-                                            >
-                                              <Pencil className="h-3 w-3" style={{ color: "rgb(100, 100, 100)" }} />
-                                            </button>
+                                          {/* Badges: low-confidence, edited, evidence source */}
+                                          <div className="flex items-center gap-1 shrink-0">
+                                            {wasEdited && (
+                                              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ backgroundColor: "rgb(219, 234, 254)", color: "rgb(37, 99, 235)" }}>
+                                                edited
+                                              </span>
+                                            )}
+                                            {isLowConf && <AlertTriangle className="h-3 w-3" style={{ color: "rgb(202, 138, 4)" }} />}
+                                            {fieldIssues.length > 0 && (
+                                              <span
+                                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                                style={{ backgroundColor: "rgb(254, 242, 242)", color: "rgb(185, 28, 28)" }}
+                                                title={`${fieldIssues.length} verification issue${fieldIssues.length === 1 ? "" : "s"}`}
+                                              >
+                                                <Shield className="h-3 w-3" />
+                                                {fieldIssues.length} issue{fieldIssues.length === 1 ? "" : "s"}
+                                              </span>
+                                            )}
+                                            {hasProvenance && (
+                                              <span
+                                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                                style={{
+                                                  backgroundColor: hasDiscrepancy ? "rgb(254, 242, 242)" : "rgb(239, 246, 255)",
+                                                  color: hasDiscrepancy ? "rgb(220, 38, 38)" : "rgb(37, 99, 235)",
+                                                }}
+                                                title={`${provenanceCount} evidence source${provenanceCount === 1 ? "" : "s"}`}
+                                              >
+                                                {hasDiscrepancy ? <AlertTriangle className="h-3 w-3" /> : <ArrowRightLeft className="h-3 w-3" />}
+                                                {provenanceCount || 1} src
+                                              </span>
+                                            )}
+                                            {src && fieldLineage && (
+                                              <span
+                                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium cursor-help"
+                                                style={{
+                                                  backgroundColor: fieldLineage.confidence < 0.7 ? "rgb(255, 251, 235)" : src.bg,
+                                                  color: fieldLineage.confidence < 0.7 ? "rgb(217, 119, 6)" : src.color,
+                                                }}
+                                                title={`${src.label}: ${fieldLineage.detail} (${Math.round(fieldLineage.confidence * 100)}%)`}
+                                              >
+                                                {src.icon} {src.label}
+                                              </span>
+                                            )}
+                                            {currentDisposition && (
+                                              <span
+                                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                                style={{
+                                                  backgroundColor:
+                                                    currentDisposition.status === "needs_additional_evidence"
+                                                      ? "rgb(255, 251, 235)"
+                                                      : "rgb(240, 253, 244)",
+                                                  color:
+                                                    currentDisposition.status === "needs_additional_evidence"
+                                                      ? "rgb(180, 83, 9)"
+                                                      : "rgb(21, 128, 61)",
+                                                }}
+                                              >
+                                                <FileCheck className="h-3 w-3" />
+                                                {getDispositionLabel(currentDisposition.status)}
+                                              </span>
+                                            )}
+                                            {/* Edit button — only for draft/pending documents */}
+                                            {isEditable && (
+                                              <button
+                                                className="p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-200"
+                                                title="Edit field"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setEditingField({ docId: doc.id, field: key });
+                                                  setEditingValue(val);
+                                                }}
+                                              >
+                                                <Pencil className="h-3 w-3" style={{ color: "rgb(100, 100, 100)" }} />
+                                              </button>
+                                            )}
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+
+                                    {showDispositionPanel && (
+                                      <div
+                                        className="mt-2 rounded-lg border p-2"
+                                        style={{ backgroundColor: "white", borderColor: "rgb(228, 228, 228)" }}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                          <div className="space-y-1">
+                                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: "rgb(120, 120, 120)" }}>
+                                              Certifier disposition
+                                            </p>
+                                            <p className="text-[11px]" style={{ color: "rgb(90, 90, 90)" }}>
+                                              {attentionReasons.length > 0
+                                                ? `Attention: ${attentionReasons.join(", ")}.`
+                                                : "Reviewer disposition recorded."}
+                                            </p>
+                                            {currentDisposition?.rationale && (
+                                              <p className="text-[11px]" style={{ color: "rgb(100, 100, 100)" }}>
+                                                Rationale: {currentDisposition.rationale}
+                                              </p>
+                                            )}
+                                          </div>
+                                          {isEditable ? (
+                                            <div className="flex flex-wrap gap-2">
+                                              <Button
+                                                size="sm"
+                                                variant={currentDisposition?.status === "manually_verified" ? "default" : "outline"}
+                                                className="h-7 gap-1.5 text-[11px]"
+                                                disabled={savingDispositionKey === dispositionSaveKey}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  void handleSetFieldDisposition(doc.id, key, "manually_verified");
+                                                }}
+                                              >
+                                                {savingDispositionKey === dispositionSaveKey && !hasOpenComposer ? (
+                                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                                ) : (
+                                                  <CheckCircle2 className="h-3 w-3" />
+                                                )}
+                                                Mark verified
+                                              </Button>
+                                              <Button
+                                                size="sm"
+                                                variant={currentDisposition?.status === "accepted_with_rationale" ? "default" : "outline"}
+                                                className="h-7 gap-1.5 text-[11px]"
+                                                disabled={savingDispositionKey === dispositionSaveKey}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setFieldDispositionComposer({
+                                                    docId: doc.id,
+                                                    fieldKey: key,
+                                                    status: "accepted_with_rationale",
+                                                  });
+                                                  setFieldDispositionRationale(currentDisposition?.status === "accepted_with_rationale" ? currentDisposition.rationale || "" : "");
+                                                }}
+                                              >
+                                                Accept with rationale
+                                              </Button>
+                                              <Button
+                                                size="sm"
+                                                variant={currentDisposition?.status === "needs_additional_evidence" ? "default" : "outline"}
+                                                className="h-7 gap-1.5 text-[11px]"
+                                                disabled={savingDispositionKey === dispositionSaveKey}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setFieldDispositionComposer({
+                                                    docId: doc.id,
+                                                    fieldKey: key,
+                                                    status: "needs_additional_evidence",
+                                                  });
+                                                  setFieldDispositionRationale(currentDisposition?.status === "needs_additional_evidence" ? currentDisposition.rationale || "" : "");
+                                                }}
+                                              >
+                                                Request evidence
+                                              </Button>
+                                              {currentDisposition && (
+                                                <Button
+                                                  size="sm"
+                                                  variant="ghost"
+                                                  className="h-7 text-[11px]"
+                                                  disabled={savingDispositionKey === dispositionSaveKey}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    void handleSetFieldDisposition(doc.id, key, null);
+                                                  }}
+                                                >
+                                                  Clear
+                                                </Button>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            <p className="text-[11px]" style={{ color: "rgb(120, 120, 120)" }}>
+                                              Dispositions are locked after final review.
+                                            </p>
                                           )}
                                         </div>
-                                      </>
+
+                                        {hasOpenComposer && (
+                                          <div className="mt-2 rounded-lg border p-2" style={{ borderColor: "rgb(235, 235, 235)" }}>
+                                            <Textarea
+                                              value={fieldDispositionRationale}
+                                              onChange={(e) => setFieldDispositionRationale(e.target.value)}
+                                              placeholder={
+                                                fieldDispositionComposer.status === "accepted_with_rationale"
+                                                  ? "Explain why this field is acceptable despite the blocker."
+                                                  : "Describe the evidence the technician or reviewer still needs."
+                                              }
+                                              className="min-h-[88px] text-xs"
+                                            />
+                                            <div className="mt-2 flex items-center justify-end gap-2">
+                                              <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                className="h-7 text-[11px]"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setFieldDispositionComposer(null);
+                                                  setFieldDispositionRationale("");
+                                                }}
+                                              >
+                                                Cancel
+                                              </Button>
+                                              <Button
+                                                size="sm"
+                                                className="h-7 gap-1.5 text-[11px]"
+                                                disabled={
+                                                  savingDispositionKey === dispositionSaveKey ||
+                                                  !fieldDispositionRationale.trim()
+                                                }
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  void handleSetFieldDisposition(
+                                                    doc.id,
+                                                    key,
+                                                    fieldDispositionComposer.status,
+                                                    fieldDispositionRationale
+                                                  );
+                                                }}
+                                              >
+                                                {savingDispositionKey === dispositionSaveKey ? (
+                                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                                ) : (
+                                                  <Save className="h-3 w-3" />
+                                                )}
+                                                Save disposition
+                                              </Button>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
                                     )}
                                   </div>
                                 );
                               })}
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           </div>
                         )}
@@ -1672,9 +2487,9 @@ export default function SessionDetailPage() {
                           <div className="mb-4 text-xs" style={{ color: "rgb(120, 120, 120)" }}>
                             Reviewed {formatDate(doc.reviewedAt)}
                             {doc.reviewedBy && ` by ${doc.reviewedBy.firstName} ${doc.reviewedBy.lastName}`}
-                            {doc.reviewNotes && (
+                            {rejectionNote && (
                               <p className="mt-1 p-2 rounded" style={{ backgroundColor: "rgb(255, 245, 245)", color: "rgb(180, 50, 50)" }}>
-                                Notes: {doc.reviewNotes}
+                                Notes: {rejectionNote}
                               </p>
                             )}
                           </div>
@@ -1684,20 +2499,35 @@ export default function SessionDetailPage() {
                         <div className="flex items-center gap-3 pt-3 border-t" style={{ borderColor: "rgb(240, 240, 240)" }}>
                           {doc.status !== "approved" && doc.status !== "rejected" && (
                             <>
-                              <Button
-                                size="sm"
-                                disabled={reviewingDoc === doc.id}
-                                onClick={() => handleReview(doc.id, "approve")}
-                                className="gap-1.5"
-                                style={{ backgroundColor: "rgb(34, 197, 94)", color: "white" }}
-                              >
-                                {reviewingDoc === doc.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <CheckCircle2 className="h-4 w-4" />
-                                )}
-                                Approve
-                              </Button>
+                              {docReadyToApprove ? (
+                                <Button
+                                  size="sm"
+                                  disabled={reviewingDoc === doc.id}
+                                  onClick={() => handleReview(doc.id, "approve")}
+                                  className="gap-1.5"
+                                  style={{ backgroundColor: "rgb(34, 197, 94)", color: "white" }}
+                                >
+                                  {reviewingDoc === doc.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <CheckCircle2 className="h-4 w-4" />
+                                  )}
+                                  Approve document
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => focusDocument(
+                                    doc.id,
+                                    reviewerCockpit.blockers.find((blocker) => blocker.docId === doc.id && blocker.fieldKey)?.fieldKey
+                                  )}
+                                  className="gap-1.5"
+                                >
+                                  <AlertTriangle className="h-4 w-4" />
+                                  Resolve blockers
+                                </Button>
+                              )}
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -1721,6 +2551,16 @@ export default function SessionDetailPage() {
                                 Download PDF
                               </Button>
                             </a>
+                          )}
+                          {doc.status === "approved" && (
+                            <span className="text-xs font-medium" style={{ color: "rgb(21, 128, 61)" }}>
+                              Certificate-ready document approved.
+                            </span>
+                          )}
+                          {doc.status !== "approved" && doc.status !== "rejected" && docHasBlockers && (
+                            <span className="text-xs" style={{ color: "rgb(161, 98, 7)" }}>
+                              Approval is intentionally gated until blockers are resolved.
+                            </span>
                           )}
                         </div>
                       </div>
@@ -1780,6 +2620,32 @@ export default function SessionDetailPage() {
           </CardContent>
         )}
       </Card>
+
+      <EvidenceChainDrawer
+        open={!!activeEvidenceField}
+        onOpenChange={(open) => {
+          if (!open) setActiveEvidenceField(null);
+        }}
+        loading={!!(activeEvidenceField && loadingProvenance[activeEvidenceField.docId])}
+        documentLabel={
+          activeEvidenceField
+            ? DOC_TYPE_LABELS[
+                session.documents.find((doc) => doc.id === activeEvidenceField.docId)?.documentType || ""
+              ] || session.documents.find((doc) => doc.id === activeEvidenceField.docId)?.documentType || null
+            : null
+        }
+        fieldLabel={activeEvidenceField ? humanizeFieldLabel(activeEvidenceField.fieldKey) : null}
+        fieldValue={
+          activeEvidenceField
+            ? documentProvenance[activeEvidenceField.docId]?.fields?.[activeEvidenceField.fieldKey]
+            : null
+        }
+        fieldData={
+          activeEvidenceField
+            ? documentProvenance[activeEvidenceField.docId]?.provenanceByField?.[activeEvidenceField.fieldKey] || null
+            : null
+        }
+      />
     </div>
   );
 }

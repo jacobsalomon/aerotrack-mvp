@@ -1,0 +1,79 @@
+{
+  "actionLog": [
+    { "timestamp": 0, "action": "Setup", "details": "Technician arranges workspace, lays out tools including torque wrench, calipers, and bore gauge on clean bench surface" },
+    { "timestamp": 15, "action": "Identification", "details": "Reads data plate on HPC-7 hydraulic pump — P/N 881700-1089, S/N SN-2024-11432" },
+    { "timestamp": 42, "action": "Disassembly", "details": "Removes four mounting bolts from pump housing using 9/16 socket" },
+    { "timestamp": 78, "action": "Inspection", "details": "Visual inspection of main housing bore — notes minor scoring on inner surface, no corrosion" },
+    { "timestamp": 105, "action": "Measurement", "details": "Measures bore diameter with inside micrometer — reading 2.4985 inches, within service limits per CMM Table 5-3" },
+    { "timestamp": 132, "action": "Seal removal", "details": "Removes worn main shaft seal using seal pick — notes seal lip hardening and minor extrusion" },
+    { "timestamp": 158, "action": "Cleaning", "details": "Cleans bore and seal groove with approved solvent, compressed air dry" },
+    { "timestamp": 185, "action": "Seal installation", "details": "Installs new main shaft seal P/N 65-1234-7, lubricated with MIL-PRF-83282 hydraulic fluid" },
+    { "timestamp": 210, "action": "Reassembly", "details": "Reinstalls pump housing, torques mounting bolts to 85 in-lbs per CMM section 6.4" },
+    { "timestamp": 245, "action": "Pressure test", "details": "Connects to test stand, applies 3000 psi system pressure — no leaks observed after 5-minute hold" },
+    { "timestamp": 280, "action": "Documentation", "details": "Records test results, signs work order" }
+  ],
+  "partsIdentified": [
+    { "partNumber": "881700-1089", "serialNumber": "SN-2024-11432", "description": "HPC-7 Hydraulic Pump Assembly", "confidence": 0.96 },
+    { "partNumber": "65-1234-7", "serialNumber": null, "description": "Main Shaft Seal (replacement)", "confidence": 0.91 },
+    { "partNumber": "MS21044-N4", "serialNumber": null, "description": "Self-locking nut (4 ea.)", "confidence": 0.85 }
+  ],
+  "procedureSteps": [
+    { "stepNumber": 1, "description": "Remove pump from aircraft/test fixture", "completed": true, "cmmReference": "CMM 73-11-01, Section 4.1" },
+    { "stepNumber": 2, "description": "Disassemble pump housing", "completed": true, "cmmReference": "CMM 73-11-01, Section 4.2" },
+    { "stepNumber": 3, "description": "Inspect bore dimensions", "completed": true, "cmmReference": "CMM 73-11-01, Section 5.3 (Table 5-3)" },
+    { "stepNumber": 4, "description": "Replace main shaft seal", "completed": true, "cmmReference": "CMM 73-11-01, Section 6.2" },
+    { "stepNumber": 5, "description": "Reassemble and torque", "completed": true, "cmmReference": "CMM 73-11-01, Section 6.4" },
+    { "stepNumber": 6, "description": "Functional pressure test", "completed": true, "cmmReference": "CMM 73-11-01, Section 7.1" }
+  ],
+  "anomalies": [
+    { "description": "Minor scoring observed on housing bore inner surface — within serviceable limits per CMM Table 5-3, no corrective action required", "severity": "info", "timestamp": 78 },
+    { "description": "Main shaft seal shows hardening and lip extrusion consistent with heat exposure — replaced", "severity": "warning", "timestamp": 132 }
+  ],
+  "confidence": 0.92,
+  "audioTranscript": "[00:00] Alright, starting the overhaul on the HPC-7 pump. Part number 881700-1089, serial number Sierra November 2024-11432.\n[00:42] Pulling the four mounting bolts now... housing is free.\n[01:18] Looking at the bore... I can see some light scoring, nothing deep. Let me measure it.\n[01:45] Bore reads 2.4985 inches. That's within limits per Table 5-3, service limit is 2.5010.\n[02:12] This seal is definitely shot — you can see the lip is hardened and starting to extrude. Classic heat damage. Pulling it out.\n[02:38] New seal going in — part number 65-1234-7. Lubing it up with 83282.\n[03:30] Torquing the housing bolts to 85 inch-pounds. One... two... three... four. All good.\n[04:05] Connecting to the test stand now. Running at 3000 psi... holding... no leaks. Five-minute hold is good.\n[04:40] Pump passes functional test. Serviceable, ready for release.",
+  "photoExtractions": [
+    {
+      "photoIndex": 1,
+      "description": "Data plate on HPC-7 pump housing",
+      "extractedData": {
+        "partNumber": "881700-1089",
+        "serialNumber": "SN-2024-11432",
+        "manufacturer": "Parker Hannifin",
+        "dateOfManufacture": "2019-03-15",
+        "rating": "3000 PSI / 28 GPM"
+      },
+      "confidence": 0.97
+    },
+    {
+      "photoIndex": 2,
+      "description": "Worn main shaft seal removed from pump",
+      "extractedData": {
+        "condition": "Hardened lip with extrusion, heat damage evident",
+        "partNumber": "65-1234-7 (old)",
+        "recommendation": "Replace"
+      },
+      "confidence": 0.89
+    },
+    {
+      "photoIndex": 3,
+      "description": "Bore measurement with inside micrometer",
+      "extractedData": {
+        "measurement": "2.4985 inches",
+        "instrument": "Inside micrometer",
+        "withinLimits": true
+      },
+      "confidence": 0.93
+    },
+    {
+      "photoIndex": 4,
+      "description": "Test gauge during 3000 PSI pressure hold",
+      "extractedData": {
+        "pressure": "3000 PSI",
+        "duration": "5 minutes",
+        "result": "No leaks",
+        "gaugeReading": "3000 +/- 5 PSI stable"
+      },
+      "confidence": 0.91
+    }
+  ]
+}
