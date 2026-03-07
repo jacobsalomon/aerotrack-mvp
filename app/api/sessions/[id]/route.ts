@@ -6,6 +6,9 @@
 import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { decorateSessionWithProgress } from "@/lib/session-progress";
+import { scheduleSessionProcessingIfNeeded } from "@/lib/session-processing-jobs";
+import { buildSessionApiErrorResponse } from "@/lib/session-api-error";
 
 export async function GET(
   request: Request,
@@ -14,53 +17,70 @@ export async function GET(
   const authError = requireDashboardAuth(request);
   if (authError) return authError;
 
-  const { id } = await params;
+  try {
+    const { id } = await params;
 
-  const session = await prisma.captureSession.findUnique({
-    where: { id },
-    include: {
-      technician: {
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          badgeNumber: true,
-          email: true,
-          role: true,
-        },
-      },
-      organization: {
-        select: { id: true, name: true },
-      },
-      evidence: {
-        include: {
-          videoAnnotations: {
-            orderBy: { timestamp: "asc" },
+    const session = await prisma.captureSession.findUnique({
+      where: { id },
+      include: {
+        technician: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            badgeNumber: true,
+            email: true,
+            role: true,
           },
         },
-        orderBy: { createdAt: "asc" },
-      },
-      documents: {
-        include: {
-          reviewedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
+        organization: {
+          select: { id: true, name: true },
+        },
+        evidence: {
+          include: {
+            videoAnnotations: {
+              orderBy: { timestamp: "asc" },
+            },
+          },
+          orderBy: { createdAt: "asc" },
+        },
+        documents: {
+          include: {
+            reviewedBy: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+          orderBy: { generatedAt: "asc" },
+        },
+        analysis: true,
+        processingJob: {
+          include: {
+            stages: {
+              orderBy: { createdAt: "asc" },
             },
           },
         },
-        orderBy: { generatedAt: "asc" },
+        packages: {
+          orderBy: { createdAt: "desc" },
+        },
       },
-      analysis: true,
-    },
-  });
+    });
 
-  if (!session) {
-    return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    if (!session) {
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+
+    await scheduleSessionProcessingIfNeeded(session);
+
+    return NextResponse.json(decorateSessionWithProgress(session));
+  } catch (error) {
+    console.error("Get session detail error:", error);
+    return buildSessionApiErrorResponse(error, "detail");
   }
-
-  return NextResponse.json(session);
 }
 
 // Update session fields from the web dashboard (e.g. expectedSteps)

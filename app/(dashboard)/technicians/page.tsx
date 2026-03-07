@@ -124,7 +124,7 @@ export default function TechniciansPage() {
               </TableHeader>
               <TableBody>
                 {technicians.map((tech) => (
-                  <TableRow key={tech.id}>
+                  <TableRow key={tech.id} className="transition-colors hover:bg-slate-50">
                     <TableCell>
                       <div>
                         <p className="font-medium text-sm">

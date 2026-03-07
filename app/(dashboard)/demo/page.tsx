@@ -68,16 +68,16 @@ function HeroCard() {
     <div className="space-y-8">
       <section
         data-demo-focus="demo-hero"
-        className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.14),_transparent_28%),linear-gradient(135deg,_#0f172a_0%,_#111827_45%,_#f8fafc_45%,_#ffffff_100%)] px-8 py-10 shadow-sm"
+        className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.14),_transparent_28%),linear-gradient(135deg,_#0f172a_0%,_#111827_56%,_#f8fafc_56%,_#ffffff_100%)] px-8 py-10 shadow-sm"
       >
         <div className="max-w-3xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-600">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-400">
             In-Product Executive Demo
           </p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
+          <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
             Take a buyer from paperwork pain to verified ROI without leaving the product.
           </h1>
-          <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">
+          <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
             This route is the guided sales path for AeroVision’s desktop app. It uses seeded,
             stable product data, overlays the real workflow, and keeps a return path whenever you
             branch into live pages.

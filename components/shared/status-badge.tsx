@@ -16,7 +16,7 @@ const severityColors: Record<string, string> = {
 
 export function StatusBadge({ status }: { status: string }) {
   return (
-    <Badge variant="outline" className={statusColors[status] || "bg-gray-100 text-gray-800"}>
+    <Badge variant="outline" className={`overflow-visible ${statusColors[status] || "bg-gray-100 text-gray-800"}`}>
       {status.replace("-", " ").replace(/\b\w/g, (l) => l.toUpperCase())}
     </Badge>
   );
@@ -24,7 +24,7 @@ export function StatusBadge({ status }: { status: string }) {
 
 export function SeverityBadge({ severity }: { severity: string }) {
   return (
-    <Badge variant="outline" className={severityColors[severity] || "bg-gray-100 text-gray-800"}>
+    <Badge variant="outline" className={`overflow-visible ${severityColors[severity] || "bg-gray-100 text-gray-800"}`}>
       {severity.toUpperCase()}
     </Badge>
   );

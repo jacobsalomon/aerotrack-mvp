@@ -9,7 +9,7 @@ export default function DashboardLayout({
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'rgb(250, 250, 250)' }}>
       <Sidebar />
-      <main className="ml-60 p-8">
+      <main className="min-h-screen px-4 pb-8 pt-20 sm:px-6 lg:ml-72 lg:px-8 lg:pt-8">
         {children}
         <ExecutiveDemoOverlay />
       </main>

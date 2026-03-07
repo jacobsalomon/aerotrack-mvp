@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { apiUrl } from "@/lib/api-url";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -506,11 +507,20 @@ export default function CaptureWorkPage() {
         </div>
       )}
 
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-slate-500 mb-4">
+        <Link href="/capture" className="hover:text-blue-700">
+          Capture
+        </Link>
+        <ChevronRight className="h-4 w-4" />
+        <span className="text-slate-900 font-medium">{component.partNumber}</span>
+      </div>
+
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-lg font-bold text-slate-900">
-            AeroVision Capture — {component.partNumber}
+            Capture — {component.partNumber}
           </h1>
           <p className="text-sm text-slate-500">
             {component.serialNumber} · {component.description}
