@@ -6,6 +6,8 @@
 import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { decorateSessionWithProgress } from "@/lib/session-progress";
+import { scheduleSessionProcessingIfNeeded } from "@/lib/session-processing-jobs";
 
 export async function GET(
   request: Request,
@@ -53,6 +55,16 @@ export async function GET(
         orderBy: { generatedAt: "asc" },
       },
       analysis: true,
+      processingJob: {
+        include: {
+          stages: {
+            orderBy: { createdAt: "asc" },
+          },
+        },
+      },
+      packages: {
+        orderBy: { createdAt: "desc" },
+      },
     },
   });
 
@@ -60,7 +72,9 @@ export async function GET(
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
 
-  return NextResponse.json(session);
+  await scheduleSessionProcessingIfNeeded(session);
+
+  return NextResponse.json(decorateSessionWithProgress(session));
 }
 
 // Update session fields from the web dashboard (e.g. expectedSteps)

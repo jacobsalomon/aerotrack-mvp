@@ -38,6 +38,13 @@ import {
   Loader2,
 } from "lucide-react";
 
+const PROGRESS_STATE_COLORS: Record<string, string> = {
+  Captured: "bg-cyan-100 text-cyan-700",
+  Drafting: "bg-amber-100 text-amber-700",
+  Verified: "bg-emerald-100 text-emerald-700",
+  Packaged: "bg-sky-100 text-sky-700",
+};
+
 interface SessionData {
   id: string;
   status: string;
@@ -52,6 +59,10 @@ interface SessionData {
   };
   organization: { name: string };
   _count: { evidence: number; documents: number };
+  processingProgress: {
+    userFacingState: string | null;
+    running: boolean;
+  } | null;
 }
 
 export default function SessionsPage() {
@@ -100,7 +111,7 @@ export default function SessionsPage() {
   // Summary stats (computed from all sessions, not filtered by tab)
   const totalSessions = sessions.length;
   const activeSessions = sessions.filter(
-    (s) => s.status === "capturing" || s.status === "processing"
+    (s) => s.status === "capturing" || s.processingProgress?.running
   ).length;
   const pendingReview = sessions.filter(
     (s) =>
@@ -279,7 +290,25 @@ export default function SessionsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {displayedSessions.map((session) => (
+                {displayedSessions.map((session) => {
+                  const displayStatus =
+                    session.status === "approved" || session.status === "rejected"
+                      ? SESSION_STATUS_LABELS[
+                          session.status as keyof typeof SESSION_STATUS_LABELS
+                        ] || session.status
+                      : session.processingProgress?.userFacingState ||
+                        (SESSION_STATUS_LABELS[
+                          session.status as keyof typeof SESSION_STATUS_LABELS
+                        ] || session.status);
+                  const displayClass =
+                    session.status === "approved" || session.status === "rejected"
+                      ? SESSION_STATUS_COLORS[
+                          session.status as keyof typeof SESSION_STATUS_COLORS
+                        ] || "bg-slate-100 text-slate-700"
+                      : (session.processingProgress?.userFacingState &&
+                          PROGRESS_STATE_COLORS[session.processingProgress.userFacingState]) ||
+                        "bg-slate-100 text-slate-700";
+                  return (
                   <TableRow
                     key={session.id}
                     className="cursor-pointer transition-colors"
@@ -294,11 +323,7 @@ export default function SessionsPage() {
                   >
                     <TableCell>
                       <span
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                          SESSION_STATUS_COLORS[
-                            session.status as keyof typeof SESSION_STATUS_COLORS
-                          ] || "bg-slate-100 text-slate-700"
-                        }`}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${displayClass}`}
                       >
                         {session.status === "approved" && (
                           <CheckCircle2 className="h-3 w-3" />
@@ -306,12 +331,10 @@ export default function SessionsPage() {
                         {session.status === "rejected" && (
                           <AlertCircle className="h-3 w-3" />
                         )}
-                        {(session.status === "capturing" || session.status === "processing") && (
+                        {(session.status === "capturing" || session.processingProgress?.running) && (
                           <Clock className="h-3 w-3" />
                         )}
-                        {SESSION_STATUS_LABELS[
-                          session.status as keyof typeof SESSION_STATUS_LABELS
-                        ] || session.status}
+                        {displayStatus}
                       </span>
                     </TableCell>
                     <TableCell>
@@ -341,7 +364,8 @@ export default function SessionsPage() {
                       </span>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           )}

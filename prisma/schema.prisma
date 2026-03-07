@@ -312,6 +312,8 @@ model CaptureSession {
   evidence        CaptureEvidence[]
   documents       DocumentGeneration2[]
   analysis        SessionAnalysis?
+  processingJob   SessionProcessingJob?
+  packages        SessionPackage[]
 
   @@index([technicianId])
   @@index([organizationId])
@@ -447,6 +449,58 @@ model DocumentGeneration2 {
 
   @@index([sessionId])
   @@index([reviewedById])
+}
+
+model SessionProcessingJob {
+  id             String    @id @default(cuid())
+  sessionId      String    @unique
+  session        CaptureSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  currentStage   String    @default("queued")
+  userFacingState String   @default("Captured")
+  queuedAt       DateTime  @default(now())
+  startedAt      DateTime?
+  completedAt    DateTime?
+  failedAt       DateTime?
+  lastError      String?
+  lastErrorStage String?
+  runnerToken    String?
+  leaseExpiresAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  stages         SessionProcessingStage[]
+
+  @@index([currentStage])
+}
+
+model SessionProcessingStage {
+  id            String    @id @default(cuid())
+  jobId         String
+  job           SessionProcessingJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  stage         String
+  status        String    @default("queued")
+  attemptCount  Int       @default(0)
+  startedAt     DateTime?
+  completedAt   DateTime?
+  lastError     String?
+  errorMetadata String?
+  latencyMs     Int?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([jobId, stage])
+  @@index([status])
+}
+
+model SessionPackage {
+  id          String    @id @default(cuid())
+  sessionId   String    @unique
+  session     CaptureSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  packageType String    @default("evidence_bundle_manifest")
+  status      String    @default("ready")
+  manifestJson String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 // ──────────────────────────────────────────────────────

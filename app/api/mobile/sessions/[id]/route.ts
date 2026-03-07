@@ -8,6 +8,12 @@ import {
   MOBILE_SESSION_MUTABLE_STATUS_VALUES,
   isMobileMutableSessionStatus,
 } from "@/lib/session-status";
+import { decorateSessionWithProgress } from "@/lib/session-progress";
+import {
+  ensureSessionProcessingJob,
+  scheduleSessionProcessing,
+  scheduleSessionProcessingIfNeeded,
+} from "@/lib/session-processing-jobs";
 import { NextResponse } from "next/server";
 
 // Get full session details including all evidence and generated documents
@@ -29,6 +35,16 @@ export async function GET(
       },
       documents: { orderBy: { generatedAt: "desc" } },
       analysis: true,
+      processingJob: {
+        include: {
+          stages: {
+            orderBy: { createdAt: "asc" },
+          },
+        },
+      },
+      packages: {
+        orderBy: { createdAt: "desc" },
+      },
     },
   });
 
@@ -50,7 +66,12 @@ export async function GET(
     );
   }
 
-  return NextResponse.json({ success: true, data: session });
+  await scheduleSessionProcessingIfNeeded(session);
+
+  return NextResponse.json({
+    success: true,
+    data: decorateSessionWithProgress(session),
+  });
 }
 
 // Update session — typically to end capture or link a component
@@ -80,7 +101,7 @@ export async function PATCH(
 
   try {
     const body = await request.json();
-    const { status, description, componentId, expectedSteps } = body;
+    const { status, description, componentId, expectedSteps, retryProcessing } = body;
 
     // Validate status against allowed values (must match all statuses used by mobile app + results screen)
     if (status && !isMobileMutableSessionStatus(status)) {
@@ -109,6 +130,14 @@ export async function PATCH(
       data: updateData,
     });
 
+    let processingJob = null;
+    if (status === "capture_complete" || retryProcessing === true) {
+      processingJob = await ensureSessionProcessingJob(id, {
+        forceRetry: retryProcessing === true,
+      });
+      scheduleSessionProcessing(processingJob.id);
+    }
+
     // Log status changes
     if (status) {
       await prisma.auditLogEntry.create({
@@ -123,7 +152,36 @@ export async function PATCH(
       });
     }
 
-    return NextResponse.json({ success: true, data: updated });
+    const sessionWithProgress = await prisma.captureSession.findUnique({
+      where: { id: updated.id },
+      include: {
+        evidence: {
+          orderBy: { capturedAt: "asc" },
+          include: { videoAnnotations: { orderBy: { timestamp: "asc" } } },
+        },
+        documents: { orderBy: { generatedAt: "desc" } },
+        analysis: true,
+        processingJob: {
+          include: {
+            stages: {
+              orderBy: { createdAt: "asc" },
+            },
+          },
+        },
+        packages: {
+          orderBy: { createdAt: "desc" },
+        },
+      },
+    });
+
+    if (!sessionWithProgress) {
+      return NextResponse.json({ success: true, data: updated });
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: decorateSessionWithProgress(sessionWithProgress),
+    });
   } catch (error) {
     console.error("Update session error:", error);
     return NextResponse.json(

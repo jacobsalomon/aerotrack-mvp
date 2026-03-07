@@ -4,6 +4,8 @@
 
 import { prisma } from "@/lib/db";
 import { authenticateRequest } from "@/lib/mobile-auth";
+import { decorateSessionWithProgress } from "@/lib/session-progress";
+import { scheduleSessionProcessingIfNeeded } from "@/lib/session-processing-jobs";
 import { NextResponse } from "next/server";
 
 // List the technician's sessions (most recent first)
@@ -23,12 +25,27 @@ export async function GET(request: Request) {
     where,
     include: {
       _count: { select: { evidence: true, documents: true } },
+      processingJob: {
+        include: {
+          stages: {
+            orderBy: { createdAt: "asc" },
+          },
+        },
+      },
+      packages: {
+        orderBy: { createdAt: "desc" },
+      },
     },
     orderBy: { startedAt: "desc" },
     take: 50,
   });
 
-  return NextResponse.json({ success: true, data: sessions });
+  await Promise.all(sessions.map((session) => scheduleSessionProcessingIfNeeded(session)));
+
+  return NextResponse.json({
+    success: true,
+    data: sessions.map((session) => decorateSessionWithProgress(session)),
+  });
 }
 
 // Start a new capture session

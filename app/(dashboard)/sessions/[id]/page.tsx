@@ -32,6 +32,7 @@ import {
   SESSION_STATUS_COLORS,
   SESSION_STATUS_LABELS,
 } from "@/lib/session-status";
+import { shouldPollSessionProgress } from "@/lib/session-progress";
 import { apiUrl } from "@/lib/api-url";
 import {
   ArrowLeft,
@@ -194,6 +195,22 @@ interface SessionDetail {
   evidence: Evidence[];
   documents: DocumentData[];
   analysis: SessionAnalysis | null;
+  processingProgress: {
+    userFacingState: string | null;
+    internalStage: string | null;
+    running: boolean;
+    terminal: boolean;
+    failed: boolean;
+    failedStage: string | null;
+    lastError: string | null;
+    packageArtifact: {
+      id: string;
+      packageType: string;
+      status: string;
+      createdAt: string;
+      updatedAt: string;
+    } | null;
+  } | null;
 }
 
 interface AuditEntry {
@@ -216,6 +233,13 @@ const DOCUMENT_STATUS_COLORS: Record<string, string> = {
 const DOCUMENT_STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
   pending_review: "Pending Review",
+};
+
+const PROGRESS_STATE_COLORS: Record<string, string> = {
+  Captured: "bg-cyan-100 text-cyan-700",
+  Drafting: "bg-amber-100 text-amber-700",
+  Verified: "bg-emerald-100 text-emerald-700",
+  Packaged: "bg-sky-100 text-sky-700",
 };
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -375,7 +399,7 @@ export default function SessionDetailPage() {
   }, [fetchSession]);
 
   useEffect(() => {
-    if (!session || !["processing", "analyzing"].includes(session.status)) return;
+    if (!session || !shouldPollSessionProgress(session.processingProgress)) return;
 
     const intervalId = window.setInterval(() => {
       void fetchSession();
@@ -624,6 +648,21 @@ export default function SessionDetailPage() {
   const visibleBlockers = showAllBlockers
     ? reviewerCockpit.blockers
     : reviewerCockpit.blockers.slice(0, 6);
+  const progressState = session.processingProgress?.userFacingState;
+  const progressBadgeClass =
+    (progressState && PROGRESS_STATE_COLORS[progressState]) ||
+    "bg-slate-100 text-slate-700";
+  const activeInternalStage = session.processingProgress?.internalStage;
+  const progressCopy =
+    progressState === "Verified"
+      ? "AI verification is complete. This session is ready for human review."
+      : progressState === "Packaged"
+      ? "All asynchronous deliverables are assembled into a package manifest."
+      : progressState === "Drafting"
+      ? "Background AI is drafting documents and preparing reviewer artifacts."
+      : progressState === "Captured"
+      ? "Evidence is saved. Background AI processing is queued or analyzing."
+      : null;
 
   async function handleApproveReadyDocuments() {
     if (!session) return;
@@ -761,19 +800,33 @@ export default function SessionDetailPage() {
               Badge: {session.technician.badgeNumber} &middot; {session.organization.name}
             </p>
           </div>
-          <span
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${
-              SESSION_STATUS_COLORS[
-                session.status as keyof typeof SESSION_STATUS_COLORS
-              ] || "bg-slate-100 text-slate-700"
-            }`}
-          >
-            {session.status === "approved" && <CheckCircle2 className="h-4 w-4" />}
-            {session.status === "rejected" && <XCircle className="h-4 w-4" />}
-            {SESSION_STATUS_LABELS[
-              session.status as keyof typeof SESSION_STATUS_LABELS
-            ] || session.status}
-          </span>
+          <div className="flex flex-col items-end gap-2">
+            <span
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${
+                session.status === "approved" || session.status === "rejected"
+                  ? SESSION_STATUS_COLORS[
+                      session.status as keyof typeof SESSION_STATUS_COLORS
+                    ] || "bg-slate-100 text-slate-700"
+                  : progressBadgeClass
+              }`}
+            >
+              {session.status === "approved" && <CheckCircle2 className="h-4 w-4" />}
+              {session.status === "rejected" && <XCircle className="h-4 w-4" />}
+              {session.status === "approved" || session.status === "rejected"
+                ? SESSION_STATUS_LABELS[
+                    session.status as keyof typeof SESSION_STATUS_LABELS
+                  ] || session.status
+                : progressState ||
+                  (SESSION_STATUS_LABELS[
+                    session.status as keyof typeof SESSION_STATUS_LABELS
+                  ] || session.status)}
+            </span>
+            {progressState && activeInternalStage && (
+              <p className="text-xs" style={{ color: "rgb(120, 120, 120)" }}>
+                AI stage: {activeInternalStage}
+              </p>
+            )}
+          </div>
         </div>
         <div className="flex gap-6 mt-4 text-sm" style={{ color: "rgb(80, 80, 80)" }}>
           <span className="flex items-center gap-1.5">
@@ -798,6 +851,41 @@ export default function SessionDetailPage() {
             <ExternalLink className="h-3.5 w-3.5" />
             View Linked Component
           </Link>
+        )}
+        {session.processingProgress && (
+          <div
+            className="mt-4 rounded-2xl border px-4 py-3"
+            style={{
+              borderColor: session.processingProgress.failed
+                ? "rgba(244, 63, 94, 0.25)"
+                : "rgba(148, 163, 184, 0.2)",
+              backgroundColor: session.processingProgress.failed
+                ? "rgba(255, 241, 242, 0.95)"
+                : "rgba(248, 250, 252, 0.95)",
+            }}
+          >
+            <div className="flex flex-wrap items-center gap-3">
+              <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${progressBadgeClass}`}>
+                {progressState || "In Progress"}
+              </span>
+              {session.processingProgress.packageArtifact && (
+                <span className="text-xs font-medium" style={{ color: "rgb(80, 80, 80)" }}>
+                  Package ready: {session.processingProgress.packageArtifact.packageType}
+                </span>
+              )}
+            </div>
+            {progressCopy && (
+              <p className="mt-2 text-sm" style={{ color: "rgb(80, 80, 80)" }}>
+                {progressCopy}
+              </p>
+            )}
+            {session.processingProgress.failed && (
+              <p className="mt-2 text-sm" style={{ color: "rgb(190, 24, 93)" }}>
+                Failed during {session.processingProgress.failedStage || "processing"}:{" "}
+                {session.processingProgress.lastError || "Unknown error"}
+              </p>
+            )}
+          </div>
         )}
       </div>
 
