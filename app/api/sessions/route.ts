@@ -5,6 +5,8 @@
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { decorateSessionWithProgress } from "@/lib/session-progress";
+import { scheduleSessionProcessingIfNeeded } from "@/lib/session-processing-jobs";
 
 export async function GET(request: Request) {
   const authError = requireDashboardAuth(request);
@@ -36,10 +38,24 @@ export async function GET(request: Request) {
           documents: true,
         },
       },
+      processingJob: {
+        include: {
+          stages: {
+            orderBy: { createdAt: "asc" },
+          },
+        },
+      },
+      packages: {
+        orderBy: { createdAt: "desc" },
+      },
     },
     orderBy: { startedAt: "desc" },
     take: 100,
   });
 
-  return NextResponse.json(sessions);
+  await Promise.all(sessions.map((session) => scheduleSessionProcessingIfNeeded(session)));
+
+  return NextResponse.json(
+    sessions.map((session) => decorateSessionWithProgress(session))
+  );
 }
