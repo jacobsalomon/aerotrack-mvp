@@ -10,6 +10,7 @@ export const maxDuration = 60;
 import { prisma } from "@/lib/db";
 import { authenticateRequest } from "@/lib/mobile-auth";
 import { clampConfidence } from "@/lib/ai/utils";
+import { isAllowedEvidenceUrl } from "@/lib/evidence-url";
 import {
   uploadFileToGemini,
   waitForFileProcessing,
@@ -74,6 +75,13 @@ export async function POST(request: Request) {
           message: "Annotations already exist for this evidence",
         },
       });
+    }
+
+    if (!isAllowedEvidenceUrl(evidence.fileUrl)) {
+      return NextResponse.json(
+        { success: false, error: "Evidence URL host is not allowed" },
+        { status: 400 }
+      );
     }
 
     // Download the video file from Vercel Blob

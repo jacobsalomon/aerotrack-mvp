@@ -7,6 +7,7 @@ export const maxDuration = 120;
 import { prisma } from "@/lib/db";
 import { authenticateRequest } from "@/lib/mobile-auth";
 import { clampConfidence } from "@/lib/ai/utils";
+import { isAllowedEvidenceUrl } from "@/lib/evidence-url";
 import {
   uploadFileToGemini,
   waitForFileProcessing,
@@ -260,6 +261,10 @@ export async function POST(request: Request) {
       let uploadedFileName: string | null = null;
 
       try {
+        if (!isAllowedEvidenceUrl(targetVideo.fileUrl)) {
+          throw new Error("Video URL host is not allowed");
+        }
+
         const fileResponse = await fetch(targetVideo.fileUrl);
         if (!fileResponse.ok) {
           throw new Error(`Could not retrieve video file (status ${fileResponse.status})`);
@@ -309,6 +314,10 @@ export async function POST(request: Request) {
       const chunkResults = await Promise.all(
         audioEvidence.map(async (chunk) => {
           try {
+            if (!isAllowedEvidenceUrl(chunk.fileUrl)) {
+              throw new Error("Audio URL host is not allowed");
+            }
+
             const response = await fetch(chunk.fileUrl);
             if (!response.ok) {
               throw new Error(`Could not retrieve audio file (status ${response.status})`);
@@ -388,6 +397,10 @@ export async function POST(request: Request) {
       const extractionResults = await Promise.all(
         photoEvidence.map(async (photo) => {
           try {
+            if (!isAllowedEvidenceUrl(photo.fileUrl)) {
+              throw new Error("Photo URL host is not allowed");
+            }
+
             const response = await fetch(photo.fileUrl);
             if (!response.ok) {
               throw new Error(`Could not retrieve photo file (status ${response.status})`);

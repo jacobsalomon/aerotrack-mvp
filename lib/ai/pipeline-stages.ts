@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
+import { isAllowedEvidenceUrl } from "@/lib/evidence-url";
 import {
   uploadFileToGemini,
   waitForFileProcessing,
@@ -7,6 +9,13 @@ import {
 } from "./gemini";
 import { generateDocuments } from "./openai";
 import { clampConfidence } from "./utils";
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002"
+  );
+}
 
 export interface AnalysisStageResult {
   transcriptionStitch: { success: boolean; error?: string; chunkCount: number };
@@ -94,6 +103,10 @@ export async function runSessionAnalysisStage(
 
       if (!existingAnalysis) {
         const video = videoEvidence[0];
+        if (!isAllowedEvidenceUrl(video.fileUrl)) {
+          throw new Error("Video evidence URL host is not allowed");
+        }
+
         const videoResponse = await fetch(video.fileUrl);
         if (!videoResponse.ok) {
           throw new Error(
@@ -298,16 +311,20 @@ export async function runSessionDraftingStage(
 
     const savedTypes: string[] = [];
     for (const doc of generated.documents || []) {
-      await prisma.documentGeneration2.create({
-        data: {
-          sessionId,
-          documentType: doc.documentType,
-          contentJson: JSON.stringify(doc.contentJson),
-          status: "draft",
-          confidence: clampConfidence(doc.confidence),
-          lowConfidenceFields: JSON.stringify(doc.lowConfidenceFields || []),
-        },
-      });
+      try {
+        await prisma.documentGeneration2.create({
+          data: {
+            sessionId,
+            documentType: doc.documentType,
+            contentJson: JSON.stringify(doc.contentJson),
+            status: "draft",
+            confidence: clampConfidence(doc.confidence),
+            lowConfidenceFields: JSON.stringify(doc.lowConfidenceFields || []),
+          },
+        });
+      } catch (error) {
+        if (!isUniqueConstraintError(error)) throw error;
+      }
       savedTypes.push(doc.documentType);
     }
 

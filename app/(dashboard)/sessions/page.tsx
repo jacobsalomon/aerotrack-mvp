@@ -127,6 +127,13 @@ export default function SessionsPage() {
       const res = await fetch(apiUrl(`/api/sessions${params}`));
       const payload = await res.json().catch(() => null);
 
+      // Session cookie expired — clear gate flag and reload to show passcode entry
+      if (res.status === 401) {
+        sessionStorage.removeItem("demo-unlocked");
+        window.location.reload();
+        return;
+      }
+
       if (!res.ok) {
         throw payload ?? new Error(`API error: ${res.status}`);
       }

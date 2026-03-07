@@ -5,6 +5,7 @@
 export const maxDuration = 60;
 
 import { prisma } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import { requireDashboardAuth } from "@/lib/dashboard-auth";
 import { clampConfidence } from "@/lib/ai/utils";
 import { generateDocuments } from "@/lib/ai/openai";
@@ -15,6 +16,13 @@ const SUPPORTED_DOCUMENT_TYPES: Record<string, string> = {
   "337": "FAA Form 337 — Major Repair and Alteration",
   "8010-4": "FAA 8010-4 — Malfunction/Defect Report",
 };
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002"
+  );
+}
 
 export async function POST(
   request: Request,
@@ -157,17 +165,30 @@ export async function POST(
     const lowConfidenceFields = doc?.lowConfidenceFields || ["all fields"];
     const evidenceLineage = doc?.evidenceLineage || null;
 
-    const saved = await prisma.documentGeneration2.create({
-      data: {
-        sessionId,
-        documentType,
-        contentJson: JSON.stringify(contentJson),
-        status: "draft",
-        confidence,
-        lowConfidenceFields: JSON.stringify(lowConfidenceFields),
-        evidenceLineage: evidenceLineage ? JSON.stringify(evidenceLineage) : null,
-      },
-    });
+    let saved;
+    try {
+      saved = await prisma.documentGeneration2.create({
+        data: {
+          sessionId,
+          documentType,
+          contentJson: JSON.stringify(contentJson),
+          status: "draft",
+          confidence,
+          lowConfidenceFields: JSON.stringify(lowConfidenceFields),
+          evidenceLineage: evidenceLineage ? JSON.stringify(evidenceLineage) : null,
+        },
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        return NextResponse.json(
+          {
+            error: `A ${SUPPORTED_DOCUMENT_TYPES[documentType]} already exists for this session.`,
+          },
+          { status: 409 }
+        );
+      }
+      throw error;
+    }
 
     // Update session status
     if (session.status === "capture_complete" || session.status === "capturing") {

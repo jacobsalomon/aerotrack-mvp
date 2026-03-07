@@ -8,6 +8,7 @@
 export const maxDuration = 120;
 
 import { prisma } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import { authenticateRequest } from "@/lib/mobile-auth";
 import { clampConfidence } from "@/lib/ai/utils";
 import { generateDocuments } from "@/lib/ai/openai";
@@ -17,6 +18,13 @@ import {
 } from "@/lib/reference-data";
 import { verifyDocuments } from "@/lib/ai/verify";
 import { NextResponse } from "next/server";
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002"
+  );
+}
 
 export async function POST(request: Request) {
   const auth = await authenticateRequest(request);
@@ -230,24 +238,64 @@ export async function POST(request: Request) {
     for (const doc of result.documents || []) {
       const docProvenance = doc.provenance || doc.evidenceLineage || {};
       const docDiscrepancies = doc.discrepancies || [];
-      const saved = await prisma.documentGeneration2.create({
-        data: {
-          sessionId,
-          documentType: doc.documentType,
-          contentJson: JSON.stringify(doc.contentJson),
-          status: "draft",
-          confidence: clampConfidence(doc.confidence),
-          lowConfidenceFields: JSON.stringify(doc.lowConfidenceFields || []),
-          evidenceLineage: doc.evidenceLineage ? JSON.stringify(doc.evidenceLineage) : null,
-          provenanceJson: JSON.stringify(docProvenance),
-        },
-      });
+      let saved;
+      try {
+        saved = await prisma.documentGeneration2.create({
+          data: {
+            sessionId,
+            documentType: doc.documentType,
+            contentJson: JSON.stringify(doc.contentJson),
+            status: "draft",
+            confidence: clampConfidence(doc.confidence),
+            lowConfidenceFields: JSON.stringify(doc.lowConfidenceFields || []),
+            evidenceLineage: doc.evidenceLineage
+              ? JSON.stringify(doc.evidenceLineage)
+              : null,
+            provenanceJson: JSON.stringify(docProvenance),
+          },
+        });
+      } catch (error) {
+        if (!isUniqueConstraintError(error)) throw error;
+
+        const existing = await prisma.documentGeneration2.findFirst({
+          where: {
+            sessionId,
+            documentType: doc.documentType,
+          },
+        });
+
+        if (!existing) throw error;
+        saved = existing;
+      }
+
+      let parsedContentJson: unknown = doc.contentJson;
+      let parsedLowConfidenceFields: unknown = doc.lowConfidenceFields || [];
+      let parsedEvidenceLineage: unknown = doc.evidenceLineage || null;
+      let parsedProvenanceJson: unknown = docProvenance;
+
+      try {
+        parsedContentJson = JSON.parse(saved.contentJson);
+      } catch {}
+      try {
+        parsedLowConfidenceFields = JSON.parse(saved.lowConfidenceFields || "[]");
+      } catch {}
+      try {
+        parsedEvidenceLineage = saved.evidenceLineage
+          ? JSON.parse(saved.evidenceLineage)
+          : null;
+      } catch {}
+      try {
+        parsedProvenanceJson = saved.provenanceJson
+          ? JSON.parse(saved.provenanceJson)
+          : {};
+      } catch {}
+
       savedDocuments.push({
         ...saved,
-        contentJson: doc.contentJson,
-        lowConfidenceFields: doc.lowConfidenceFields || [],
-        evidenceLineage: doc.evidenceLineage || null,
-        provenanceJson: docProvenance,
+        contentJson: parsedContentJson,
+        lowConfidenceFields: parsedLowConfidenceFields,
+        evidenceLineage: parsedEvidenceLineage,
+        provenanceJson: parsedProvenanceJson,
         discrepancies: docDiscrepancies,
       });
     }

@@ -5,6 +5,10 @@
 
 import { prisma } from "@/lib/db";
 import { authenticateRequest } from "@/lib/mobile-auth";
+import {
+  getAllowedEvidenceHostsForError,
+  isAllowedEvidenceUrl,
+} from "@/lib/evidence-url";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
@@ -32,18 +36,13 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate blobUrl is an HTTPS URL
-    try {
-      const parsed = new URL(String(blobUrl));
-      if (parsed.protocol !== "https:") {
-        return NextResponse.json(
-          { success: false, error: "blobUrl must be an HTTPS URL" },
-          { status: 400 }
-        );
-      }
-    } catch {
+    // Validate blob URL and enforce storage host allowlist
+    if (!isAllowedEvidenceUrl(String(blobUrl))) {
       return NextResponse.json(
-        { success: false, error: "blobUrl must be a valid URL" },
+        {
+          success: false,
+          error: `blobUrl must be an HTTPS URL from an allowed host (${getAllowedEvidenceHostsForError()})`,
+        },
         { status: 400 }
       );
     }

@@ -317,6 +317,9 @@ model CaptureSession {
 
   @@index([technicianId])
   @@index([organizationId])
+  @@index([status, startedAt])
+  @@index([technicianId, status, startedAt])
+  @@index([organizationId, status, startedAt])
 }
 
 // ──────────────────────────────────────────────────────
@@ -449,6 +452,7 @@ model DocumentGeneration2 {
 
   @@index([sessionId])
   @@index([reviewedById])
+  @@unique([sessionId, documentType])
 }
 
 model SessionProcessingJob {

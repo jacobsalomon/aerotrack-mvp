@@ -16,6 +16,8 @@ import {
 } from "@/lib/session-processing-jobs";
 import { NextResponse } from "next/server";
 
+const PRIVILEGED_ROLES = new Set(["SUPERVISOR", "ADMIN"]);
+
 // Get full session details including all evidence and generated documents
 export async function GET(
   request: Request,
@@ -55,11 +57,12 @@ export async function GET(
     );
   }
 
-  // Only the owning technician or supervisors can view
-  if (
-    session.technicianId !== auth.technician.id &&
-    auth.technician.role === "TECHNICIAN"
-  ) {
+  const isSameOrganization =
+    session.organizationId === auth.technician.organizationId;
+  const isOwner = session.technicianId === auth.technician.id;
+  const isPrivileged = PRIVILEGED_ROLES.has(auth.technician.role);
+
+  if (!isSameOrganization || (!isOwner && !isPrivileged)) {
     return NextResponse.json(
       { success: false, error: "Not authorized to view this session" },
       { status: 403 }

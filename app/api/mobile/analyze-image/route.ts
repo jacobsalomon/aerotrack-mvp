@@ -11,6 +11,8 @@ import { authenticateRequest } from "@/lib/mobile-auth";
 import { analyzeImageWithFallback } from "@/lib/ai/openai";
 import { NextResponse } from "next/server";
 
+const PRIVILEGED_ROLES = new Set(["SUPERVISOR", "ADMIN"]);
+
 export async function POST(request: Request) {
   const auth = await authenticateRequest(request);
   if ("error" in auth) return auth.error;
@@ -35,29 +37,102 @@ export async function POST(request: Request) {
       );
     }
 
+    let authorizedSessionId: string | null = null;
+
+    if (evidenceId) {
+      const evidence = await prisma.captureEvidence.findUnique({
+        where: { id: evidenceId },
+        include: {
+          session: {
+            select: {
+              id: true,
+              technicianId: true,
+              organizationId: true,
+            },
+          },
+        },
+      });
+
+      if (!evidence) {
+        return NextResponse.json(
+          { success: false, error: "Evidence not found" },
+          { status: 404 }
+        );
+      }
+
+      const isSameOrganization =
+        evidence.session.organizationId === auth.technician.organizationId;
+      const isOwner = evidence.session.technicianId === auth.technician.id;
+      const isPrivileged = PRIVILEGED_ROLES.has(auth.technician.role);
+
+      if (!isSameOrganization || (!isOwner && !isPrivileged)) {
+        return NextResponse.json(
+          { success: false, error: "Not authorized for this evidence" },
+          { status: 403 }
+        );
+      }
+
+      authorizedSessionId = evidence.session.id;
+    }
+
+    if (sessionId) {
+      const session = await prisma.captureSession.findUnique({
+        where: { id: sessionId },
+        select: {
+          id: true,
+          technicianId: true,
+          organizationId: true,
+        },
+      });
+
+      if (!session) {
+        return NextResponse.json(
+          { success: false, error: "Session not found" },
+          { status: 404 }
+        );
+      }
+
+      const isSameOrganization =
+        session.organizationId === auth.technician.organizationId;
+      const isOwner = session.technicianId === auth.technician.id;
+      const isPrivileged = PRIVILEGED_ROLES.has(auth.technician.role);
+
+      if (!isSameOrganization || (!isOwner && !isPrivileged)) {
+        return NextResponse.json(
+          { success: false, error: "Not authorized for this session" },
+          { status: 403 }
+        );
+      }
+
+      if (authorizedSessionId && session.id !== authorizedSessionId) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "evidenceId and sessionId must reference the same session",
+          },
+          { status: 400 }
+        );
+      }
+
+      authorizedSessionId = session.id;
+    }
+
     const extraction = await analyzeImageWithFallback({
       imageBase64,
       mimeType: bodyMimeType || "image/jpeg",
     });
 
-    // If we have an evidenceId, update the evidence record with the extraction
-    // but only if the evidence belongs to a session owned by this technician
+    // If we have an evidenceId, update the evidence record after auth checks.
     if (evidenceId) {
-      const evidence = await prisma.captureEvidence.findUnique({
+      await prisma.captureEvidence.update({
         where: { id: evidenceId },
-        include: { session: { select: { technicianId: true } } },
+        data: { aiExtraction: JSON.stringify(extraction) },
       });
-      if (evidence && evidence.session.technicianId === auth.technician.id) {
-        await prisma.captureEvidence.update({
-          where: { id: evidenceId },
-          data: { aiExtraction: JSON.stringify(extraction) },
-        });
-      }
     }
 
     // Try to match a component in our database by part number or serial number
     let componentMatch = null;
-    if (extraction.partNumber || extraction.serialNumber) {
+    if (authorizedSessionId && (extraction.partNumber || extraction.serialNumber)) {
       const matchConditions = [];
       if (extraction.serialNumber) {
         matchConditions.push({ serialNumber: extraction.serialNumber });
@@ -79,14 +154,10 @@ export async function POST(request: Request) {
       if (component) {
         componentMatch = component;
 
-        // If we have a sessionId, auto-link the component — but only if the
-        // session belongs to this technician (prevent cross-session manipulation)
-        if (sessionId) {
-          await prisma.captureSession.updateMany({
-            where: { id: sessionId, technicianId: auth.technician.id },
-            data: { componentId: component.id },
-          });
-        }
+        await prisma.captureSession.update({
+          where: { id: authorizedSessionId },
+          data: { componentId: component.id },
+        });
       }
     }
 

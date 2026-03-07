@@ -17,11 +17,28 @@ export default function PasscodeGate({ children }: { children: ReactNode }) {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Check if already unlocked this session (wait for hydration to avoid flash)
+  // Also verify the server-side cookie is still valid — it expires after 72 hours
+  // while sessionStorage persists until the tab closes
   useEffect(() => {
     if (sessionStorage.getItem(SESSION_KEY) === "true") {
-      setUnlocked(true);
+      // Verify the cookie is still valid with a lightweight API call
+      fetch(apiUrl("/api/auth/check"), { method: "HEAD" })
+        .then((res) => {
+          if (res.ok) {
+            setUnlocked(true);
+          } else {
+            // Cookie expired — clear flag so passcode form shows
+            sessionStorage.removeItem(SESSION_KEY);
+          }
+        })
+        .catch(() => {
+          // Network error — let them through, API calls will fail with clearer errors
+          setUnlocked(true);
+        })
+        .finally(() => setHydrated(true));
+    } else {
+      setHydrated(true);
     }
-    setHydrated(true);
   }, []);
 
   // Auto-submit when all 4 digits are filled
