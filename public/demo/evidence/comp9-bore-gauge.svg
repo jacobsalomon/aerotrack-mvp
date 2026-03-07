@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+  <rect width="1200" height="800" fill="#0f172a"/>
+  <rect x="250" y="120" width="700" height="560" rx="32" fill="#1e293b" stroke="#64748b" stroke-width="8"/>
+  <rect x="340" y="215" width="520" height="175" rx="18" fill="#dbeafe"/>
+  <text x="392" y="330" fill="#0f172a" font-family="Courier New, monospace" font-size="88">2.4985</text>
+  <text x="410" y="405" fill="#cbd5e1" font-family="Courier New, monospace" font-size="34">BORE INCHES</text>
+  <text x="340" y="510" fill="#f8fafc" font-family="Courier New, monospace" font-size="30">SPEC: 2.500 +/- 0.002</text>
+  <text x="340" y="560" fill="#86efac" font-family="Courier New, monospace" font-size="30">RESULT: SERVICEABLE</text>
+</svg>

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+  <rect width="1200" height="800" fill="#0f172a"/>
+  <rect x="170" y="140" width="860" height="520" rx="28" fill="#d6d3d1" stroke="#78716c" stroke-width="10"/>
+  <text x="230" y="245" fill="#111827" font-family="Courier New, monospace" font-size="44">PARKER AEROSPACE</text>
+  <text x="230" y="320" fill="#111827" font-family="Courier New, monospace" font-size="34">HPC-7 HYDRAULIC PUMP</text>
+  <text x="230" y="410" fill="#111827" font-family="Courier New, monospace" font-size="38">P/N 881700-1089</text>
+  <text x="230" y="470" fill="#111827" font-family="Courier New, monospace" font-size="38">S/N SN-2024-11432</text>
+  <text x="230" y="530" fill="#111827" font-family="Courier New, monospace" font-size="30">REV 12  FAA RTS ELIGIBLE</text>
+  <rect x="210" y="565" width="780" height="42" fill="#111827" opacity="0.12"/>
+  <text x="230" y="595" fill="#111827" font-family="Courier New, monospace" font-size="24">OCR alt read observed once: 881700-1098</text>
+</svg>

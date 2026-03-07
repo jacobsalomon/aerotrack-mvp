@@ -2,6 +2,12 @@
 // Two main capabilities:
 // 1. Upload video files via the Gemini File API (required before analysis)
 // 2. Analyze video content (annotations, deep analysis with CMM context)
+//
+// Now uses callWithFallback() for automatic model failover
+
+import { VIDEO_MODELS, ANNOTATION_MODELS } from "./models";
+import { callWithFallback, callGemini } from "./provider";
+import { cachedSessionAnalysis } from "./cached-responses";
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com";
 
@@ -151,35 +157,15 @@ export async function waitForFileProcessing(
 }
 
 // ──────────────────────────────────────────────────────
-// Annotate a video chunk — real-time Pass 1 (Gemini 2.0 Flash)
+// Annotate a video chunk — real-time lightweight tagging
+// Uses ANNOTATION_MODELS fallback chain (Gemini 3.1 Flash → 2.5 Flash)
 // Takes a 2-minute video chunk and returns timestamped searchable tags
-// This runs during capture for every chunk
 // ──────────────────────────────────────────────────────
 export async function annotateVideoChunk(
   fileUri: string,
   mimeType: string
 ): Promise<VideoAnnotationResult[]> {
-  const apiKey = getApiKey();
-  const model = process.env.VIDEO_ANNOTATION_MODEL || "gemini-2.0-flash";
-
-  const response = await fetch(
-    `${GEMINI_API_BASE}/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(50000),
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                fileData: {
-                  mimeType,
-                  fileUri,
-                },
-              },
-              {
-                text: `You are an aerospace maintenance video analyst. Watch this video clip from an aircraft maintenance workbench and identify everything you see.
+  const prompt = `You are an aerospace maintenance video analyst. Watch this video clip from an aircraft maintenance workbench and identify everything you see.
 
 For each observation, provide:
 - timestamp: seconds into the video when you see it
@@ -200,63 +186,65 @@ Return your response as a JSON array:
   { "timestamp": 25.0, "tag": "action", "description": "Technician removing hydraulic pump mounting bolts", "confidence": 0.88 }
 ]
 
-Be thorough — this creates a permanent searchable index of maintenance footage for FAA auditors.`,
-              },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.1,
-          responseMimeType: "application/json",
-        },
-      }),
-    }
-  );
+Be thorough — this creates a permanent searchable index of maintenance footage for FAA auditors.`;
 
-  if (!response.ok) {
-    await response.text(); // drain body
-    console.error(`Gemini annotation failed (status ${response.status})`);
-    throw new Error(`Gemini annotation failed (status ${response.status})`);
-  }
+  const contents = [
+    {
+      parts: [
+        { fileData: { mimeType, fileUri } },
+        { text: prompt },
+      ],
+    },
+  ];
 
-  const result = await response.json();
-  const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+  const result = await callWithFallback({
+    models: ANNOTATION_MODELS,
+    timeoutMs: 50000,
+    taskName: "video_annotation",
+    execute: async (model) => {
+      const text = await callGemini({
+        model: model.id,
+        contents,
+        timeoutMs: 50000,
+      });
 
-  if (!text) throw new Error("No response from Gemini annotation");
+      try {
+        return JSON.parse(text) as VideoAnnotationResult[];
+      } catch {
+        console.error("Gemini returned non-JSON annotation:", text);
+        return [];
+      }
+    },
+  });
 
-  try {
-    return JSON.parse(text) as VideoAnnotationResult[];
-  } catch {
-    console.error("Gemini returned non-JSON annotation:", text);
-    return [];
-  }
+  return result.data;
 }
 
 // ──────────────────────────────────────────────────────
-// Deep analysis of a full session video — Pass 2 (Gemini 2.5 Flash)
+// Deep analysis of a full session video
+// Uses VIDEO_MODELS fallback chain (Gemini 3.1 Pro → 3.1 Flash → 2.5 Flash)
 // Takes the full video + optional CMM content and produces detailed analysis
 // This runs once after the mechanic finishes the session
 // ──────────────────────────────────────────────────────
 export async function analyzeSessionVideo(
   fileUri: string,
   mimeType: string,
-  cmmContent?: string, // Full CMM text loaded into context
-  expectedSteps?: string // User-defined SOP steps (fallback when no CMM)
-): Promise<DeepAnalysisResult & { verificationSource: "cmm" | "expected_steps" | "ai_inferred" }> {
-  const apiKey = getApiKey();
-  const model = process.env.VIDEO_ANALYSIS_MODEL || "gemini-2.5-flash";
-
+  cmmContent?: string,
+  expectedSteps?: string
+): Promise<
+  DeepAnalysisResult & {
+    verificationSource: "cmm" | "expected_steps" | "ai_inferred";
+    modelUsed: string;
+    fallbackUsed?: boolean;
+    fallbackReason?: string;
+  }
+> {
   // Build the prompt parts — video file + optional CMM + analysis instructions
   const parts: Array<Record<string, unknown>> = [
-    {
-      fileData: {
-        mimeType,
-        fileUri,
-      },
-    },
+    { fileData: { mimeType, fileUri } },
   ];
 
-  // Determine which verification source to use — priority: CMM > expected steps > AI-inferred
+  // Determine which verification source to use
   let verificationSource: "cmm" | "expected_steps" | "ai_inferred" = "ai_inferred";
 
   if (cmmContent) {
@@ -280,7 +268,6 @@ ${expectedSteps}`,
     });
   }
 
-  // Build the procedure steps instruction based on what reference is available
   const procedureInstruction = cmmContent
     ? `3. PROCEDURE STEPS — The maintenance steps performed, mapped to CMM references:
    - Step number and description
@@ -333,48 +320,48 @@ Return your response as JSON with this exact structure:
 Be thorough and precise — this data feeds into FAA compliance documents.`,
   });
 
-  const response = await fetch(
-    `${GEMINI_API_BASE}/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(50000),
-      body: JSON.stringify({
-        contents: [{ parts }],
-        generationConfig: {
-          temperature: 0.1,
-          responseMimeType: "application/json",
-        },
-      }),
-    }
-  );
+  const contents = [{ parts }];
 
-  if (!response.ok) {
-    await response.text(); // drain body
-    console.error(`Gemini deep analysis failed (status ${response.status})`);
-    throw new Error(`Gemini deep analysis failed (status ${response.status})`);
-  }
+  const result = await callWithFallback({
+    models: VIDEO_MODELS,
+    timeoutMs: 60000,
+    taskName: "video_analysis",
+    cachedFallback: {
+      actionLog: cachedSessionAnalysis.actionLog ?? [],
+      partsIdentified: cachedSessionAnalysis.partsIdentified ?? [],
+      procedureSteps: cachedSessionAnalysis.procedureSteps ?? [],
+      anomalies: cachedSessionAnalysis.anomalies ?? [],
+      confidence: cachedSessionAnalysis.confidence ?? 0.5,
+    } as DeepAnalysisResult,
+    execute: async (model) => {
+      const text = await callGemini({
+        model: model.id,
+        contents,
+        timeoutMs: 60000,
+      });
 
-  const result = await response.json();
-  const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+      try {
+        return JSON.parse(text) as DeepAnalysisResult;
+      } catch {
+        console.error("Gemini returned non-JSON deep analysis:", text);
+        return {
+          actionLog: [],
+          partsIdentified: [],
+          procedureSteps: [],
+          anomalies: [{ description: "AI returned unparseable response", severity: "warning" as const }],
+          confidence: 0,
+        };
+      }
+    },
+  });
 
-  if (!text) throw new Error("No response from Gemini deep analysis");
-
-  try {
-    const parsed = JSON.parse(text) as DeepAnalysisResult;
-    return { ...parsed, verificationSource };
-  } catch {
-    console.error("Gemini returned non-JSON deep analysis:", text);
-    // Return empty structure rather than crashing
-    return {
-      actionLog: [],
-      partsIdentified: [],
-      procedureSteps: [],
-      anomalies: [{ description: "AI returned unparseable response", severity: "warning" }],
-      confidence: 0,
-      verificationSource,
-    };
-  }
+  return {
+    ...result.data,
+    verificationSource,
+    modelUsed: result.cachedFallback ? "cached" : result.modelUsed.id,
+    fallbackUsed: result.fallbackUsed,
+    fallbackReason: result.cachedFallback ? "all models failed" : undefined,
+  };
 }
 
 // ──────────────────────────────────────────────────────

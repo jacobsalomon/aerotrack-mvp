@@ -24,6 +24,11 @@ import {
 } from "@/components/ui/select";
 import { apiUrl } from "@/lib/api-url";
 import {
+  REVIEW_SESSION_STATUSES,
+  SESSION_STATUS_COLORS,
+  SESSION_STATUS_LABELS,
+} from "@/lib/session-status";
+import {
   Smartphone,
   Camera,
   FileText,
@@ -48,29 +53,6 @@ interface SessionData {
   organization: { name: string };
   _count: { evidence: number; documents: number };
 }
-
-const STATUS_COLORS: Record<string, string> = {
-  capturing: "bg-blue-100 text-blue-700",
-  capture_complete: "bg-cyan-100 text-cyan-700",
-  processing: "bg-amber-100 text-amber-700",
-  documents_generated: "bg-emerald-100 text-emerald-700",
-  submitted: "bg-purple-100 text-purple-700",
-  approved: "bg-green-100 text-green-700",
-  rejected: "bg-red-100 text-red-700",
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  capturing: "Capturing",
-  capture_complete: "Capture Complete",
-  processing: "Processing",
-  documents_generated: "Docs Ready",
-  submitted: "Submitted",
-  approved: "Approved",
-  rejected: "Rejected",
-};
-
-// Statuses that count as "needs review"
-const REVIEW_STATUSES = ["documents_generated", "submitted"];
 
 export default function SessionsPage() {
   const router = useRouter();
@@ -121,14 +103,21 @@ export default function SessionsPage() {
     (s) => s.status === "capturing" || s.status === "processing"
   ).length;
   const pendingReview = sessions.filter(
-    (s) => REVIEW_STATUSES.includes(s.status)
+    (s) =>
+      REVIEW_SESSION_STATUSES.includes(
+        s.status as (typeof REVIEW_SESSION_STATUSES)[number]
+      )
   ).length;
   const totalEvidence = sessions.reduce((sum, s) => sum + s._count.evidence, 0);
 
   // Filter sessions by active tab
   const displayedSessions =
     activeTab === "review"
-      ? sessions.filter((s) => REVIEW_STATUSES.includes(s.status))
+      ? sessions.filter((s) =>
+          REVIEW_SESSION_STATUSES.includes(
+            s.status as (typeof REVIEW_SESSION_STATUSES)[number]
+          )
+        )
       : sessions;
 
   return (
@@ -161,7 +150,7 @@ export default function SessionsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-sm">
+        <Card className="border-0 shadow-sm" data-demo-focus="sessions-pending-review">
           <CardContent className="pt-6 pb-6">
             <div className="flex flex-col gap-2">
               <FileText className="h-6 w-6 mb-1" style={{ color: 'rgb(147, 51, 234)' }} />
@@ -182,7 +171,7 @@ export default function SessionsPage() {
       </div>
 
       {/* Tab bar + filter + table */}
-      <Card className="border-0 shadow-sm">
+      <Card className="border-0 shadow-sm" data-demo-focus="sessions-review-table">
         <CardHeader className="flex flex-col gap-4">
           {/* Tab bar */}
           <div className="flex gap-1 border-b" style={{ borderColor: 'rgb(230, 230, 230)' }}>
@@ -227,7 +216,11 @@ export default function SessionsPage() {
           {activeTab === "all" && (
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg font-bold" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>
-                {statusFilter === "all" ? "All Sessions" : STATUS_LABELS[statusFilter] || statusFilter}
+                {statusFilter === "all"
+                  ? "All Sessions"
+                  : SESSION_STATUS_LABELS[
+                      statusFilter as keyof typeof SESSION_STATUS_LABELS
+                    ] || statusFilter}
               </CardTitle>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-48">
@@ -238,7 +231,9 @@ export default function SessionsPage() {
                   <SelectItem value="capturing">Capturing</SelectItem>
                   <SelectItem value="capture_complete">Capture Complete</SelectItem>
                   <SelectItem value="processing">Processing</SelectItem>
+                  <SelectItem value="analysis_complete">Analysis Complete</SelectItem>
                   <SelectItem value="documents_generated">Docs Ready</SelectItem>
+                  <SelectItem value="verified">Verified</SelectItem>
                   <SelectItem value="submitted">Submitted</SelectItem>
                   <SelectItem value="approved">Approved</SelectItem>
                   <SelectItem value="rejected">Rejected</SelectItem>
@@ -300,7 +295,9 @@ export default function SessionsPage() {
                     <TableCell>
                       <span
                         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                          STATUS_COLORS[session.status] || "bg-slate-100 text-slate-700"
+                          SESSION_STATUS_COLORS[
+                            session.status as keyof typeof SESSION_STATUS_COLORS
+                          ] || "bg-slate-100 text-slate-700"
                         }`}
                       >
                         {session.status === "approved" && (
@@ -312,7 +309,9 @@ export default function SessionsPage() {
                         {(session.status === "capturing" || session.status === "processing") && (
                           <Clock className="h-3 w-3" />
                         )}
-                        {STATUS_LABELS[session.status] || session.status}
+                        {SESSION_STATUS_LABELS[
+                          session.status as keyof typeof SESSION_STATUS_LABELS
+                        ] || session.status}
                       </span>
                     </TableCell>
                     <TableCell>

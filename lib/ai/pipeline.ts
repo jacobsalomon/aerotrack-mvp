@@ -198,7 +198,7 @@ export async function runSessionPipeline(
             procedureSteps: JSON.stringify(analysis.procedureSteps),
             anomalies: JSON.stringify(analysis.anomalies),
             confidence: clampConfidence(analysis.confidence),
-            modelUsed: process.env.VIDEO_ANALYSIS_MODEL || "gemini-2.5-flash",
+            modelUsed: analysis.modelUsed,
             costEstimate: analysisCost,
             processingTime: Date.now() - pipelineStart,
           },
@@ -375,6 +375,17 @@ export async function runSessionPipeline(
   // Finalize
   result.totalTimeMs = Date.now() - pipelineStart;
   result.estimatedCost = estimatedCost;
+
+  // Ensure the session never gets stuck in "processing" on partial failures.
+  const finalStatus = result.steps.documentGeneration.success
+    ? "documents_generated"
+    : result.steps.videoAnalysis.success || result.steps.transcriptionStitch.success
+    ? "analysis_complete"
+    : "capture_complete";
+  await prisma.captureSession.update({
+    where: { id: sessionId },
+    data: { status: finalStatus },
+  });
 
   // Log the full pipeline run
   await prisma.auditLogEntry.create({

@@ -1,27 +1,64 @@
 // POST /api/mobile/verify-documents — Independent AI verification of generated documents
-// Uses Claude Sonnet via OpenRouter as a "second brain" to review documents
-// Checks each field against raw evidence, flags inconsistencies and unsupported fields
+// Cross-checks generated forms against raw evidence and known discrepancies
 // Protected by API key authentication
 
-// Allow up to 60 seconds for AI document verification
-export const maxDuration = 60;
+// Allow up to 120 seconds for model fallback plus DB persistence
+export const maxDuration = 120;
 
 import { authenticateRequest } from "@/lib/mobile-auth";
 import { verifyDocuments } from "@/lib/ai/verify";
+import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
   const auth = await authenticateRequest(request);
   if ("error" in auth) return auth.error;
 
+  let sessionId: string;
   try {
     const body = await request.json();
-    const { sessionId } = body;
+    sessionId = body.sessionId;
+  } catch {
+    return NextResponse.json(
+      { success: false, error: "Invalid request body" },
+      { status: 400 }
+    );
+  }
 
-    if (!sessionId) {
+  if (!sessionId) {
+    return NextResponse.json(
+      { success: false, error: "sessionId is required" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const session = await prisma.captureSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        id: true,
+        technicianId: true,
+        organizationId: true,
+      },
+    });
+
+    if (!session) {
       return NextResponse.json(
-        { success: false, error: "sessionId is required" },
-        { status: 400 }
+        { success: false, error: "Session not found" },
+        { status: 404 }
+      );
+    }
+
+    const isSameOrganization =
+      session.organizationId === auth.technician.organizationId;
+    const isOwner = session.technicianId === auth.technician.id;
+    const isPrivileged =
+      auth.technician.role === "SUPERVISOR" || auth.technician.role === "ADMIN";
+
+    if (!isSameOrganization || (!isOwner && !isPrivileged)) {
+      return NextResponse.json(
+        { success: false, error: "Not authorized for this session" },
+        { status: 403 }
       );
     }
 

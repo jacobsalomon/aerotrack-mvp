@@ -117,6 +117,7 @@ model GeneratedDocument {
   docType      String         // "8130-3", "work_order", "findings_report", "test_results"
   title        String
   content      String         // Full generated document content (JSON)
+  provenanceJson String?      // JSON — per-field evidence provenance for the evidence-chain UI
   pdfPath      String?        // Path to generated PDF
   status       String    @default("draft") // "draft", "approved", "signed"
   approvedBy   String?        // Who approved/signed
@@ -372,13 +373,16 @@ model SessionAnalysis {
   id              String   @id @default(cuid())
   sessionId       String   @unique
   session         CaptureSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  actionLog       String                                // JSON — timestamped list of actions observed
-  partsIdentified String                                // JSON — all part numbers/serials found
+  actionLog       String                                // JSON — timestamped list of actions observed (from video)
+  partsIdentified String                                // JSON — all part numbers/serials found (fused from all sources)
   procedureSteps  String                                // JSON — maintenance steps identified
   anomalies       String   @default("[]")               // JSON — any concerns or anomalies spotted
+  audioTranscript String?                               // Full stitched audio transcript with timestamps
+  photoExtractions String?                              // JSON — per-photo structured extraction data
   confidence      Float    @default(0)                  // 0-1 overall confidence
-  verificationSource String?                            // "cmm", "expected_steps", or "ai_inferred" — what the AI verified steps against
-  modelUsed       String                                // e.g., "gemini-2.5-flash"
+  verificationSource String?                            // "cmm", "expected_steps", or "ai_inferred"
+  modelUsed       String                                // e.g., "gemini-3.1-pro-preview"
+  modelsUsed      String?                               // JSON — all models used across modalities
   rawResponse     String?                               // Full AI response for debugging
   costEstimate    Float?                                // Estimated API cost in dollars
   processingTime  Int?                                  // Processing time in milliseconds
@@ -435,7 +439,8 @@ model DocumentGeneration2 {
   reviewedBy          Technician? @relation("reviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   reviewedAt          DateTime?
   reviewNotes         String?
-  evidenceLineage     String?                           // JSON — maps each field to its evidence source, detail, and confidence
+  evidenceLineage     String?                           // JSON — maps each field to its evidence source, detail, and confidence (legacy single-source)
+  provenanceJson      String?                           // JSON — multi-source provenance: per-field array of all contributing sources with corroboration levels
   verificationJson    String?                           // JSON — AI verification results (field-level issues, confidence)
   verifiedAt          DateTime?                         // When the independent AI verification completed
   createdAt           DateTime  @default(now())

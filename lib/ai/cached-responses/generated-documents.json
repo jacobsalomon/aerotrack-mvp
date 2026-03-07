@@ -1,0 +1,195 @@
+{
+  "documents": [
+    {
+      "documentType": "8130-3",
+      "title": "Authorized Release Certificate — HPC-7 Hydraulic Pump Overhaul",
+      "contentJson": {
+        "block1_approving_authority": "FAA",
+        "block2_form_tracking": "AV-8130-2024-00847",
+        "block3_organization_name": "Precision Aero Components LLC",
+        "block3_organization_address": "4521 Aviation Parkway, Fort Worth, TX 76177",
+        "block4_part_number": "881700-1089",
+        "block4_nomenclature": "Hydraulic Pump Assembly, HPC-7",
+        "block5_serial_number": "SN-2024-11432",
+        "block6_quantity": "1",
+        "block7_remarks": "Overhaul performed IAW CMM 73-11-01, Rev. 12. Work performed: Complete disassembly, inspection, and reassembly. Housing bore measured at 2.4985 in. (service limit 2.5010 in.) — within limits. Main shaft seal P/N 65-1234-7 replaced due to lip hardening and extrusion from heat exposure. All hardware inspected — self-locking nuts MS21044-N4 (4 ea.) replaced. Housing bolts torqued to 85 in-lbs per CMM Section 6.4. Functional pressure test performed at 3000 PSI for 5-minute hold — no leaks detected. Unit is serviceable.",
+        "block8_certificate_type": "Repair Station",
+        "block9_repair_station_cert": "A2RS384K",
+        "block10_inspector": "Marcus Chen",
+        "block10_badge": "MC-1847",
+        "block11_approval_status": "Serviceable",
+        "block12_date": "2026-03-05",
+        "block13_authorized_signature": "[REQUIRES SIGNATURE]",
+        "block14_airworthiness_approval": "FAA Approved"
+      },
+      "confidence": 0.91,
+      "lowConfidenceFields": ["block9_repair_station_cert"],
+      "reasoning": "Complete overhaul with functional test warrants 8130-3 release to service. All major inspection points documented with measurements.",
+      "evidenceLineage": {
+        "block4_part_number": {
+          "sources": [
+            { "sourceType": "photo", "evidenceId": "photo_1", "excerpt": "Data plate: P/N 881700-1089", "confidence": 0.97 },
+            { "sourceType": "audio", "evidenceId": "audio_1", "timestamp": 5.0, "excerpt": "Part number 881700-1089", "confidence": 0.95 },
+            { "sourceType": "video", "evidenceId": "video_1", "timestamp": 15.0, "excerpt": "Data plate visible showing 881700-1089", "confidence": 0.88 }
+          ],
+          "overallConfidence": 0.97,
+          "corroborationLevel": "triple"
+        },
+        "block5_serial_number": {
+          "sources": [
+            { "sourceType": "photo", "evidenceId": "photo_1", "excerpt": "Data plate: S/N SN-2024-11432", "confidence": 0.96 },
+            { "sourceType": "audio", "evidenceId": "audio_1", "timestamp": 8.0, "excerpt": "serial number Sierra November 2024-11432", "confidence": 0.93 }
+          ],
+          "overallConfidence": 0.96,
+          "corroborationLevel": "double"
+        },
+        "block7_bore_measurement": {
+          "sources": [
+            { "sourceType": "audio", "evidenceId": "audio_1", "timestamp": 105.0, "excerpt": "Bore reads 2.4985 inches", "confidence": 0.95 },
+            { "sourceType": "video", "evidenceId": "video_1", "timestamp": 105.0, "excerpt": "Micrometer gauge display showing measurement", "confidence": 0.88 },
+            { "sourceType": "photo", "evidenceId": "photo_3", "excerpt": "Inside micrometer reading 2.4985 inches", "confidence": 0.93 }
+          ],
+          "overallConfidence": 0.95,
+          "corroborationLevel": "triple"
+        },
+        "block7_seal_replacement": {
+          "sources": [
+            { "sourceType": "audio", "evidenceId": "audio_1", "timestamp": 132.0, "excerpt": "seal is definitely shot — lip is hardened and starting to extrude", "confidence": 0.94 },
+            { "sourceType": "video", "evidenceId": "video_1", "timestamp": 132.0, "excerpt": "Technician removing worn seal with seal pick", "confidence": 0.90 },
+            { "sourceType": "photo", "evidenceId": "photo_2", "excerpt": "Worn seal showing hardened lip with extrusion", "confidence": 0.89 }
+          ],
+          "overallConfidence": 0.94,
+          "corroborationLevel": "triple"
+        },
+        "block7_pressure_test": {
+          "sources": [
+            { "sourceType": "audio", "evidenceId": "audio_1", "timestamp": 245.0, "excerpt": "Running at 3000 psi... no leaks. Five-minute hold is good", "confidence": 0.95 },
+            { "sourceType": "video", "evidenceId": "video_1", "timestamp": 245.0, "excerpt": "Test gauge reads 3000 PSI, stable pressure", "confidence": 0.87 },
+            { "sourceType": "photo", "evidenceId": "photo_4", "excerpt": "Gauge reading 3000 PSI during pressure hold", "confidence": 0.91 }
+          ],
+          "overallConfidence": 0.95,
+          "corroborationLevel": "triple"
+        },
+        "block7_torque_values": {
+          "sources": [
+            { "sourceType": "audio", "evidenceId": "audio_1", "timestamp": 210.0, "excerpt": "Torquing the housing bolts to 85 inch-pounds", "confidence": 0.94 },
+            { "sourceType": "video", "evidenceId": "video_1", "timestamp": 210.0, "excerpt": "Torque wrench click observed on each bolt", "confidence": 0.82 }
+          ],
+          "overallConfidence": 0.94,
+          "corroborationLevel": "double"
+        },
+        "block11_approval_status": {
+          "sources": [
+            { "sourceType": "audio", "evidenceId": "audio_1", "timestamp": 280.0, "excerpt": "Pump passes functional test. Serviceable, ready for release", "confidence": 0.96 }
+          ],
+          "overallConfidence": 0.96,
+          "corroborationLevel": "single"
+        }
+      }
+    },
+    {
+      "documentType": "337",
+      "title": "Major Repair — HPC-7 Hydraulic Pump Seal Replacement & Overhaul",
+      "contentJson": {
+        "section1_aircraft_info": "N/A — Component-level repair",
+        "section2_owner": "On file",
+        "section3_unit_id": {
+          "partNumber": "881700-1089",
+          "serialNumber": "SN-2024-11432",
+          "nomenclature": "HPC-7 Hydraulic Pump Assembly"
+        },
+        "section4_type_of_work": "Major Repair — Overhaul",
+        "section5_description": "Complete overhaul of HPC-7 hydraulic pump IAW CMM 73-11-01 Rev. 12:\n\n1. Disassembled pump housing (4 mounting bolts removed)\n2. Visual inspection of housing bore — minor scoring noted, within service limits\n3. Bore measurement: 2.4985 in. (limit: 2.5010 in.) — serviceable\n4. Replaced main shaft seal P/N 65-1234-7 (removed seal showed lip hardening and extrusion from heat exposure)\n5. Replaced self-locking nuts MS21044-N4 (4 ea.) per standard practice\n6. Reassembled pump housing, torqued bolts to 85 in-lbs per CMM Section 6.4\n7. Functional pressure test: 3000 PSI for 5 minutes — no leaks detected\n\nUnit meets all return-to-service requirements per CMM 73-11-01.",
+        "section6_approval_basis": "FAR 43.3, FAR 145.201",
+        "section7_inspector": "Marcus Chen / MC-1847",
+        "section8_date": "2026-03-05",
+        "section9_signature": "[REQUIRES SIGNATURE]"
+      },
+      "confidence": 0.88,
+      "lowConfidenceFields": ["section6_approval_basis"],
+      "reasoning": "Seal replacement and overhaul on a hydraulic pump qualifies as major repair requiring Form 337 documentation.",
+      "evidenceLineage": {
+        "section3_part_number": {
+          "sources": [
+            { "sourceType": "photo", "evidenceId": "photo_1", "excerpt": "Data plate: P/N 881700-1089", "confidence": 0.97 },
+            { "sourceType": "audio", "evidenceId": "audio_1", "timestamp": 5.0, "excerpt": "Part number 881700-1089", "confidence": 0.95 }
+          ],
+          "overallConfidence": 0.97,
+          "corroborationLevel": "double"
+        },
+        "section5_work_description": {
+          "sources": [
+            { "sourceType": "video", "evidenceId": "video_1", "timestamp": 0, "excerpt": "Full action log from video analysis covering all 6 procedure steps", "confidence": 0.90 },
+            { "sourceType": "audio", "evidenceId": "audio_1", "timestamp": 0, "excerpt": "Technician narrates each step with measurements and observations", "confidence": 0.93 }
+          ],
+          "overallConfidence": 0.93,
+          "corroborationLevel": "double"
+        }
+      }
+    },
+    {
+      "documentType": "8010-4",
+      "title": "Malfunction/Defect Report — Main Shaft Seal Heat Damage",
+      "contentJson": {
+        "section1_submitter_info": {
+          "organization": "Precision Aero Components LLC",
+          "address": "4521 Aviation Parkway, Fort Worth, TX 76177",
+          "certificate": "A2RS384K"
+        },
+        "section2_component_info": {
+          "partNumber": "881700-1098",
+          "serialNumber": "SN-2024-11432",
+          "nomenclature": "HPC-7 Hydraulic Pump Assembly",
+          "manufacturer": "Parker Hannifin"
+        },
+        "section3_defect_description": "During overhaul inspection, main shaft seal P/N 65-1234-7 found with hardened lip and extrusion, consistent with sustained heat exposure exceeding normal operating parameters. Seal was no longer providing adequate sealing, which would have led to external hydraulic leakage if returned to service without replacement.",
+        "section4_discovery_method": "Routine overhaul inspection",
+        "section5_corrective_action": "Seal replaced with new P/N 65-1234-7. Functional pressure test at 3000 PSI for 5 minutes confirmed no leaks. Root cause: likely sustained high-temperature operation. Recommend monitoring operating temperatures on this system.",
+        "section6_component_tsn": "4,250 hours / 2,100 cycles",
+        "section7_date": "2026-03-05",
+        "section8_submitter": "Marcus Chen / MC-1847"
+      },
+      "confidence": 0.85,
+      "lowConfidenceFields": ["section6_component_tsn"],
+      "reasoning": "Heat-damaged seal constitutes a reportable defect per FAR 21.3 — could have caused hydraulic failure if undetected.",
+      "evidenceLineage": {
+        "section2_part_number": {
+          "sources": [
+            { "sourceType": "photo", "evidenceId": "photo_1", "excerpt": "Data plate: P/N 881700-1089", "confidence": 0.97 },
+            { "sourceType": "audio", "evidenceId": "audio_1", "timestamp": 5.0, "excerpt": "Part number 881700-1089", "confidence": 0.95 }
+          ],
+          "overallConfidence": 0.96,
+          "corroborationLevel": "double",
+          "discrepancy": {
+            "detected": true,
+            "field": "section2_part_number",
+            "values": [
+              { "sourceType": "photo", "value": "881700-1089", "confidence": 0.97 },
+              { "sourceType": "ai_generated", "value": "881700-1098", "confidence": 0.85, "note": "Digits transposed in 8010-4 form — possible OCR error in secondary photo" }
+            ],
+            "resolution": "REVIEW REQUIRED — photo evidence shows 1089 but form populated with 1098"
+          }
+        },
+        "section3_defect_description": {
+          "sources": [
+            { "sourceType": "audio", "evidenceId": "audio_1", "timestamp": 132.0, "excerpt": "seal is definitely shot — lip is hardened and starting to extrude. Classic heat damage", "confidence": 0.94 },
+            { "sourceType": "photo", "evidenceId": "photo_2", "excerpt": "Worn seal showing hardened lip with heat damage", "confidence": 0.89 },
+            { "sourceType": "video", "evidenceId": "video_1", "timestamp": 132.0, "excerpt": "Close-up of damaged seal during removal", "confidence": 0.87 }
+          ],
+          "overallConfidence": 0.94,
+          "corroborationLevel": "triple"
+        }
+      }
+    }
+  ],
+  "summary": "Generated three FAA compliance documents for HPC-7 hydraulic pump overhaul: 8130-3 (release to service), Form 337 (major repair documentation), and 8010-4 (defect report for heat-damaged seal). All documents cross-reference video, audio, and photo evidence. One discrepancy detected: part number transposition in 8010-4 (881700-1098 vs correct 881700-1089) — flagged for review.",
+  "discrepancies": [
+    {
+      "field": "8010-4 section2_part_number",
+      "description": "Part number in 8010-4 form shows 881700-1098 but photo evidence and audio both confirm 881700-1089. Digits 8 and 9 appear transposed.",
+      "sourceA": { "type": "photo", "value": "881700-1089", "confidence": 0.97 },
+      "sourceB": { "type": "form_as_generated", "value": "881700-1098", "confidence": 0.85 },
+      "resolution": "REQUIRES MECHANIC REVIEW"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+HPC-7 hydraulic pump on the bench, part number 881700-1089, serial number SN-2024-11432.
+Bore on the piston assembly measured 2.4985 inches against a 2.500 plus or minus 0.002 specification, serviceable.
+Inlet port seal kit 881700-4022 removed for age degradation and replaced during overhaul.
+Functional test complete at 3000 PSI and 12.4 GPM with no leaks during the 15 minute hold.

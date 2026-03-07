@@ -1,11 +1,19 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { apiUrl } from "@/lib/api-url";
+import {
+  EvidenceChainDrawer,
+  type DocumentProvenancePayload,
+} from "@/components/evidence-chain-drawer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  getDocumentFieldSections,
+  humanizeFieldLabel,
+} from "@/lib/document-field-layout";
 import { StatusBadge, SeverityBadge } from "@/components/shared/status-badge";
 import {
   calculateTraceCompleteness,
@@ -542,6 +550,10 @@ export default function PartDetailPage() {
   const [activeEventTypes, setActiveEventTypes] = useState<Set<string> | null>(null);
   // US-004: Sparkline toggle — "hours" or "cycles"
   const [sparklineMode, setSparklineMode] = useState<"hours" | "cycles">("hours");
+  const [expandedComplianceDoc, setExpandedComplianceDoc] = useState<string | null>(null);
+  const [documentProvenance, setDocumentProvenance] = useState<Record<string, DocumentProvenancePayload | null>>({});
+  const [loadingProvenance, setLoadingProvenance] = useState<Record<string, boolean>>({});
+  const [activeEvidenceField, setActiveEvidenceField] = useState<{ docId: string; fieldKey: string } | null>(null);
 
   // Fetch component data and exceptions on mount
   useEffect(() => {
@@ -619,6 +631,29 @@ export default function PartDetailPage() {
       setDownloadingDoc(null);
     }
   }
+
+  const fetchDocumentProvenance = useCallback(async (documentId: string) => {
+    if (documentProvenance[documentId] !== undefined || loadingProvenance[documentId]) {
+      return;
+    }
+
+    setLoadingProvenance((prev) => ({ ...prev, [documentId]: true }));
+    try {
+      const res = await fetch(apiUrl(`/api/documents/${documentId}/provenance`));
+      if (!res.ok) {
+        setDocumentProvenance((prev) => ({ ...prev, [documentId]: null }));
+        return;
+      }
+
+      const data = (await res.json()) as DocumentProvenancePayload;
+      setDocumentProvenance((prev) => ({ ...prev, [documentId]: data }));
+    } catch (err) {
+      console.warn("Failed to load document provenance:", err);
+      setDocumentProvenance((prev) => ({ ...prev, [documentId]: null }));
+    } finally {
+      setLoadingProvenance((prev) => ({ ...prev, [documentId]: false }));
+    }
+  }, [documentProvenance, loadingProvenance]);
 
   // Toggle event detail expansion
   function toggleEvent(eventId: string) {
@@ -768,7 +803,7 @@ export default function PartDetailPage() {
 
       {/* ═══ DIGITAL THREAD HERO ═══ */}
       {/* Replaces the old identity card with an expanded view showing        the part's story at a glance: identity, facility flow, trust score */}
-      <Card className="mb-6">
+      <Card className="mb-6" data-demo-focus="trace-summary">
         <CardContent className="pt-6">
           {/* ── Part Identity Row ── */}
           <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
@@ -1118,7 +1153,7 @@ export default function PartDetailPage() {
       {/* Horizontal flow diagram showing the part's physical path through
           the supply chain. Each facility is a clickable card that expands
           to show all events and evidence captured there. */}
-      <Card className="mb-6">
+      <Card className="mb-6" data-demo-focus="lifecycle-timeline">
         <CardHeader>
           <CardTitle className="text-lg">Facility Journey</CardTitle>
           <p className="text-sm text-slate-500">
@@ -2033,7 +2068,7 @@ export default function PartDetailPage() {
 
       {/* ═══ COMPLIANCE DOCUMENTS (AI-Generated) ═══ */}
       {allComplianceDocs.length > 0 && (
-        <Card className="mb-6">
+        <Card className="mb-6" data-demo-focus="compliance-documents">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
@@ -2049,53 +2084,159 @@ export default function PartDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {allComplianceDocs.map((doc) => (
-                <div
-                  key={doc.id}
-                  className="flex items-center gap-4 p-4 rounded-lg border hover:bg-slate-50 transition-colors"
-                >
-                  <FileText className="h-6 w-6 text-blue-500 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-900">{doc.title}</p>
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <Badge variant="outline" className="text-xs">
-                        {doc.docType === "8130-3" ? "FAA 8130-3" :
-                         doc.docType === "337" ? "FAA Form 337" :
-                         doc.docType === "8010-4" ? "FAA Form 8010-4" :
-                         doc.docType.replace("_", " ")}
-                      </Badge>
-                      <Badge
-                        className={`text-xs ${
-                          doc.status === "approved"
-                            ? "bg-green-100 text-green-800"
-                            : doc.status === "signed"
-                            ? "bg-blue-100 text-blue-800"
-                            : "bg-yellow-100 text-yellow-800"
-                        }`}
-                      >
-                        {doc.status}
-                      </Badge>
-                      <span className="text-xs text-slate-400">
-                        {format(new Date(doc.eventDate), "MMM d, yyyy")}
-                        {" · "}
-                        {doc.facility.split(",")[0]}
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => downloadDocument(doc.id, doc.title)}
-                    disabled={downloadingDoc === doc.id}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors shrink-0"
+              {allComplianceDocs.map((doc) => {
+                const isExpanded = expandedComplianceDoc === doc.id;
+                const provenance = documentProvenance[doc.id];
+                const provenanceLoading = !!loadingProvenance[doc.id];
+                const fieldSections = provenance
+                  ? getDocumentFieldSections(doc.docType, provenance.fields)
+                  : [];
+
+                return (
+                  <div
+                    key={doc.id}
+                    className="rounded-lg border transition-colors"
                   >
-                    {downloadingDoc === doc.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Download className="h-3.5 w-3.5" />
+                    <div
+                      className="flex items-center gap-4 p-4 hover:bg-slate-50 transition-colors cursor-pointer"
+                      onClick={() => {
+                        const nextExpanded = isExpanded ? null : doc.id;
+                        setExpandedComplianceDoc(nextExpanded);
+                        if (nextExpanded) {
+                          void fetchDocumentProvenance(doc.id);
+                        }
+                      }}
+                    >
+                      <FileText className="h-6 w-6 text-blue-500 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          {isExpanded ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                          <p className="text-sm font-medium text-slate-900">{doc.title}</p>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <Badge variant="outline" className="text-xs">
+                            {doc.docType === "8130-3" ? "FAA 8130-3" :
+                             doc.docType === "337" ? "FAA Form 337" :
+                             doc.docType === "8010-4" ? "FAA Form 8010-4" :
+                             doc.docType.replace("_", " ")}
+                          </Badge>
+                          <Badge
+                            className={`text-xs ${
+                              doc.status === "approved"
+                                ? "bg-green-100 text-green-800"
+                                : doc.status === "signed"
+                                ? "bg-blue-100 text-blue-800"
+                                : "bg-yellow-100 text-yellow-800"
+                            }`}
+                          >
+                            {doc.status}
+                          </Badge>
+                          <span className="text-xs text-slate-400">
+                            {format(new Date(doc.eventDate), "MMM d, yyyy")}
+                            {" · "}
+                            {doc.facility.split(",")[0]}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          downloadDocument(doc.id, doc.title);
+                        }}
+                        disabled={downloadingDoc === doc.id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors shrink-0"
+                      >
+                        {downloadingDoc === doc.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Download className="h-3.5 w-3.5" />
+                        )}
+                        PDF
+                      </button>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="border-t border-slate-200 px-4 py-4">
+                        {provenanceLoading ? (
+                          <div className="flex items-center gap-2 text-sm text-slate-500">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Loading evidence chain...
+                          </div>
+                        ) : fieldSections.length === 0 ? (
+                          <p className="text-sm text-slate-500">No provenance is available for this document yet.</p>
+                        ) : (
+                          <div className="space-y-4">
+                            {fieldSections.map((section) => (
+                              <div key={section.title}>
+                                <div className="mb-2 flex items-center justify-between">
+                                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                    {section.title}
+                                  </p>
+                                  <div className="h-px flex-1 bg-slate-200 ml-3" />
+                                </div>
+                                <div className="grid gap-2 md:grid-cols-2">
+                                  {section.entries.map((field) => {
+                                    const fieldProvenance = provenance?.provenanceByField?.[field.key];
+                                    const provenanceCount = fieldProvenance?.sources.length || 0;
+                                    const hasDiscrepancy =
+                                      (fieldProvenance?.discrepancies.length || 0) > 0;
+                                    const canOpen = !!fieldProvenance;
+
+                                    return (
+                                      <button
+                                        key={field.key}
+                                        type="button"
+                                        className="flex items-start gap-2 rounded-lg border bg-slate-50 p-3 text-left transition-colors hover:bg-slate-100 disabled:cursor-default disabled:hover:bg-slate-50"
+                                        style={{
+                                          borderColor: hasDiscrepancy
+                                            ? "rgb(252, 165, 165)"
+                                            : "rgb(226, 232, 240)",
+                                        }}
+                                        disabled={!canOpen}
+                                        onClick={() => {
+                                          if (!canOpen) return;
+                                          setActiveEvidenceField({ docId: doc.id, fieldKey: field.key });
+                                        }}
+                                      >
+                                        <div className="min-w-0 flex-1">
+                                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                            {field.label}
+                                          </p>
+                                          <p className="mt-1 text-sm text-slate-900 break-words">{field.value}</p>
+                                        </div>
+                                        {canOpen && (
+                                          <span
+                                            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium"
+                                            style={{
+                                              backgroundColor: hasDiscrepancy
+                                                ? "rgb(254, 242, 242)"
+                                                : "rgb(239, 246, 255)",
+                                              color: hasDiscrepancy
+                                                ? "rgb(220, 38, 38)"
+                                                : "rgb(37, 99, 235)",
+                                            }}
+                                          >
+                                            {hasDiscrepancy ? (
+                                              <AlertTriangle className="h-3 w-3" />
+                                            ) : (
+                                              <ArrowRightLeft className="h-3 w-3" />
+                                            )}
+                                            {provenanceCount || 1}
+                                          </span>
+                                        )}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     )}
-                    PDF
-                  </button>
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -2270,6 +2411,30 @@ export default function PartDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <EvidenceChainDrawer
+        open={!!activeEvidenceField}
+        onOpenChange={(open) => {
+          if (!open) setActiveEvidenceField(null);
+        }}
+        loading={!!(activeEvidenceField && loadingProvenance[activeEvidenceField.docId])}
+        documentLabel={
+          activeEvidenceField
+            ? allComplianceDocs.find((doc) => doc.id === activeEvidenceField.docId)?.title || null
+            : null
+        }
+        fieldLabel={activeEvidenceField ? humanizeFieldLabel(activeEvidenceField.fieldKey) : null}
+        fieldValue={
+          activeEvidenceField
+            ? documentProvenance[activeEvidenceField.docId]?.provenanceByField?.[activeEvidenceField.fieldKey]?.value
+            : null
+        }
+        fieldData={
+          activeEvidenceField
+            ? documentProvenance[activeEvidenceField.docId]?.provenanceByField?.[activeEvidenceField.fieldKey] || null
+            : null
+        }
+      />
     </div>
   );
 }
