@@ -13,7 +13,17 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { sessionId, type, blobUrl, fileSize, mimeType, capturedAt, gpsLatitude, gpsLongitude } = body;
+    const {
+      sessionId,
+      type,
+      blobUrl,
+      fileSize,
+      fileHash,
+      mimeType,
+      capturedAt,
+      gpsLatitude,
+      gpsLongitude,
+    } = body;
 
     if (!sessionId || !type || !blobUrl) {
       return NextResponse.json(
@@ -82,6 +92,10 @@ export async function POST(request: Request) {
         type: normalizedType,
         fileUrl: blobUrl,
         fileSize: fileSize || 0,
+        fileHash:
+          typeof fileHash === "string" && fileHash.trim().length > 0
+            ? fileHash.trim()
+            : null,
         mimeType: mimeType || "application/octet-stream",
         capturedAt: capturedAt ? new Date(capturedAt) : new Date(),
         gpsLatitude: gpsLatitude && !isNaN(parseFloat(gpsLatitude)) ? parseFloat(gpsLatitude) : null,
@@ -97,7 +111,12 @@ export async function POST(request: Request) {
         action: "evidence_captured",
         entityType: "CaptureEvidence",
         entityId: evidence.id,
-        metadata: JSON.stringify({ type, sessionId, fileSize: fileSize || 0 }),
+        metadata: JSON.stringify({
+          type,
+          sessionId,
+          fileSize: fileSize || 0,
+          fileHash: evidence.fileHash,
+        }),
       },
     });
 
