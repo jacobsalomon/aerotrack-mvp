@@ -25,6 +25,7 @@ export default function KnowledgePage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   // Debounce search to avoid firing a fetch on every keystroke
   useEffect(() => {
@@ -51,7 +52,7 @@ export default function KnowledgePage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Knowledge Library</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Knowledge</h1>
         <p className="text-sm text-slate-500 mt-1">
           Captured expertise from experienced mechanics — tribal knowledge preserved
         </p>
@@ -96,9 +97,20 @@ export default function KnowledgePage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-slate-700 leading-relaxed mb-3">
+                <p className={`text-sm text-slate-700 leading-relaxed mb-1 ${expandedIds.has(entry.id) ? "" : "line-clamp-3"}`}>
                   &ldquo;{entry.description}&rdquo;
                 </p>
+                <button
+                  onClick={() => {
+                    const next = new Set(expandedIds);
+                    if (next.has(entry.id)) next.delete(entry.id);
+                    else next.add(entry.id);
+                    setExpandedIds(next);
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-800 mb-3"
+                >
+                  {expandedIds.has(entry.id) ? "Show less" : "Show more"}
+                </button>
 
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-4 text-xs text-slate-500">

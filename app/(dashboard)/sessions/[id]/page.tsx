@@ -69,6 +69,7 @@ import {
   ArrowRight,
   Info,
   AlertCircle,
+  RefreshCw,
   Pencil,
   Save,
   Eye,
@@ -223,6 +224,13 @@ interface AuditEntry {
   technician: { firstName: string; lastName: string } | null;
 }
 
+interface SessionDetailLoadError {
+  title: string;
+  error: string;
+  nextStep: string;
+  technicalDetails: string;
+}
+
 // ─── Status helpers ────────────────────────────────────────────────────
 
 const DOCUMENT_STATUS_COLORS: Record<string, string> = {
@@ -313,6 +321,51 @@ function humanizeAction(action: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function buildSessionDetailLoadError(
+  error: unknown,
+  sessionId: string
+): SessionDetailLoadError {
+  if (error && typeof error === "object") {
+    const candidate = error as Partial<SessionDetailLoadError>;
+    if (
+      typeof candidate.title === "string" &&
+      typeof candidate.error === "string" &&
+      typeof candidate.nextStep === "string"
+    ) {
+      return {
+        title: candidate.title,
+        error: candidate.error,
+        nextStep: candidate.nextStep,
+        technicalDetails:
+          typeof candidate.technicalDetails === "string"
+            ? candidate.technicalDetails
+            : "Unknown error",
+      };
+    }
+  }
+
+  const detail =
+    error instanceof Error ? error.message : "Failed to load the reviewer cockpit.";
+
+  if (detail.includes("404")) {
+    return {
+      title: "Session not found",
+      error: `The review session ${sessionId} is not present in the local demo dataset.`,
+      nextStep:
+        "Return to the review queue or open the seeded reviewer proof route instead.",
+      technicalDetails: detail,
+    };
+  }
+
+  return {
+    title: "Reviewer cockpit unavailable",
+    error: "AeroVision could not load this session from the local demo backend.",
+    nextStep:
+      "Retry this page or return to the review queue. If the problem persists, restart the local demo server and try again.",
+    technicalDetails: detail,
+  };
+}
+
 // ─── Main Component ────────────────────────────────────────────────────
 
 export default function SessionDetailPage() {
@@ -322,7 +375,7 @@ export default function SessionDetailPage() {
   const [session, setSession] = useState<SessionDetail | null>(null);
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<SessionDetailLoadError | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [expandedDoc, setExpandedDoc] = useState<string | null>(null);
   const [hasAutoExpanded, setHasAutoExpanded] = useState(false);
@@ -359,13 +412,19 @@ export default function SessionDetailPage() {
   const [expectedStepsSaved, setExpectedStepsSaved] = useState(false);
 
   const fetchSession = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
       const res = await fetch(apiUrl(`/api/sessions/${sessionId}`));
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
-      const data = await res.json();
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw payload ?? new Error(`API error: ${res.status}`);
+      }
+      const data = payload;
       setSession(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load session");
+      setSession(null);
+      setError(buildSessionDetailLoadError(err, sessionId));
     } finally {
       setLoading(false);
     }
@@ -596,9 +655,38 @@ export default function SessionDetailPage() {
         <Link href="/sessions" className="inline-flex items-center gap-1 text-sm mb-6" style={{ color: "rgb(100, 100, 100)" }}>
           <ArrowLeft className="h-4 w-4" /> Back to Sessions
         </Link>
-        <p className="text-center text-sm" style={{ color: "rgb(140, 140, 140)" }}>
-          {error || "Session not found"}
-        </p>
+        <Card className="border shadow-sm" style={{ borderColor: "rgb(253, 230, 138)", backgroundColor: "rgba(255, 251, 235, 0.92)" }}>
+          <CardContent className="px-6 py-10 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full" style={{ backgroundColor: "rgba(245, 158, 11, 0.12)" }}>
+              <AlertTriangle className="h-6 w-6" style={{ color: "rgb(217, 119, 6)" }} />
+            </div>
+            <h1 className="mt-4 text-2xl font-semibold tracking-tight" style={{ color: "rgb(120, 53, 15)" }}>
+              {error?.title || "Session not found"}
+            </h1>
+            <p className="mt-3 text-sm leading-6" style={{ color: "rgb(146, 64, 14)" }}>
+              {error?.error || "The selected session could not be loaded."}
+            </p>
+            <p className="mt-2 text-sm leading-6" style={{ color: "rgb(146, 64, 14)" }}>
+              Next step: {error?.nextStep || "Return to the review queue and try another session."}
+            </p>
+            <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+              <Button onClick={() => void fetchSession()} className="gap-2">
+                <RefreshCw className="h-4 w-4" />
+                Retry Reviewer Cockpit
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/sessions">Back to Review Queue</Link>
+              </Button>
+              <Button asChild variant="ghost">
+                <Link href="/demo">Open Demo</Link>
+              </Button>
+            </div>
+            <p className="mt-5 text-xs font-mono" style={{ color: "rgb(180, 83, 9)" }}>
+              Session: {sessionId}
+              {error?.technicalDetails ? ` · ${error.technicalDetails}` : ""}
+            </p>
+          </CardContent>
+        </Card>
       </div>
     );
   }

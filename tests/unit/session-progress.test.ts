@@ -39,4 +39,26 @@ describe("session progress helpers", () => {
       lastError: "Verification model timeout",
     });
   });
+
+  it("treats approved and rejected review states as terminal even without a job row", () => {
+    const rejected = buildSessionProgressSnapshot({
+      session: { status: "rejected" },
+    });
+    const approved = buildSessionProgressSnapshot({
+      session: { status: "approved" },
+    });
+
+    expect(rejected).toMatchObject({
+      userFacingState: "Verified",
+      reviewStatus: "rejected",
+      running: false,
+      terminal: true,
+    });
+    expect(approved).toMatchObject({
+      userFacingState: "Verified",
+      reviewStatus: "approved",
+      running: false,
+      terminal: true,
+    });
+  });
 });

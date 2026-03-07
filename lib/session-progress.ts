@@ -178,6 +178,8 @@ export function buildSessionProgressSnapshot(args: {
     session.status === "rejected"
       ? session.status
       : null;
+  const reviewTerminal =
+    reviewStatus === "approved" || reviewStatus === "rejected";
 
   if (!job) {
     const internalStage = deriveLegacyInternalStage(session.status);
@@ -195,8 +197,12 @@ export function buildSessionProgressSnapshot(args: {
       running:
         internalStage !== null &&
         internalStage !== "completed" &&
-        internalStage !== "failed",
-      terminal: internalStage === "completed" || internalStage === "failed",
+        internalStage !== "failed" &&
+        !reviewTerminal,
+      terminal:
+        internalStage === "completed" ||
+        internalStage === "failed" ||
+        reviewTerminal,
       failed: internalStage === "failed",
       failedStage: internalStage === "failed" ? "unknown" : null,
       lastError: null,
@@ -221,8 +227,14 @@ export function buildSessionProgressSnapshot(args: {
   return {
     userFacingState: derivedUserFacingState ?? mapLegacyStatusToProgressState(session.status),
     internalStage,
-    running: internalStage !== "completed" && internalStage !== "failed",
-    terminal: internalStage === "completed" || internalStage === "failed",
+    running:
+      internalStage !== "completed" &&
+      internalStage !== "failed" &&
+      !reviewTerminal,
+    terminal:
+      internalStage === "completed" ||
+      internalStage === "failed" ||
+      reviewTerminal,
     failed: internalStage === "failed",
     failedStage,
     lastError: job.lastError ?? null,

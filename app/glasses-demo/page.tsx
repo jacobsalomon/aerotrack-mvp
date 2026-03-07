@@ -497,11 +497,21 @@ export default function GlassesDemoPage() {
 
 
   // ══════════════════════════════════════════════════════════════════
+  const exitButton = (light = false) => (
+    <button
+      onClick={() => router.push("/")}
+      className={"fixed top-5 right-5 z-50 text-sm font-sans transition-colors " + (light ? "text-slate-400 hover:text-slate-600" : "text-white/30 hover:text-white/60")}
+    >
+      ✕ Exit
+    </button>
+  );
+
   // RENDER: PRE-START SCREEN
   // ══════════════════════════════════════════════════════════════════
   if (demoPhase === "pre-start") {
     return (
       <div className="min-h-screen bg-black text-green-400 font-mono flex flex-col items-center justify-center p-8">
+        {exitButton()}
         <div className="fixed inset-0 pointer-events-none opacity-10"
           style={{
             background: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,0,0.03) 2px, rgba(0,255,0,0.03) 4px)",
@@ -556,6 +566,7 @@ export default function GlassesDemoPage() {
 
     return (
       <div className="min-h-screen bg-black text-green-400 font-mono flex flex-col items-center justify-center p-8">
+        {exitButton()}
         {/* Scan line effect */}
         <div className="fixed inset-0 pointer-events-none opacity-10"
           style={{
@@ -620,6 +631,7 @@ export default function GlassesDemoPage() {
 
     return (
       <div className="min-h-screen bg-slate-50 text-slate-800 relative">
+        {exitButton(true)}
         {/* CSS keyframe for the form row stagger animation */}
         <style dangerouslySetInnerHTML={{ __html: FORM_ROW_KEYFRAME }} />
 
@@ -773,6 +785,7 @@ export default function GlassesDemoPage() {
   // ══════════════════════════════════════════════════════════════════
   return (
     <div className="min-h-screen bg-black text-green-400 font-mono relative overflow-hidden select-none">
+      {exitButton()}
       {/* Scan line overlay — subtle CRT/HUD effect */}
       <div className="fixed inset-0 pointer-events-none opacity-[0.04] z-50"
         style={{

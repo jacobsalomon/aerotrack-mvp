@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -56,6 +57,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [components, setComponents] = useState<ComponentData[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -113,7 +115,7 @@ export default function DashboardPage() {
     <div>
       {/* Page header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>Parts Fleet Overview</h1>
+        <h1 className="text-3xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>Parts Fleet</h1>
         <p className="text-sm mt-2" style={{ color: 'rgb(100, 100, 100)' }}>
           Track every component across the ecosystem
         </p>
@@ -173,20 +175,20 @@ export default function DashboardPage() {
         <div className="lg:col-span-3">
           <Card className="border-0 shadow-sm" data-demo-focus="dashboard-components-table">
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <CardTitle className="text-lg font-bold" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>Components</CardTitle>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                     <Input
                       placeholder="Search P/N, S/N, operator..."
-                      className="pl-9 w-64"
+                      className="w-full pl-9 sm:w-64"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                     />
                   </div>
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-40">
+                    <SelectTrigger className="w-full sm:w-40">
                       <SelectValue placeholder="All statuses" />
                     </SelectTrigger>
                     <SelectContent>
@@ -205,58 +207,62 @@ export default function DashboardPage() {
               {loading ? (
                 <p className="text-center py-8" style={{ color: 'rgb(120, 120, 120)' }}>Loading components...</p>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Part Number</TableHead>
-                      <TableHead>Serial Number</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Hours / Cycles</TableHead>
-                      <TableHead>Location</TableHead>
-                      <TableHead>Events</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {components.length === 0 && (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center py-12 text-slate-400">
-                          No components found. Try adjusting your search or filters.
-                        </TableCell>
+                        <TableHead>Part Number</TableHead>
+                        <TableHead>Serial Number</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Hours / Cycles</TableHead>
+                        <TableHead>Location</TableHead>
+                        <TableHead>Events</TableHead>
                       </TableRow>
-                    )}
-                    {components.map((comp) => (
-                      <TableRow key={comp.id} className="cursor-pointer hover:bg-slate-50/50">
-                        <TableCell>
-                          <Link
-                            href={`/parts/${comp.id}`}
-                            className="font-mono font-medium hover:underline"
-                            style={{ color: 'rgb(60, 60, 60)' }}
-                          >
-                            {comp.partNumber}
-                          </Link>
-                        </TableCell>
-                        <TableCell className="font-mono text-sm" style={{ color: 'rgb(80, 80, 80)' }}>
-                          {comp.serialNumber}
-                        </TableCell>
-                        <TableCell style={{ color: 'rgb(60, 60, 60)' }}>{comp.description}</TableCell>
-                        <TableCell>
-                          <StatusBadge status={comp.status} />
-                          {comp.alerts.some((a) => a.severity === "critical") && (
-                            <SeverityBadge severity="critical" />
-                          )}
-                        </TableCell>
-                        <TableCell className="text-sm" style={{ color: 'rgb(80, 80, 80)' }}>
-                          {comp.totalHours.toLocaleString()}h / {comp.totalCycles.toLocaleString()}c
-                        </TableCell>
-                        <TableCell className="text-sm" style={{ color: 'rgb(100, 100, 100)' }}>
-                          {comp.currentOperator || comp.currentLocation || "—"}
-                        </TableCell>
-                        <TableCell className="text-sm" style={{ color: 'rgb(60, 60, 60)' }}>{comp._count.events}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {components.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-12 text-slate-400">
+                            No components found. Try adjusting your search or filters.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {components.map((comp) => (
+                        <TableRow key={comp.id} className="cursor-pointer hover:bg-slate-50/50 transition-colors" onClick={() => router.push(`/parts/${comp.id}`)}>
+                          <TableCell>
+                            <Link
+                              href={`/parts/${comp.id}`}
+                              className="font-mono font-medium hover:underline"
+                              style={{ color: 'rgb(60, 60, 60)' }}
+                            >
+                              {comp.partNumber}
+                            </Link>
+                          </TableCell>
+                          <TableCell className="font-mono text-sm" style={{ color: 'rgb(80, 80, 80)' }}>
+                            {comp.serialNumber}
+                          </TableCell>
+                          <TableCell style={{ color: 'rgb(60, 60, 60)' }}>{comp.description}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1.5">
+                              <StatusBadge status={comp.status} />
+                              {comp.alerts.some((a) => a.severity === "critical") && (
+                                <SeverityBadge severity="critical" />
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm" style={{ color: 'rgb(80, 80, 80)' }}>
+                            {comp.totalHours.toLocaleString()}h / {comp.totalCycles.toLocaleString()}c
+                          </TableCell>
+                          <TableCell className="text-sm" style={{ color: 'rgb(100, 100, 100)' }}>
+                            {comp.currentOperator || comp.currentLocation || "—"}
+                          </TableCell>
+                          <TableCell className="text-sm" style={{ color: 'rgb(60, 60, 60)' }}>{comp._count.events}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </CardContent>
           </Card>
