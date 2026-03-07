@@ -12,7 +12,13 @@ export const maxDuration = 30;
 import { prisma } from "@/lib/db";
 import { authenticateRequest } from "@/lib/mobile-auth";
 import { transcribeWithFallback } from "@/lib/ai/openai";
+import {
+  getAllowedEvidenceHostsForError,
+  isAllowedEvidenceUrl,
+} from "@/lib/evidence-url";
 import { NextResponse } from "next/server";
+
+const PRIVILEGED_ROLES = new Set(["SUPERVISOR", "ADMIN"]);
 
 export async function POST(request: Request) {
   const auth = await authenticateRequest(request);
@@ -34,6 +40,16 @@ export async function POST(request: Request) {
       if (!audioBlobUrl) {
         return NextResponse.json(
           { success: false, error: "audioBlobUrl is required" },
+          { status: 400 }
+        );
+      }
+
+      if (!isAllowedEvidenceUrl(String(audioBlobUrl))) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `audioBlobUrl must be from an allowed host (${getAllowedEvidenceHostsForError()})`,
+          },
           { status: 400 }
         );
       }
@@ -74,6 +90,37 @@ export async function POST(request: Request) {
 
     // If we have an evidenceId, update the evidence record with the transcription
     if (evidenceId) {
+      const evidence = await prisma.captureEvidence.findUnique({
+        where: { id: evidenceId },
+        include: {
+          session: {
+            select: {
+              technicianId: true,
+              organizationId: true,
+            },
+          },
+        },
+      });
+
+      if (!evidence) {
+        return NextResponse.json(
+          { success: false, error: "Evidence not found" },
+          { status: 404 }
+        );
+      }
+
+      const isSameOrganization =
+        evidence.session.organizationId === auth.technician.organizationId;
+      const isOwner = evidence.session.technicianId === auth.technician.id;
+      const isPrivileged = PRIVILEGED_ROLES.has(auth.technician.role);
+
+      if (!isSameOrganization || (!isOwner && !isPrivileged)) {
+        return NextResponse.json(
+          { success: false, error: "Not authorized for this evidence" },
+          { status: 403 }
+        );
+      }
+
       await prisma.captureEvidence.update({
         where: { id: evidenceId },
         data: {

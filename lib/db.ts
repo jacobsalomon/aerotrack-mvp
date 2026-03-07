@@ -1,8 +1,12 @@
 // Database connection singleton
 // Uses Turso (cloud SQLite) when TURSO_DATABASE_URL is set (production),
 // falls back to local SQLite file for local development.
-
-import "server-only";
+//
+// Keep this module server-only without requiring the `server-only` package so
+// unit tests can run in environments that do not resolve it.
+if (typeof window !== "undefined") {
+  throw new Error("lib/db must only be imported on the server");
+}
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";

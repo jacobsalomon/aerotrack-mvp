@@ -6,6 +6,7 @@
 export const maxDuration = 60;
 
 import { prisma } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import { authenticateRequest } from "@/lib/mobile-auth";
 import { clampConfidence } from "@/lib/ai/utils";
 import { generateDocuments } from "@/lib/ai/openai";
@@ -25,6 +26,13 @@ const SUPPORTED_DOCUMENT_TYPES: Record<string, { label: string; description: str
     description: "Used to report malfunctions, defects, or unairworthy conditions found during maintenance.",
   },
 };
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002"
+  );
+}
 
 export async function POST(request: Request) {
   const auth = await authenticateRequest(request);
@@ -175,16 +183,30 @@ export async function POST(request: Request) {
     const latencyMs = Date.now() - startTime;
 
     // Save the document
-    const saved = await prisma.documentGeneration2.create({
-      data: {
-        sessionId,
-        documentType: result.documentType,
-        contentJson: JSON.stringify(result.contentJson),
-        status: "draft",
-        confidence: clampConfidence(result.confidence),
-        lowConfidenceFields: JSON.stringify(result.lowConfidenceFields || []),
-      },
-    });
+    let saved;
+    try {
+      saved = await prisma.documentGeneration2.create({
+        data: {
+          sessionId,
+          documentType: result.documentType,
+          contentJson: JSON.stringify(result.contentJson),
+          status: "draft",
+          confidence: clampConfidence(result.confidence),
+          lowConfidenceFields: JSON.stringify(result.lowConfidenceFields || []),
+        },
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `A ${SUPPORTED_DOCUMENT_TYPES[documentType].label} already exists for this session.`,
+          },
+          { status: 409 }
+        );
+      }
+      throw error;
+    }
 
     // Update session status to documents_generated if not already
     if (session.status === "capture_complete" || session.status === "capturing") {

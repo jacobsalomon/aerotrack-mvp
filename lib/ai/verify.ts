@@ -663,48 +663,50 @@ Review the full document set, compare each document to the evidence, and return 
   });
 
   const now = new Date();
-  for (const doc of session.documents) {
-    await prisma.documentGeneration2.update({
-      where: { id: doc.id },
+  const sessionStatus = "verified";
+  await prisma.$transaction(async (tx) => {
+    for (const doc of session.documents) {
+      await tx.documentGeneration2.update({
+        where: { id: doc.id },
+        data: {
+          verificationJson: JSON.stringify(
+            buildPerDocumentVerificationPayload(verification, doc.documentType)
+          ),
+          verifiedAt: now,
+        },
+      });
+    }
+
+    await tx.captureSession.update({
+      where: { id: sessionId },
+      data: { status: sessionStatus },
+    });
+
+    await tx.auditLogEntry.create({
       data: {
-        verificationJson: JSON.stringify(
-          buildPerDocumentVerificationPayload(verification, doc.documentType)
-        ),
-        verifiedAt: now,
+        organizationId: session.technician.organizationId,
+        technicianId,
+        action: "documents_verified",
+        entityType: "CaptureSession",
+        entityId: sessionId,
+        metadata: JSON.stringify({
+          model,
+          verified: verification.verified,
+          overallConfidence: verification.overallConfidence,
+          crossDocumentConsistencyScore: verification.crossDocumentConsistency.score,
+          documentCount: session.documents.length,
+          discrepancyCount: verification.discrepancies.length,
+          criticalIssueCount: verification.documentReviews.reduce(
+            (sum, review) =>
+              sum + review.issues.filter((issue) => issue.severity === "critical").length,
+            0
+          ),
+          latencyMs,
+          fallbackUsed: result.fallbackUsed,
+          fallbackReason: result.cachedFallback ? "all models failed" : null,
+        }),
       },
     });
-  }
-
-  const sessionStatus = "verified";
-  await prisma.captureSession.update({
-    where: { id: sessionId },
-    data: { status: sessionStatus },
-  });
-
-  await prisma.auditLogEntry.create({
-    data: {
-      organizationId: session.technician.organizationId,
-      technicianId,
-      action: "documents_verified",
-      entityType: "CaptureSession",
-      entityId: sessionId,
-      metadata: JSON.stringify({
-        model,
-        verified: verification.verified,
-        overallConfidence: verification.overallConfidence,
-        crossDocumentConsistencyScore: verification.crossDocumentConsistency.score,
-        documentCount: session.documents.length,
-        discrepancyCount: verification.discrepancies.length,
-        criticalIssueCount: verification.documentReviews.reduce(
-          (sum, review) =>
-            sum + review.issues.filter((issue) => issue.severity === "critical").length,
-          0
-        ),
-        latencyMs,
-        fallbackUsed: result.fallbackUsed,
-        fallbackReason: result.cachedFallback ? "all models failed" : null,
-      }),
-    },
   });
 
   return {
