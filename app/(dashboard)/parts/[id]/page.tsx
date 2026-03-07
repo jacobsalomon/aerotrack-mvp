@@ -803,7 +803,7 @@ export default function PartDetailPage() {
 
       {/* ═══ DIGITAL THREAD HERO ═══ */}
       {/* Replaces the old identity card with an expanded view showing        the part's story at a glance: identity, facility flow, trust score */}
-      <Card className="mb-6">
+      <Card className="mb-6" data-demo-focus="trace-summary">
         <CardContent className="pt-6">
           {/* ── Part Identity Row ── */}
           <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
@@ -1153,7 +1153,7 @@ export default function PartDetailPage() {
       {/* Horizontal flow diagram showing the part's physical path through
           the supply chain. Each facility is a clickable card that expands
           to show all events and evidence captured there. */}
-      <Card className="mb-6">
+      <Card className="mb-6" data-demo-focus="lifecycle-timeline">
         <CardHeader>
           <CardTitle className="text-lg">Facility Journey</CardTitle>
           <p className="text-sm text-slate-500">
@@ -2068,7 +2068,7 @@ export default function PartDetailPage() {
 
       {/* ═══ COMPLIANCE DOCUMENTS (AI-Generated) ═══ */}
       {allComplianceDocs.length > 0 && (
-        <Card className="mb-6">
+        <Card className="mb-6" data-demo-focus="compliance-documents">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>

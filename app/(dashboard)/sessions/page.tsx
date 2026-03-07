@@ -150,7 +150,7 @@ export default function SessionsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-sm">
+        <Card className="border-0 shadow-sm" data-demo-focus="sessions-pending-review">
           <CardContent className="pt-6 pb-6">
             <div className="flex flex-col gap-2">
               <FileText className="h-6 w-6 mb-1" style={{ color: 'rgb(147, 51, 234)' }} />
@@ -171,7 +171,7 @@ export default function SessionsPage() {
       </div>
 
       {/* Tab bar + filter + table */}
-      <Card className="border-0 shadow-sm">
+      <Card className="border-0 shadow-sm" data-demo-focus="sessions-review-table">
         <CardHeader className="flex flex-col gap-4">
           {/* Tab bar */}
           <div className="flex gap-1 border-b" style={{ borderColor: 'rgb(230, 230, 230)' }}>

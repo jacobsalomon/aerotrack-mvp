@@ -171,7 +171,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Parts table (3 columns) */}
         <div className="lg:col-span-3">
-          <Card className="border-0 shadow-sm">
+          <Card className="border-0 shadow-sm" data-demo-focus="dashboard-components-table">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg font-bold" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>Components</CardTitle>

@@ -802,7 +802,7 @@ export default function SessionDetailPage() {
       </div>
 
       {/* ═══ REVIEWER COCKPIT ═══ */}
-      <Card className="border-0 shadow-sm mb-6">
+      <Card className="border-0 shadow-sm mb-6" data-demo-focus="reviewer-cockpit">
         <CardHeader>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
@@ -1061,7 +1061,7 @@ export default function SessionDetailPage() {
       </Card>
 
       {/* ═══ EXPECTED STEPS (SOP) ═══ */}
-      <Card className="border-0 shadow-sm mb-6">
+      <Card className="border-0 shadow-sm mb-6" data-demo-focus="generated-documents">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg font-bold flex items-center gap-2" style={{ fontFamily: "var(--font-space-grotesk)", color: "rgb(20, 20, 20)" }}>
