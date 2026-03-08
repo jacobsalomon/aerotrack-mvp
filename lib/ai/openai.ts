@@ -7,7 +7,6 @@
 import { TRANSCRIPTION_MODELS, OCR_MODELS, GENERATION_MODELS } from "./models";
 import { callWithFallback, callOpenAI, callAnthropic, callGemini } from "./provider";
 import type { ModelConfig } from "./models";
-import { cachedGeneratedDocuments } from "./cached-responses";
 
 // Aerospace vocabulary prompt — feeds domain-specific terms to the transcription model
 // so it correctly recognizes part numbers, abbreviations, and technical terminology.
@@ -97,13 +96,6 @@ export async function transcribeAudio(
     models: TRANSCRIPTION_MODELS,
     timeoutMs: 25000,
     taskName: "audio_transcription",
-    cachedFallback: {
-      text: "",
-      duration: 0,
-      words: [],
-      language: "en",
-      model: "cached",
-    },
     execute: async (model) => {
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
@@ -151,13 +143,6 @@ export async function transcribeWithFallback(
     models: TRANSCRIPTION_MODELS,
     timeoutMs: 25000,
     taskName: "audio_transcription",
-    cachedFallback: {
-      text: "",
-      duration: 0,
-      words: [],
-      language: "en",
-      model: "cached",
-    },
     execute: async (model) => {
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
@@ -361,12 +346,12 @@ ${opts.audioTranscript}` : "No audio transcript available."}
 Generate the appropriate FAA compliance documents based on this evidence.
 Remember: conflicts must be output as discrepancies; do not silently resolve conflicting values.`;
 
-  // Call the generation model with automatic fallback
+  // Call the generation model with automatic fallback (no cached fallback —
+  // if all models fail, throw so the user gets an honest error instead of fake data)
   const result = await callWithFallback({
     models: GENERATION_MODELS,
     timeoutMs: 50000,
     taskName: "document_generation",
-    cachedFallback: cachedGeneratedDocuments as unknown as DocumentGenerationResult,
     execute: async (model) => {
       // Route to the right provider API
       const text = await callModelForGeneration(model, systemPrompt, userMessage);
@@ -381,9 +366,8 @@ Remember: conflicts must be output as discrepancies; do not silently resolve con
 
   return {
     ...result.data,
-    modelUsed: result.cachedFallback ? "cached" : result.modelUsed.id,
+    modelUsed: result.modelUsed.id,
     fallbackUsed: result.fallbackUsed,
-    fallbackReason: result.cachedFallback ? "all models failed" : undefined,
   };
 }
 
@@ -391,24 +375,10 @@ export async function analyzeImageWithFallback(opts: {
   imageBase64: string;
   mimeType?: string;
 }): Promise<ImageOcrResult> {
-  const fallbackResponse: ImageOcrResult = {
-    partNumber: null,
-    serialNumber: null,
-    description: "Cached fallback OCR response",
-    manufacturer: null,
-    allText: [],
-    confidence: 0.25,
-    notes: "all models failed",
-    model: "cached",
-    fallbackUsed: true,
-    fallbackReason: "all models failed",
-  };
-
   const result = await callWithFallback({
     models: OCR_MODELS,
     timeoutMs: 15000,
     taskName: "photo_ocr",
-    cachedFallback: fallbackResponse,
     execute: async (model) => {
       const prompt = `You are an aerospace parts identification and OCR expert. Read this image and extract all possible data plate content.
 
@@ -445,9 +415,8 @@ Return JSON:
 
   return {
     ...result.data,
-    model: result.cachedFallback ? "cached" : result.modelUsed.id,
+    model: result.modelUsed.id,
     fallbackUsed: result.fallbackUsed,
-    fallbackReason: result.cachedFallback ? "all models failed" : undefined,
   };
 }
 

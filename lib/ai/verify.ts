@@ -2,7 +2,6 @@
 // Chain: Claude Sonnet 4.6 → GPT-5.4 → cached fallback
 
 import { prisma } from "@/lib/db";
-import { cachedVerificationResult } from "./cached-responses";
 import type { ModelConfig } from "./models";
 import { VERIFICATION_MODELS } from "./models";
 import { callAnthropic, callOpenAI, callWithFallback } from "./provider";
@@ -631,7 +630,6 @@ Review the full document set, compare each document to the evidence, and return 
     models: VERIFICATION_MODELS,
     timeoutMs: 50000,
     taskName: "document_verification",
-    cachedFallback: cachedVerificationResult as VerificationResult,
     execute: async (model) => {
       const text = await callModelForVerification(model, systemPrompt, userMessage);
 
@@ -655,7 +653,7 @@ Review the full document set, compare each document to the evidence, and return 
   });
 
   const latencyMs = Date.now() - startTime;
-  const model = result.cachedFallback ? "cached" : result.modelUsed.id;
+  const model = result.modelUsed.id;
   const verification = normalizeVerificationResult({
     rawResult: result.data,
     documents: documentsToVerify,
@@ -703,7 +701,7 @@ Review the full document set, compare each document to the evidence, and return 
           ),
           latencyMs,
           fallbackUsed: result.fallbackUsed,
-          fallbackReason: result.cachedFallback ? "all models failed" : null,
+          fallbackReason: result.fallbackUsed ? "primary model failed" : null,
         }),
       },
     });
@@ -716,7 +714,7 @@ Review the full document set, compare each document to the evidence, and return 
     latencyMs,
     sessionStatus,
     fallbackUsed: result.fallbackUsed,
-    fallbackReason: result.cachedFallback ? "all models failed" : undefined,
+    fallbackReason: result.fallbackUsed ? "primary model failed" : undefined,
   };
 }
 
