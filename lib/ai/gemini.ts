@@ -7,7 +7,6 @@
 
 import { VIDEO_MODELS, ANNOTATION_MODELS } from "./models";
 import { callWithFallback, callGemini } from "./provider";
-import { cachedSessionAnalysis } from "./cached-responses";
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com";
 
@@ -326,13 +325,6 @@ Be thorough and precise — this data feeds into FAA compliance documents.`,
     models: VIDEO_MODELS,
     timeoutMs: 60000,
     taskName: "video_analysis",
-    cachedFallback: {
-      actionLog: cachedSessionAnalysis.actionLog ?? [],
-      partsIdentified: cachedSessionAnalysis.partsIdentified ?? [],
-      procedureSteps: cachedSessionAnalysis.procedureSteps ?? [],
-      anomalies: cachedSessionAnalysis.anomalies ?? [],
-      confidence: cachedSessionAnalysis.confidence ?? 0.5,
-    } as DeepAnalysisResult,
     execute: async (model) => {
       const text = await callGemini({
         model: model.id,
@@ -358,9 +350,8 @@ Be thorough and precise — this data feeds into FAA compliance documents.`,
   return {
     ...result.data,
     verificationSource,
-    modelUsed: result.cachedFallback ? "cached" : result.modelUsed.id,
+    modelUsed: result.modelUsed.id,
     fallbackUsed: result.fallbackUsed,
-    fallbackReason: result.cachedFallback ? "all models failed" : undefined,
   };
 }
 

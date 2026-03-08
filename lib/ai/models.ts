@@ -29,9 +29,9 @@ export const VIDEO_MODELS: ModelConfig[] = [
     supportsJsonOutput: true,
   },
   {
-    id: "gemini-3.1-flash",
+    id: "gemini-2.5-flash",
     provider: "google",
-    displayName: "Gemini 3.1 Flash",
+    displayName: "Gemini 2.5 Flash",
     inputCostPer1M: 0.25,
     outputCostPer1M: 1.5,
     contextWindow: 1_000_000,
@@ -53,9 +53,9 @@ export const VIDEO_MODELS: ModelConfig[] = [
 // ── Video Annotation Models (real-time lightweight tagging) ──────────
 export const ANNOTATION_MODELS: ModelConfig[] = [
   {
-    id: "gemini-3.1-flash",
+    id: "gemini-2.5-flash",
     provider: "google",
-    displayName: "Gemini 3.1 Flash",
+    displayName: "Gemini 2.5 Flash",
     inputCostPer1M: 0.25,
     outputCostPer1M: 1.5,
     contextWindow: 1_000_000,
@@ -119,9 +119,9 @@ export const OCR_MODELS: ModelConfig[] = [
     supportsJsonOutput: true,
   },
   {
-    id: "gemini-3.1-flash",
+    id: "gemini-2.5-flash",
     provider: "google",
-    displayName: "Gemini 3.1 Flash (fallback OCR)",
+    displayName: "Gemini 2.5 Flash (fallback OCR)",
     inputCostPer1M: 0.25,
     outputCostPer1M: 1.5,
     contextWindow: 1_000_000,
