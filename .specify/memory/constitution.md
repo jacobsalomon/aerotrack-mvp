@@ -114,6 +114,35 @@ When all specs appear complete, the agent will:
 
 ---
 
+## Remote Control
+
+Start a remote-control server to connect from phone, tablet, or browser via claude.ai/code.
+
+```bash
+# Default: worktree isolation, 32 concurrent sessions
+./scripts/remote-control.sh
+
+# Shared directory mode, limited concurrency
+./scripts/remote-control.sh --spawn same-dir --capacity 4
+
+# Named session with sandboxing
+./scripts/remote-control.sh --name "Parker Demo" --sandbox
+
+# Interactive session (not server mode)
+claude --remote-control "AeroVision MVP"
+```
+
+### Spawn Modes
+
+| Mode | Description |
+|------|-------------|
+| `worktree` (default) | Each session gets its own git worktree. Fully isolated, no file conflicts. |
+| `same-dir` | All sessions share the working directory. Faster, but can conflict. |
+
+Press `w` at runtime to toggle between modes. Press spacebar to show QR code.
+
+---
+
 ## Completion Signal
 
 When a spec is 100% complete:
