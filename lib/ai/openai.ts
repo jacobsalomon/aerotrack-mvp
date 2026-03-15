@@ -10,7 +10,7 @@ import type { ModelConfig } from "./models";
 
 // Aerospace vocabulary prompt — feeds domain-specific terms to the transcription model
 // so it correctly recognizes part numbers, abbreviations, and technical terminology.
-const AEROSPACE_VOCABULARY_PROMPT = [
+export const AEROSPACE_VOCABULARY_PROMPT = [
   // Common abbreviations
   "P/N, S/N, NDT, CMM, FAR, AD, SB, STC, PMA, TSO, EASA, MRO, AOG, MEL, IPC, TBO, MTBF",
   // Regulatory and compliance
