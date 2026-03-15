@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   // Serve all routes under /aerovision-demo so the gateway domain
@@ -64,4 +65,14 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Wrap with Sentry for automatic error and performance monitoring.
+// When no SENTRY_DSN is set, Sentry is disabled and this is a no-op.
+export default withSentryConfig(nextConfig, {
+  // Suppress noisy Sentry build logs
+  silent: true,
+
+  // Skip source map uploads when no auth token is set
+  sourcemaps: {
+    disable: !process.env.SENTRY_AUTH_TOKEN,
+  },
+});

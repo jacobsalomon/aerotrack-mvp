@@ -49,6 +49,7 @@ async function main() {
   await prisma.captureSession.deleteMany();
   await prisma.technician.deleteMany();
   await prisma.organization.deleteMany();
+  await prisma.componentManual.deleteMany();
   await prisma.referenceData.deleteMany();
   await prisma.exception.deleteMany();
   await prisma.evidence.deleteMany();
@@ -57,7 +58,6 @@ async function main() {
   await prisma.lifecycleEvent.deleteMany();
   await prisma.alert.deleteMany();
   await prisma.document.deleteMany();
-  await prisma.knowledgeEntry.deleteMany();
   await prisma.component.deleteMany();
 
   console.log("🧹 Cleared existing data");
@@ -1914,64 +1914,6 @@ async function main() {
   console.log("✅ Component 9: Glasses Demo — Overhaul Complete (881700-1089 / SN-2024-11432)");
 
   // ════════════════════════════════════════════════════
-  // KNOWLEDGE LIBRARY ENTRIES
-  // Captured expertise from experienced mechanics
-  // ════════════════════════════════════════════════════
-  await prisma.knowledgeEntry.createMany({
-    data: [
-      {
-        partFamily: "HPC-7 Hydraulic Pump (881700 series)",
-        topic: "Corrosion patterns on mounting flange",
-        expertName: "Robert Chen",
-        expertYears: 28,
-        expertCert: "A&P / IA",
-        description: "Surface corrosion on the mounting flange near bolt holes is common on high-cycle units, especially those that have operated in humid or coastal environments (Miami, Singapore, São Paulo). The CMM allows up to 0.005 in. pitting depth — but in my experience, flanges that show early-stage corrosion at the 8,000-hour mark tend to exceed limits by 16,000 hours. If you see it at the first overhaul, note it in the records and flag it for close monitoring at the next interval. The operator should budget for a flange repair or replacement unit at the second overhaul.",
-        tags: "corrosion,mounting flange,881700,humid environment,coastal,preventive",
-        cmmReference: "CMM 29-10-01 Rev. 12, Table 4-2",
-      },
-      {
-        partFamily: "HPC-7 Hydraulic Pump (881700 series)",
-        topic: "Piston seal wear pattern — normal vs. abnormal",
-        expertName: "Maria Santos",
-        expertYears: 22,
-        expertCert: "A&P / IA",
-        description: "Normal seal wear on the HPC-7 piston shows uniform compression on the inner lip — the seal gets thinner evenly all the way around. If you see uneven wear — one side thinner than the other — that's a piston bore alignment issue. The CMM won't catch it because the bore dimensions can still be in spec even when the bore is slightly out of round. Check the bore with a dial bore gauge at multiple orientations, not just the single measurement the CMM calls for. I've caught three out-of-round bores in 22 years that passed the standard CMM dimensional check.",
-        tags: "seal wear,piston,881700,bore alignment,out of round,inspection technique",
-        cmmReference: "CMM 29-10-01 Rev. 12, Ch. 4",
-      },
-      {
-        partFamily: "Fuel Control Valve (2548934 series)",
-        topic: "Metering assembly vibration on high-cycle units",
-        expertName: "Robert Chen",
-        expertYears: 28,
-        expertCert: "A&P / IA",
-        description: "On high-cycle fuel control valves past 15,000 hours, check the metering sleeve bearing surfaces closely — even if dimensions pass the CMM checks. The CMM tolerance is generous on the bearing bore dimension. I've seen units where the bearing race develops micro-spalling that's only visible under 10x magnification. The vibration pattern in the metering assembly is the tell — hold the metering sleeve and rotate it slowly. If you feel any roughness or hesitation, pull the bearing and inspect under magnification. The CMM says 'smooth rotation required' but doesn't specify magnification level for the bearing surface inspection. Use 10x minimum.",
-        tags: "fuel control,metering,vibration,bearing,spalling,high-cycle,2548934",
-        cmmReference: "CMM 73-21-01 Rev. 9, Ch. 4",
-      },
-      {
-        partFamily: "Flight Control Actuator (65075 series)",
-        topic: "Connector pin alignment — batch 2020 issue",
-        expertName: "Marcus Williams",
-        expertYears: 12,
-        expertCert: "A&P",
-        description: "If you're working on a 65075-05 actuator from manufacturing batch 2020-Q3 (check the data plate — batch code is the third field), check the connector pin alignment before doing anything else. These units shipped with the P/N 3827-A connector that has a known pin alignment issue. SB 65075-71-003 was issued in January 2024 to address it. If the SB hasn't been applied, the actuator will throw intermittent fault signals that don't reproduce on the test bench — classic NFF. Save yourself the trouble and apply the SB first.",
-        tags: "actuator,connector,65075,NFF,no fault found,batch 2020,SB 65075-71-003",
-        cmmReference: "SB 65075-71-003",
-      },
-      {
-        partFamily: "General — All Parker Hydraulic Components",
-        topic: "Identifying potential counterfeit parts",
-        expertName: "Thomas Wright",
-        expertYears: 35,
-        expertCert: "EASA B1",
-        description: "After 35 years in the industry, here's what I look for: (1) Weight — counterfeit parts are almost always lighter because they use cheaper alloys. Keep a calibrated scale at your receiving bench. (2) Data plate — Parker uses specific fonts and engraving depths. If the lettering looks different from known-good parts, flag it. (3) Serial number format — Parker changed their convention in 2019. Pre-2019 parts should NOT have the newer format. (4) 8130-3 quality — look for photocopied tags, mismatched fonts within the form, or repair station numbers that don't verify in the FAA database. (5) Trust your gut — if something feels wrong about a part, put it in quarantine and make calls. It's better to delay one shipment than to install a counterfeit part.",
-        tags: "counterfeit,authentication,receiving inspection,quality,safety",
-      },
-    ],
-  });
-
-  console.log("✅ Knowledge Library entries created");
 
   // ════════════════════════════════════════════════════
   // EXCEPTIONS — Populating the empty Exception model
@@ -2741,54 +2683,6 @@ async function main() {
   console.log("✅ Component 17: Unauthorized Mod Discovery (622-9352-016)");
 
   // ════════════════════════════════════════════════════
-  // ADDITIONAL KNOWLEDGE ENTRIES
-  // ════════════════════════════════════════════════════
-  await prisma.knowledgeEntry.createMany({
-    data: [
-      {
-        partFamily: "Honeywell 131-9A APU",
-        topic: "Thermal distress in turbine nozzle guide vanes",
-        expertName: "Lisa Park",
-        expertYears: 18,
-        expertCert: "EASA B1",
-        description: "NGV thermal distress follows a predictable progression: (1) Sulfidation — yellow-green discoloration on leading edges from sulfur in fuel, normal up to 30% coverage. (2) Oxidation scaling — dark rough crust where the protective oxide layer breaks down. (3) Thermal cracking — hairline cracks at trailing edge, >3mm = automatic reject. Key tip: always inspect 12 o'clock vanes first — heat rises in the combustor, so these run hottest and show distress first.",
-        tags: "apu,honeywell,thermal,borescope,nozzle-guide-vanes,sulfidation",
-        cmmReference: "CMM 49-10-00 Rev. 46, Section 5.2",
-      },
-      {
-        partFamily: "Landing Gear Actuators",
-        topic: "Managing life-limited parts approaching cycle limits",
-        expertName: "Kenji Tanaka",
-        expertYears: 25,
-        expertCert: "JCAB 1st Class",
-        description: "Above 80% life consumed = planning mode. Cross-reference cycle counts from 3 sources (aircraft log, component tag, fleet system) — discrepancies of hundreds of cycles happen more than you'd think. Start procurement at 85% (Safran actuator lead time: 6-8 months). Schedule removal with a C-check, not as a surprise. And please stop asking if overhaul can extend the limit — it can't. Metal fatigue is cumulative. No amount of polishing changes how many times it's been bent.",
-        tags: "landing-gear,llp,life-limited,procurement,planning,fatigue",
-        cmmReference: "Safran CMM 32-30-01 Rev. 12, Section 1.3",
-      },
-      {
-        partFamily: "Hamilton Sundstrand IDG",
-        topic: "Interpreting spectrographic oil analysis results",
-        expertName: "Carlos Mendoza",
-        expertYears: 15,
-        expertCert: "A&P",
-        description: "IDG oil metal cheat sheet: Iron = gears and bearings (normal <10 ppm). Copper = bearing cages (normal <8 ppm, trending up = cage wearing, 500-1000 hrs before bearing failure). Silicon = external contamination (dust or sealant, not internal). Chromium = hardened surface breakdown (the scary one — >3 ppm = remove within 200 hours). Always trend over 4+ samples. One high reading might be contamination. Four consecutive increases = real wear. Rate of change matters more than absolute values.",
-        tags: "idg,oil-analysis,spectrographic,wear-metals,iron,copper,chromium",
-        cmmReference: "CMM 24-20-00 Rev. 22, Section 4.6",
-      },
-      {
-        partFamily: "Avionics General",
-        topic: "Why firmware version tracking matters for airworthiness",
-        expertName: "Sarah Kim",
-        expertYears: 20,
-        expertCert: "A&P/IA",
-        description: "Firmware version is part of the type certificate — wrong version = aircraft not airworthy, even if the box works perfectly. I've seen airlines ground entire fleets because they couldn't prove which firmware version was on their AHRS units when an AD came out. Best practices: Record firmware at every install/remove/test. When OEM releases new firmware, immediately check fleet exposure. During receiving inspection, ALWAYS verify firmware matches the 8130-3. I've caught mismatches more times than I can count.",
-        tags: "avionics,firmware,airworthiness,type-certificate,compliance,ad",
-        cmmReference: "AC 20-188",
-      },
-    ],
-  });
-
-  console.log("✅ Additional knowledge entries created");
 
   // ════════════════════════════════════════════════════
   // MOBILE CAPTURE SYSTEM — Demo Organization + Technicians
@@ -3444,6 +3338,34 @@ SERVICE INTERVALS:
   });
 
   console.log("✅ Reference data seeded for P/N 3800520-3 (2 entries)");
+
+  // ════════════════════════════════════════════════════
+  // COMPONENT MANUALS — CMM PDFs indexed by part number
+  // These are loaded into AI context during document generation
+  // and displayed in the glasses HUD during CMM cross-referencing
+  // ════════════════════════════════════════════════════
+
+  await prisma.componentManual.create({
+    data: {
+      partNumber: "881700-1089",
+      title: "HPC-7 Hydraulic Pump CMM Rev. 12",
+      fileUrl: "/demo/cmm-881700-OH.pdf", // Placeholder — real file uploaded via admin
+      fileSizeBytes: 2_450_000,
+      pageCount: 186,
+    },
+  });
+
+  await prisma.componentManual.create({
+    data: {
+      partNumber: "3800520-3",
+      title: "131-9A APU Hot Section Inspection Manual Rev. 10",
+      fileUrl: "/demo/cmm-3800520-HSI.pdf",
+      fileSizeBytes: 3_100_000,
+      pageCount: 224,
+    },
+  });
+
+  console.log("✅ Component manuals seeded (2 CMMs)");
 
   console.log("\n🎉 Seed data complete! 17 components with full lifecycle histories loaded.");
   console.log("   Including evidence, exceptions, parts consumed, and knowledge library.");

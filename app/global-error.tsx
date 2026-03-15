@@ -1,0 +1,41 @@
+// Global error boundary — catches unhandled errors in the app and reports
+// them to Sentry. Shows a simple "something went wrong" message to the user.
+
+"use client";
+
+import * as Sentry from "@sentry/nextjs";
+import { useEffect } from "react";
+
+export default function GlobalError({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
+  useEffect(() => {
+    // Send the error to Sentry (if configured)
+    Sentry.captureException(error);
+  }, [error]);
+
+  return (
+    <html>
+      <body className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="text-center p-8">
+          <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+            Something went wrong
+          </h2>
+          <p className="text-gray-600 mb-6">
+            An unexpected error occurred. Our team has been notified.
+          </p>
+          <button
+            onClick={reset}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Try again
+          </button>
+        </div>
+      </body>
+    </html>
+  );
+}

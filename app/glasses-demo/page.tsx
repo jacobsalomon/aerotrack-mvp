@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
 import { FormCell, FormRow, FORM_ROW_KEYFRAME } from "@/components/documents/form-helpers";
+import type { CmmLookupResult } from "@/lib/cmm-lookup";
 import Form337Preview from "@/components/documents/form-337-preview";
 import Form8010Preview from "@/components/documents/form-8010-preview";
 
@@ -116,7 +117,7 @@ const DEMO_SCRIPT: HudEvent[] = [
 // ── FAA FORM 8130-3: Authorized Release Certificate ──────────────────
 // The most important form — certifies a part is airworthy after overhaul.
 // This is what gets generated at the end of every overhaul workflow.
-function Form8130({ animate }: { animate: boolean }) {
+function Form8130({ animate, cmmTitle }: { animate: boolean; cmmTitle: string }) {
   const d = 350; // delay increment between rows (ms)
 
   return (
@@ -171,7 +172,7 @@ function Form8130({ animate }: { animate: boolean }) {
         <div className="px-3 py-2">
           <p className="text-[10px] text-slate-400 font-sans uppercase tracking-wider mb-1">12. Remarks</p>
           <div className="text-xs text-slate-700 space-y-2 leading-relaxed">
-            <p>Full overhaul per CMM 881700-OH Rev. 12, §70-00 through §70-90.</p>
+            <p>Full overhaul per {cmmTitle}, §70-00 through §70-90.</p>
             <div>
               <p className="font-bold text-slate-700 text-[11px] mb-0.5 font-sans">INSPECTION FINDINGS:</p>
               <p className="ml-2">
@@ -295,6 +296,36 @@ export default function GlassesDemoPage() {
   const [bom, setBom] = useState<BomItem[]>(INITIAL_BOM.map(b => ({ ...b })));
   const [currentImage, setCurrentImage] = useState(`${basePath}/glasses/glasses-1-scan.jpg`);
 
+  // ── CMM DATA STATE ──
+  // Fetched from the API when demo starts; null means not yet loaded
+  const [cmmData, setCmmData] = useState<CmmLookupResult | null>(null);
+
+  // Build a CMM reference string from the API data, or fall back to hardcoded
+  const cmmRef = useCallback((section: string, fallback: string) => {
+    if (cmmData?.manual) {
+      // manual.title is e.g. "HPC-7 Hydraulic Pump CMM Rev. 12"
+      return `Within tolerance per ${cmmData.manual.title}, ${section}`;
+    }
+    return fallback;
+  }, [cmmData]);
+
+  // Full CMM title for the form header (e.g. "Full overhaul per CMM 881700-OH Rev. 12...")
+  const cmmTitle = cmmData?.manual
+    ? cmmData.manual.title
+    : "CMM 881700-OH Rev. 12";
+
+  // Substitute hardcoded CMM refs with real data at render time
+  // Falls back to the original string if no CMM data loaded
+  const subCmm = useCallback((text: string) => {
+    if (!cmmData?.manual) return text;
+    const title = cmmData.manual.title;
+    // Replace the various hardcoded patterns with the real CMM title
+    return text
+      .replace("CMM 881700-OH §70-20", `${title}, §70-20`)
+      .replace("CMM §70-40", `${title}, §70-40`)
+      .replace("CMM 881700-OH Rev. 12", title);
+  }, [cmmData]);
+
   // ── GENERATING SCREEN STATE ──
   // Tracks which progress steps are visible during the "generating" transition
   const [generatingStep, setGeneratingStep] = useState(0);
@@ -327,6 +358,16 @@ export default function GlassesDemoPage() {
     setGeneratingStep(0);
     setActiveFormTab("8130");
     setAnimatedForms(new Set());
+
+    // Fetch CMM data from API (fire-and-forget — demo never waits for this)
+    fetch(`${basePath}/api/cmm/lookup?pn=881700-1089`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((json) => {
+        if (json?.success && json.data?.matched) {
+          setCmmData(json.data);
+        }
+      })
+      .catch(() => {}); // Silently fall back to hardcoded strings
 
     // Schedule camera image transitions synced to the demo phases
     const imageTransitions = [
@@ -560,7 +601,7 @@ export default function GlassesDemoPage() {
     const steps = [
       { label: "43 seconds of video analyzed — key frames extracted", done: true },
       { label: "Voice transcript parsed — 3 findings, 1 recommendation", done: true },
-      { label: "3 measurements cross-referenced with CMM 881700-OH", done: true },
+      { label: `3 measurements cross-referenced with ${cmmTitle}`, done: true },
       { label: "Auto-populating 3 FAA documents...", done: false },
     ];
 
@@ -712,6 +753,7 @@ export default function GlassesDemoPage() {
               <Form8130
                 key={animatedForms.has("8130") ? "8130-static" : "8130-animate"}
                 animate={!animatedForms.has("8130")}
+                cmmTitle={cmmTitle}
               />
             )}
             {activeFormTab === "337" && (
@@ -862,6 +904,9 @@ export default function GlassesDemoPage() {
               <div className="absolute bottom-4 left-4 right-4 bg-black/70 border border-cyan-500/30 px-3 py-2 text-xs">
                 <p className="text-cyan-400 font-bold">{partInfo}</p>
                 <p className="text-green-600 mt-1">12 lifecycle events | 8,247 hrs | 3,891 cycles | Status: in-repair</p>
+                {cmmData?.matched && (
+                  <p className="text-cyan-600 mt-0.5">CMM: {cmmData.manual?.title} | {cmmData.references.length} reference sections loaded</p>
+                )}
               </div>
             )}
           </div>
@@ -972,7 +1017,7 @@ export default function GlassesDemoPage() {
                 {event.text}
               </span>
               {event.detail && event.type !== "scan" && (
-                <span className="text-green-700 truncate">{event.detail}</span>
+                <span className="text-green-700 truncate">{subCmm(event.detail)}</span>
               )}
             </div>
           ))}

@@ -1,0 +1,825 @@
+openapi: 3.1.0
+info:
+  title: AeroVision Mobile API
+  description: |
+    REST API for the AeroVision iOS companion app. Enables technicians to
+    authenticate, capture evidence (photos, video, audio), trigger AI analysis,
+    generate FAA compliance documents, and look up CMM reference data.
+
+    All /api/mobile/* endpoints (except /api/mobile/auth) require a Bearer token
+    in the Authorization header. Obtain the token via POST /api/mobile/auth.
+
+    The /api/cmm/lookup endpoint is public (no auth required).
+  version: 1.0.0
+  contact:
+    name: The Mechanical Vision Corporation
+    url: https://mechanicalvisioncorp.com
+
+servers:
+  - url: https://mechanicalvisioncorp.com/aerovision-demo
+    description: Production
+  - url: http://localhost:3000
+    description: Local development
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: Technician API key from POST /api/mobile/auth
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+      required: [success, error]
+
+    Technician:
+      type: object
+      properties:
+        id:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        badgeNumber:
+          type: string
+        role:
+          type: string
+          enum: [TECHNICIAN, SUPERVISOR, ADMIN]
+        organizationId:
+          type: string
+
+    Session:
+      type: object
+      properties:
+        id:
+          type: string
+        technicianId:
+          type: string
+        organizationId:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [capturing, capture_complete, submitted, processing, packaged, completed]
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    Evidence:
+      type: object
+      properties:
+        id:
+          type: string
+        sessionId:
+          type: string
+        type:
+          type: string
+          enum: [PHOTO, VIDEO, AUDIO_CHUNK]
+        fileUrl:
+          type: string
+          format: uri
+        fileSize:
+          type: integer
+          nullable: true
+        fileHash:
+          type: string
+          nullable: true
+        mimeType:
+          type: string
+        capturedAt:
+          type: string
+          format: date-time
+        gpsLatitude:
+          type: number
+          nullable: true
+        gpsLongitude:
+          type: number
+          nullable: true
+
+    GeneratedDocument:
+      type: object
+      properties:
+        id:
+          type: string
+        sessionId:
+          type: string
+        type:
+          type: string
+          enum: ["8130-3", "337", "8010-4"]
+        contentJson:
+          type: object
+          description: Form field data as key-value pairs
+        lowConfidenceFields:
+          type: array
+          items:
+            type: string
+        provenanceJson:
+          type: object
+          nullable: true
+          description: Per-field evidence lineage with confidence scores
+        generatedAt:
+          type: string
+          format: date-time
+
+    CmmLookupResult:
+      type: object
+      properties:
+        matched:
+          type: boolean
+        partNumber:
+          type: string
+        manual:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+            title:
+              type: string
+            fileUrl:
+              type: string
+              format: uri
+            pageCount:
+              type: integer
+              nullable: true
+            fileSizeBytes:
+              type: integer
+        references:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              title:
+                type: string
+              category:
+                type: string
+                enum: [procedure, limit, interval, specification]
+              content:
+                type: string
+              source:
+                type: string
+
+paths:
+  /api/mobile/auth:
+    post:
+      summary: Authenticate technician
+      description: Login with badge number and API key. Returns technician profile and token for subsequent requests.
+      operationId: authenticateTechnician
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [badgeNumber, apiKey]
+              properties:
+                badgeNumber:
+                  type: string
+                  example: "T-1001"
+                apiKey:
+                  type: string
+      responses:
+        "200":
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      technician:
+                        $ref: "#/components/schemas/Technician"
+                      organization:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                          name:
+                            type: string
+                          faaRepairStationCert:
+                            type: string
+                            nullable: true
+                      token:
+                        type: string
+                        description: API key for Authorization header
+        "400":
+          description: Missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/mobile/sessions:
+    get:
+      summary: List technician's sessions
+      operationId: listSessions
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+          description: Filter by session status
+      responses:
+        "200":
+          description: Sessions list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Session"
+    post:
+      summary: Start a new capture session
+      operationId: createSession
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description:
+                  type: string
+                  description: Optional session description
+      responses:
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/Session"
+
+  /api/mobile/sessions/{id}:
+    get:
+      summary: Get full session details
+      operationId: getSession
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session with all evidence and documents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/Session"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      summary: Update session status or metadata
+      operationId: updateSession
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [capturing, capture_complete, submitted, processing, packaged, completed]
+                description:
+                  type: string
+                componentId:
+                  type: string
+                expectedSteps:
+                  type: integer
+                retryProcessing:
+                  type: boolean
+      responses:
+        "200":
+          description: Updated session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/Session"
+
+  /api/mobile/evidence/upload:
+    post:
+      summary: Get signed upload token for Vercel Blob
+      description: Returns a short-lived token for direct upload to Vercel Blob storage. After upload, register the evidence via POST /api/mobile/evidence.
+      operationId: getUploadToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pathname]
+              properties:
+                pathname:
+                  type: string
+                  description: Upload path (e.g., "evidence/session-id/photo-1.jpg")
+                contentType:
+                  type: string
+                  description: MIME type
+      responses:
+        "200":
+          description: Upload token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      clientToken:
+                        type: string
+                        description: Short-lived Vercel Blob client token
+
+  /api/mobile/evidence:
+    post:
+      summary: Register evidence after upload
+      description: After uploading a file to Vercel Blob, call this to create the evidence record linked to a session.
+      operationId: registerEvidence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId, type, blobUrl]
+              properties:
+                sessionId:
+                  type: string
+                type:
+                  type: string
+                  enum: [PHOTO, VIDEO, AUDIO_CHUNK]
+                blobUrl:
+                  type: string
+                  format: uri
+                  description: HTTPS URL from Vercel Blob upload
+                fileSize:
+                  type: integer
+                fileHash:
+                  type: string
+                  description: SHA-256 hash
+                mimeType:
+                  type: string
+                capturedAt:
+                  type: string
+                  format: date-time
+                gpsLatitude:
+                  type: number
+                gpsLongitude:
+                  type: number
+      responses:
+        "201":
+          description: Evidence registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/Evidence"
+
+  /api/mobile/analyze-image:
+    post:
+      summary: AI vision analysis of a photo
+      description: Send a base64-encoded image for OCR and data plate reading. Returns extracted part numbers, serial numbers, and condition.
+      operationId: analyzeImage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [imageBase64]
+              properties:
+                imageBase64:
+                  type: string
+                  format: byte
+                  description: Base64-encoded image (max 10MB)
+                evidenceId:
+                  type: string
+                sessionId:
+                  type: string
+                mimeType:
+                  type: string
+      responses:
+        "200":
+          description: Analysis results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      partNumber:
+                        type: string
+                        nullable: true
+                      serialNumber:
+                        type: string
+                        nullable: true
+                      condition:
+                        type: string
+                      visibleText:
+                        type: string
+                      confidence:
+                        type: number
+                        minimum: 0
+                        maximum: 1
+                      rawAnalysis:
+                        type: string
+
+  /api/mobile/annotate-video:
+    post:
+      summary: Generate timestamped video annotations
+      description: Processes a video evidence record through Gemini to produce timestamped tags for parts, actions, and tools observed.
+      operationId: annotateVideo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [evidenceId]
+              properties:
+                evidenceId:
+                  type: string
+                  description: Video evidence record ID
+      responses:
+        "200":
+          description: Video annotations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      videoAnnotations:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            timestamp:
+                              type: number
+                              description: Seconds from start
+                            partNumbers:
+                              type: array
+                              items:
+                                type: string
+                            actions:
+                              type: array
+                              items:
+                                type: string
+                            tools:
+                              type: array
+                              items:
+                                type: string
+                            text:
+                              type: array
+                              items:
+                                type: string
+                            confidence:
+                              type: number
+
+  /api/mobile/transcribe:
+    post:
+      summary: Transcribe audio from session
+      description: Transcribe an audio recording with word-level timestamps. Accepts either JSON with blob URL or multipart form data.
+      operationId: transcribeAudio
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [audioBlobUrl, fileName, mimeType]
+              properties:
+                audioBlobUrl:
+                  type: string
+                  format: uri
+                fileName:
+                  type: string
+                mimeType:
+                  type: string
+                evidenceId:
+                  type: string
+      responses:
+        "200":
+          description: Transcription result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      transcript:
+                        type: string
+                      words:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            word:
+                              type: string
+                            start:
+                              type: number
+                            end:
+                              type: number
+                      confidence:
+                        type: number
+                      latencyMs:
+                        type: number
+
+  /api/mobile/analyze-session:
+    post:
+      summary: Full multi-source session analysis
+      description: Processes all evidence (video, audio, photos) in parallel through AI to produce a unified session analysis with part identification, action log, and conflict detection.
+      operationId: analyzeSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId]
+              properties:
+                sessionId:
+                  type: string
+      responses:
+        "200":
+          description: Session analysis
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      sessionAnalysis:
+                        type: object
+                        properties:
+                          partsIdentified:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                partNumber:
+                                  type: string
+                                serialNumber:
+                                  type: string
+                                confidence:
+                                  type: number
+                          photoExtractions:
+                            type: array
+                            items:
+                              type: object
+                          audioTranscript:
+                            type: string
+                            nullable: true
+                          videoAnnotations:
+                            type: array
+                            items:
+                              type: object
+                          conflicts:
+                            type: array
+                            items:
+                              type: string
+
+  /api/mobile/generate:
+    post:
+      summary: Generate FAA compliance documents
+      description: Generates 8130-3, 337, and 8010-4 compliance documents from session evidence using multi-provider AI (GPT-4o, Claude Sonnet, Gemini).
+      operationId: generateDocuments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId]
+              properties:
+                sessionId:
+                  type: string
+      responses:
+        "200":
+          description: Generated documents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  cached:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      documents:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/GeneratedDocument"
+
+  /api/mobile/create-document:
+    post:
+      summary: Create a specific compliance document
+      description: Generate a single document type with optional user guidance for the AI.
+      operationId: createDocument
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId, documentType]
+              properties:
+                sessionId:
+                  type: string
+                documentType:
+                  type: string
+                  enum: ["8130-3", "337", "8010-4"]
+                description:
+                  type: string
+                  description: Optional user guidance for AI generation
+      responses:
+        "200":
+          description: Generated document
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      document:
+                        $ref: "#/components/schemas/GeneratedDocument"
+
+  /api/mobile/verify-documents:
+    post:
+      summary: Independent AI verification of documents
+      description: Runs an independent AI verification pass (Claude Sonnet) that cross-checks generated documents against raw evidence to flag potential issues.
+      operationId: verifyDocuments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId]
+              properties:
+                sessionId:
+                  type: string
+      responses:
+        "200":
+          description: Verification results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      verificationResults:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            documentId:
+                              type: string
+                            documentType:
+                              type: string
+                            issuesFound:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  field:
+                                    type: string
+                                  issue:
+                                    type: string
+                                  severity:
+                                    type: string
+                                    enum: [error, warning]
+                            overallConfidence:
+                              type: number
+                            recommendedActions:
+                              type: array
+                              items:
+                                type: string
+
+  /api/cmm/lookup:
+    get:
+      summary: Look up CMM by part number
+      description: Returns Component Maintenance Manual metadata and reference data entries for a part number. Tries exact match first, falls back to part family prefix.
+      operationId: lookupCmm
+      security: []
+      parameters:
+        - name: pn
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Part number (e.g., "881700-1089")
+      responses:
+        "200":
+          description: CMM lookup result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/CmmLookupResult"
+        "400":
+          description: Missing pn parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"

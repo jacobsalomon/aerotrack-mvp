@@ -30,17 +30,6 @@ test.describe("Analytics Page", () => {
   });
 });
 
-test.describe("Knowledge Page", () => {
-  test("loads without errors", async ({ page }) => {
-    await bypassPasscode(page);
-    await page.goto(url("/knowledge"));
-    await page.waitForLoadState("networkidle");
-
-    const body = (await page.textContent("body")) || "";
-    expect(body.length).toBeGreaterThan(20);
-  });
-});
-
 test.describe("Capture Page", () => {
   test("loads without errors", async ({ page }) => {
     await bypassPasscode(page);

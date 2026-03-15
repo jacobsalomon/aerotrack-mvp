@@ -11,6 +11,81 @@ datasource db {
   provider = "sqlite"
 }
 
+// ══════════════════════════════════════════════════════
+// AUTH.JS (NextAuth v5) MODELS
+// These power OAuth login with Google and Microsoft Entra ID.
+// The User model is Auth.js's identity; it links to Technician via email match.
+// ══════════════════════════════════════════════════════
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  role          String    @default("TECHNICIAN") // TECHNICIAN, SUPERVISOR, ADMIN
+  accounts      Account[]
+  sessions      Session[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ──────────────────────────────────────────────────────
+// Electronic signatures for regulatory documents.
+// Captures the signer's identity, the document hash at time of signing,
+// and an optional signature image (base64 PNG from the signature pad).
+// ──────────────────────────────────────────────────────
+model Signature {
+  id             String   @id @default(cuid())
+  documentId     String            // References GeneratedDocument.id
+  signerId       String            // User or Technician who signed
+  signerName     String            // Display name of signer
+  signerEmail    String?           // Email of signer
+  signerRole     String            // "TECHNICIAN", "SUPERVISOR", "ADMIN"
+  certificateRef String?           // FAA license number (A&P/IA)
+  documentHash   String            // SHA-256 of document content at time of signing
+  signatureImage String?           // Base64 PNG of drawn signature
+  ipAddress      String?           // IP address at time of signing
+  userAgent      String?           // Browser user agent string
+  signedAt       DateTime @default(now())
+
+  @@index([documentId])
+  @@index([signerId])
+}
+
 // ──────────────────────────────────────────────────────
 // A component — the core entity. One record per physical part.
 // Example: A single Parker HPC-7 Hydraulic Pump, serial number SN-2019-07842
@@ -39,10 +114,11 @@ model Component {
   updatedAt           DateTime @updatedAt
 
   // Relationships — one component has many events, alerts, and documents
-  events     LifecycleEvent[]
-  alerts     Alert[]
-  documents  Document[]
-  exceptions Exception[]
+  events       LifecycleEvent[]
+  alerts       Alert[]
+  documents    Document[]
+  exceptions   Exception[]
+  measurements Measurement[]
 }
 
 // ──────────────────────────────────────────────────────
@@ -216,24 +292,6 @@ model Document {
   @@index([componentId])
 }
 
-// ──────────────────────────────────────────────────────
-// Knowledge library entries — captured expertise from experienced mechanics
-// This is how tribal knowledge gets preserved
-// ──────────────────────────────────────────────────────
-model KnowledgeEntry {
-  id            String   @id @default(cuid())
-  partFamily    String    // e.g., "HPC-7 Hydraulic Pump (881700 series)"
-  topic         String    // e.g., "Corrosion on mounting flange"
-  expertName    String
-  expertYears   Int       // Years of experience
-  expertCert    String?   // Certificate type (A&P, IA, etc.)
-  description   String    // The insight itself
-  audioPath     String?   // Path to audio clip
-  transcription String?   // Transcription of the audio
-  tags          String    // Comma-separated tags for search
-  cmmReference  String?   // Related CMM section
-  createdAt     DateTime  @default(now())
-}
 
 // ══════════════════════════════════════════════════════
 // MOBILE CAPTURE SYSTEM — New models for iPhone app + multi-technician support
@@ -260,6 +318,8 @@ model Organization {
   // Relationships
   technicians     Technician[]
   captureSessions CaptureSession[]
+  shiftSessions   ShiftSession[]
+  measurementSpecs MeasurementSpec[]
   auditLog        AuditLogEntry[]
 }
 
@@ -278,11 +338,15 @@ model Technician {
   role            String   @default("TECHNICIAN")       // TECHNICIAN, SUPERVISOR, ADMIN
   status          String   @default("ACTIVE")           // ACTIVE, INACTIVE
   apiKey          String?  @unique                      // Generated API key for mobile auth
+  faaLicenseNumber    String?                          // FAA airmen certificate number
+  faaLicenseType      String?                          // "A&P", "IA", "Repairman", etc.
+  faaLicenseVerifiedAt DateTime?                       // When last verified against FAA DB
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   // Relationships
   captureSessions     CaptureSession[]
+  shiftSessions       ShiftSession[]
   reviewedDocuments   DocumentGeneration2[]  @relation("reviewer")
   auditLog            AuditLogEntry[]
 
@@ -299,6 +363,8 @@ model CaptureSession {
   technician      Technician @relation(fields: [technicianId], references: [id], onDelete: Cascade)
   organizationId  String
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  shiftSessionId  String?                               // Optional — links this session to a shift
+  shiftSession    ShiftSession? @relation(fields: [shiftSessionId], references: [id], onDelete: SetNull)
   componentId     String?                               // Linked after AI identifies the part
   status          String    @default("capturing")       // capturing, processing, documents_generated, submitted, approved, rejected
   description     String?
@@ -314,9 +380,11 @@ model CaptureSession {
   analysis        SessionAnalysis?
   processingJob   SessionProcessingJob?
   packages        SessionPackage[]
+  measurements    Measurement[]
 
   @@index([technicianId])
   @@index([organizationId])
+  @@index([shiftSessionId])
   @@index([status, startedAt])
   @@index([technicianId, status, startedAt])
   @@index([organizationId, status, startedAt])
@@ -345,7 +413,8 @@ model CaptureEvidence {
   createdAt       DateTime  @default(now())
 
   // Relationships
-  videoAnnotations VideoAnnotation[]
+  videoAnnotations   VideoAnnotation[]
+  measurementSources MeasurementSource[]
 
   @@index([sessionId])
 }
@@ -507,6 +576,153 @@ model SessionPackage {
   updatedAt   DateTime  @updatedAt
 }
 
+// ══════════════════════════════════════════════════════
+// SHIFT + MEASUREMENT SYSTEM — Glasses + Mic integration
+// Added for production-ready AeroVision (Mar 2026)
+// ══════════════════════════════════════════════════════
+
+// ──────────────────────────────────────────────────────
+// MeasurementSpec — predefined measurements required for a workflow
+// E.g., "HPC-7 Overhaul" requires 42 specific measurements with tolerances.
+// When a shift links to a spec, the system tracks progress and validates each reading.
+// ──────────────────────────────────────────────────────
+model MeasurementSpec {
+  id                  String   @id @default(cuid())
+  organizationId      String
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name                String                          // e.g., "HPC-7 Overhaul Measurements"
+  componentPartNumber String?                         // Which part number this spec applies to
+  specItemsJson       String                          // JSON array of expected measurements (see below)
+                                                      // Each item: { parameterName, measurementType, unit,
+                                                      //   nominalValue, toleranceLow, toleranceHigh,
+                                                      //   required, procedureStep, count }
+  status              String   @default("draft")      // draft, active, archived
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relationships
+  shiftSessions       ShiftSession[]
+
+  @@index([organizationId])
+  @@index([componentPartNumber])
+}
+
+// ──────────────────────────────────────────────────────
+// ShiftSession — a full work shift (8-12 hours)
+// Contains multiple capture sessions and a continuous audio/video stream.
+// Measurements are extracted incrementally and cross-referenced automatically.
+// ──────────────────────────────────────────────────────
+model ShiftSession {
+  id                String    @id @default(cuid())
+  technicianId      String
+  technician        Technician @relation(fields: [technicianId], references: [id], onDelete: Cascade)
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  measurementSpecId String?                           // Optional — links to a predefined measurement checklist
+  measurementSpec   MeasurementSpec? @relation(fields: [measurementSpecId], references: [id], onDelete: SetNull)
+  status            String    @default("active")      // active, paused, reconciling, completed
+  startedAt         DateTime  @default(now())
+  endedAt           DateTime?
+  totalDurationMin  Int?                              // Computed when shift ends
+  notes             String?                           // Shift-level notes
+  reconciliationJson String?                          // JSON — end-of-shift cross-check results
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relationships
+  captureSessions   CaptureSession[]
+  measurements      Measurement[]
+
+  @@index([technicianId])
+  @@index([organizationId])
+  @@index([status, startedAt])
+}
+
+// ──────────────────────────────────────────────────────
+// Measurement — one row per measurement taken during a shift
+// This is THE measurement ledger — the structured system of record.
+// Each measurement can have multiple sources (audio, video, manual)
+// that are cross-referenced for confidence scoring.
+// ──────────────────────────────────────────────────────
+model Measurement {
+  id                  String    @id @default(cuid())
+  shiftSessionId      String
+  shiftSession        ShiftSession @relation(fields: [shiftSessionId], references: [id], onDelete: Cascade)
+  captureSessionId    String?                         // Optional link to a specific capture session
+  captureSession      CaptureSession? @relation(fields: [captureSessionId], references: [id], onDelete: SetNull)
+  componentId         String?                         // Which part this measurement is for
+  component           Component? @relation(fields: [componentId], references: [id], onDelete: SetNull)
+  specItemIndex       Int?                            // Which spec item this fulfills (index into specItemsJson)
+
+  // What was measured
+  measurementType     String                          // torque, dimension, pressure, temperature, clearance,
+                                                      // runout, endplay, backlash, weight, rpm, resistance
+  parameterName       String                          // Human label: "Engine mount bolt torque"
+  value               Float                           // The accepted numeric value
+  unit                String                          // ft-lbs, in-lbs, N-m, inches, mm, mils, psi, degF, degC, ohms
+
+  // Tolerance (from spec or manually set)
+  nominalValue        Float?                          // Expected value from CMM/spec
+  toleranceLow        Float?                          // Lower bound
+  toleranceHigh       Float?                          // Upper bound
+  inTolerance         Boolean?                        // Computed: is value within tolerance?
+
+  // Confidence and corroboration
+  confidence          Float     @default(0)           // 0-1 overall confidence
+  corroborationLevel  String    @default("single")    // single, corroborated, conflicting
+  status              String    @default("pending")   // pending, confirmed, flagged, overridden, out_of_tolerance
+  flagReason          String?                         // Why it was flagged (e.g., "audio/video mismatch")
+  overrideReason      String?                         // If technician overrode, why
+  overriddenBy        String?                         // Technician badge who overrode
+  overriddenAt        DateTime?
+
+  // Location in the work
+  procedureStep       String?                         // CMM section reference (e.g., "5.2.3")
+  taskCardRef         String?                         // Task card / job card reference
+  sequenceInShift     Int?                            // Order within the shift
+
+  // Timestamps
+  measuredAt          DateTime                        // When the measurement was taken
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  // Relationships
+  sources             MeasurementSource[]
+
+  @@index([shiftSessionId])
+  @@index([captureSessionId])
+  @@index([componentId])
+  @@index([measurementType])
+  @@index([status])
+}
+
+// ──────────────────────────────────────────────────────
+// MeasurementSource — where each measurement value came from
+// A measurement can have multiple sources: audio callout, video frame, manual entry.
+// This enables cross-referencing: if audio says "45 ft-lbs" and video shows 45,
+// confidence goes up. If they disagree, the measurement gets flagged.
+// ──────────────────────────────────────────────────────
+model MeasurementSource {
+  id                  String    @id @default(cuid())
+  measurementId       String
+  measurement         Measurement @relation(fields: [measurementId], references: [id], onDelete: Cascade)
+  sourceType          String                          // audio_callout, video_frame, photo_gauge, manual_entry
+  value               Float                           // What THIS source reported
+  unit                String                          // Unit as extracted
+  confidence          Float     @default(0)           // 0-1 source-level confidence
+  rawExcerpt          String?                         // Text excerpt: "torque reading 45 foot-pounds"
+  timestamp           Float?                          // Seconds into the shift when this was captured
+
+  // Link to evidence (one of these will be set)
+  captureEvidenceId   String?                         // Photo, video, or audio chunk evidence
+  captureEvidence     CaptureEvidence? @relation(fields: [captureEvidenceId], references: [id], onDelete: SetNull)
+
+  createdAt           DateTime  @default(now())
+
+  @@index([measurementId])
+  @@index([captureEvidenceId])
+}
+
 // ──────────────────────────────────────────────────────
 // AuditLogEntry — immutable log of all system actions
 // Required for FAA compliance — who did what, when, to what
@@ -526,4 +742,44 @@ model AuditLogEntry {
 
   @@index([organizationId])
   @@index([technicianId])
+}
+
+// ──────────────────────────────────────────────────────
+// Airworthiness Directives (ADs) — mandatory safety actions
+// issued by the FAA or EASA when an unsafe condition exists
+// ──────────────────────────────────────────────────────
+model AirworthinessDirective {
+  id                String    @id @default(cuid())
+  adNumber          String    @unique            // e.g., "2024-15-06"
+  title             String
+  issuer            String    @default("FAA")    // "FAA", "EASA", etc.
+  effectiveDate     DateTime
+  applicability     String                       // Part numbers or families affected
+  complianceAction  String                       // What must be done
+  complianceDeadline String?                     // e.g., "Within 500 flight hours"
+  isEmergency       Boolean   @default(false)    // Emergency AD = immediate compliance
+  supersedes        String?                      // AD number this replaces
+  status            String    @default("ACTIVE") // ACTIVE, SUPERSEDED, RESCINDED
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// ──────────────────────────────────────────────────────
+// Service Bulletins (SBs) — manufacturer recommendations
+// for modifications, inspections, or part replacements
+// ──────────────────────────────────────────────────────
+model ServiceBulletin {
+  id                String    @id @default(cuid())
+  sbNumber          String    @unique            // e.g., "SB-881700-72-001"
+  title             String
+  manufacturer      String                       // e.g., "Parker Aerospace"
+  issueDate         DateTime
+  applicability     String                       // Part numbers or families affected
+  category          String    @default("OPTIONAL") // MANDATORY, OPTIONAL, ALERT
+  description       String                       // What the SB recommends
+  complianceAction  String?                      // What must be done
+  relatedAd         String?                      // AD number if mandatory
+  status            String    @default("ACTIVE") // ACTIVE, SUPERSEDED, COMPLETED
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 }

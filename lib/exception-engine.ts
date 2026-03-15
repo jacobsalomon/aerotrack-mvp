@@ -13,6 +13,7 @@
 // ──────────────────────────────────────────────────────
 
 import { prisma } from "@/lib/db";
+import { hasNonCompliantADs } from "@/lib/ad-sb-tracker";
 
 // ── Types ────────────────────────────────────────────
 
@@ -111,6 +112,7 @@ export async function scanComponent(componentId: string) {
     ...checkDateInconsistency(component as unknown as ComponentWithRelations),
     ...checkUnsignedDocuments(component as unknown as ComponentWithRelations),
     ...checkFacilityCertMissing(component as unknown as ComponentWithRelations),
+    ...(await checkAdCompliance(componentId)),
   ];
 
   // 3. Create Exception records for new findings (avoid duplicates)
@@ -642,6 +644,40 @@ function checkFacilityCertMissing(component: ComponentWithRelations): DetectedIs
         },
       });
     }
+  }
+
+  return issues;
+}
+
+/**
+ * CHECK: Non-compliant Airworthiness Directives
+ * ADs are mandatory — a component with outstanding ADs cannot legally
+ * be released to service. This check uses the AD/SB tracker to find
+ * any applicable ADs that haven't been addressed.
+ */
+async function checkAdCompliance(componentId: string): Promise<DetectedIssue[]> {
+  const issues: DetectedIssue[] = [];
+
+  try {
+    const result = await hasNonCompliantADs(componentId);
+    if (result.nonCompliant) {
+      issues.push({
+        exceptionType: "ad_non_compliance",
+        severity: "critical",
+        title: `${result.count} Outstanding Airworthiness Directive${result.count > 1 ? "s" : ""}`,
+        description:
+          `This component has ${result.count} applicable Airworthiness Directive${result.count > 1 ? "s" : ""} ` +
+          `(${result.adNumbers.join(", ")}) that have not been addressed. ADs are mandatory safety ` +
+          `actions — the component cannot be released to service until all ADs are complied with.`,
+        evidence: {
+          nonCompliantADs: result.adNumbers,
+          count: result.count,
+        },
+      });
+    }
+  } catch {
+    // If the AD check fails (e.g., no AD records in DB), skip silently
+    // rather than blocking the entire scan
   }
 
   return issues;

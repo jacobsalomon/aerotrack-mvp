@@ -157,6 +157,120 @@ const DOCUMENT_LAYOUTS: Record<string, SectionConfig[]> = {
       fields: [{ key: "comments", label: "Comments" }],
     },
   ],
+  "8130-1": [
+    {
+      title: "Applicant",
+      fields: [
+        { key: "applicantName", label: "Applicant Name" },
+        { key: "applicantAddress", label: "Address" },
+      ],
+    },
+    {
+      title: "Product",
+      fields: [
+        { key: "productType", label: "Type/Description" },
+        { key: "partNumber", label: "Part Number" },
+        { key: "serialNumber", label: "Serial Number" },
+        { key: "manufacturer", label: "Manufacturer" },
+        { key: "modelDesignation", label: "Model Designation" },
+      ],
+    },
+    {
+      title: "Export Destination",
+      fields: [
+        { key: "importingCountry", label: "Importing Country" },
+        { key: "foreignAuthority", label: "Foreign Authority" },
+      ],
+    },
+    {
+      title: "Certification",
+      fields: [
+        { key: "basisForIssuance", label: "Basis for Issuance" },
+        { key: "remarks", label: "Remarks" },
+        { key: "inspectorName", label: "Inspector" },
+        { key: "certificateNumber", label: "Certificate Number" },
+        { key: "date", label: "Date" },
+        { key: "signature", label: "Signature" },
+      ],
+    },
+  ],
+  "8130-6": [
+    {
+      title: "Aircraft Description",
+      fields: [
+        { key: "registrationMark", label: "Registration Mark" },
+        { key: "aircraftBuilder", label: "Aircraft Builder" },
+        { key: "modelDesignation", label: "Model Designation" },
+        { key: "serialNumber", label: "Serial Number" },
+        { key: "engineModel", label: "Engine Model" },
+        { key: "propellerModel", label: "Propeller Model" },
+      ],
+    },
+    {
+      title: "Certificate Requested",
+      fields: [
+        { key: "certificateType", label: "Certificate Type" },
+        { key: "category", label: "Category" },
+        { key: "operatingLimitations", label: "Operating Limitations" },
+      ],
+    },
+    {
+      title: "Certification Basis",
+      fields: [
+        { key: "typeCertNumber", label: "Type Certificate Number" },
+        { key: "productionBasis", label: "Production Basis" },
+        { key: "remarks", label: "Remarks" },
+      ],
+    },
+    {
+      title: "Signatures",
+      fields: [
+        { key: "applicantName", label: "Applicant" },
+        { key: "applicantSignature", label: "Applicant Signature" },
+        { key: "date", label: "Date" },
+        { key: "inspectorSignature", label: "Inspector Signature" },
+        { key: "inspectorDate", label: "Inspector Date" },
+      ],
+    },
+  ],
+  "easa-form-1": [
+    {
+      title: "Authority",
+      fields: [
+        { key: "block1", label: "Competent Authority" },
+        { key: "block3", label: "Form Tracking Number" },
+        { key: "block4", label: "Organization" },
+        { key: "block5", label: "Work Order" },
+      ],
+    },
+    {
+      title: "Item Identification",
+      fields: [
+        { key: "block6a", label: "Description" },
+        { key: "block6b", label: "Part Number" },
+        { key: "block6c", label: "Serial Number" },
+        { key: "block6d", label: "Quantity" },
+      ],
+    },
+    {
+      title: "Remarks & Release",
+      fields: [
+        { key: "block7", label: "Remarks" },
+        { key: "block8", label: "Part 21 (Production)" },
+        { key: "block9", label: "Part 145 (Maintenance)" },
+        { key: "block10", label: "Other Regulation" },
+      ],
+    },
+    {
+      title: "Authorization",
+      fields: [
+        { key: "block11", label: "Approval Number" },
+        { key: "block12", label: "Date" },
+        { key: "block13", label: "Authorized Signature" },
+        { key: "block14", label: "Certifying Statement" },
+      ],
+    },
+  ],
 };
 
 export function humanizeFieldLabel(field: string): string {

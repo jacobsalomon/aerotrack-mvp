@@ -263,6 +263,9 @@ DOCUMENT TYPES YOU CAN GENERATE:
 - "8130-3": FAA Form 8130-3 (Authorized Release Certificate) — use when work is complete and part is being released
 - "337": FAA Form 337 (Major Repair and Alteration) — use when major repairs or alterations were performed
 - "8010-4": FAA Form 8010-4 (Malfunction/Defect Report) — use when defects were found
+- "easa-form-1": EASA Form 1 (Authorized Release Certificate) — European equivalent of 8130-3, use for EASA-regulated work. Blocks match the official EASA Form 1 layout (block1=authority, block3=tracking number, block4=org, block5=work order, block6a-d=item, block7=remarks, block8=Part 21, block9=Part 145, block10=other regulation, block11=approval number, block12=date, block13=signature, block14=certifying statement)
+- "8130-1": FAA Form 8130-1 (Application for Export Certificate of Airworthiness) — use when a part is being exported to a foreign country. Fields: applicantName, applicantAddress, productType, partNumber, serialNumber, manufacturer, modelDesignation, importingCountry, foreignAuthority, basisForIssuance, remarks, inspectorName, certificateNumber, date, signature
+- "8130-6": FAA Form 8130-6 (Application for U.S. Airworthiness Certificate) — use when applying for airworthiness certification. Fields: registrationMark, aircraftBuilder, modelDesignation, serialNumber, engineModel, propellerModel, certificateType, category, operatingLimitations, typeCertNumber, productionBasis, remarks, applicantName, applicantSignature, date, inspectorSignature, inspectorDate
 
 For each document, generate complete form field data as JSON. Include a confidence score (0-1) and list any fields you're uncertain about.
 
