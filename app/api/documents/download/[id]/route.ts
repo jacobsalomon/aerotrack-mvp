@@ -5,7 +5,7 @@
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { render8130Pdf, render337Pdf, render8010Pdf } from "@/lib/pdf-renderers";
+import { render8130Pdf, render337Pdf, render8010Pdf, renderEASAForm1Pdf, render81301Pdf, render81306Pdf } from "@/lib/pdf-renderers";
 import { requireDashboardAuth } from "@/lib/dashboard-auth";
 
 export async function GET(
@@ -55,6 +55,18 @@ export async function GET(
       case "8010-4":
         pdfBytes = await render8010Pdf(content, doc.hash);
         filename = `Form8010-4_${doc.id}.pdf`;
+        break;
+      case "easa-form-1":
+        pdfBytes = await renderEASAForm1Pdf(content, doc.hash);
+        filename = `EASA-Form1_${doc.id}.pdf`;
+        break;
+      case "8130-1":
+        pdfBytes = await render81301Pdf(content, doc.hash);
+        filename = `Form8130-1_${doc.id}.pdf`;
+        break;
+      case "8130-6":
+        pdfBytes = await render81306Pdf(content, doc.hash);
+        filename = `Form8130-6_${doc.id}.pdf`;
         break;
       default:
         pdfBytes = await render337Pdf(content, doc.hash);

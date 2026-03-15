@@ -1062,3 +1062,511 @@ export async function render8010Pdf(
 
   return pdf.save();
 }
+
+// ══════════════════════════════════════════════════════════════
+// PDF RENDERER: EASA Form 1 (Authorized Release Certificate)
+// ══════════════════════════════════════════════════════════════
+// European equivalent of FAA 8130-3. Used by EASA-regulated MROs
+// to release parts and appliances back to service after maintenance.
+// Blocks 1-14 mirror the official EASA Form 1 layout.
+
+export async function renderEASAForm1Pdf(
+  content: Record<string, string>,
+  hash?: string | null
+): Promise<Uint8Array> {
+  const pdf = await PDFDocument.create();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const courier = await pdf.embedFont(StandardFonts.Courier);
+  const page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+
+  let y = PAGE_HEIGHT - MARGIN;
+
+  // ── Header: EASA Form 1 title block ──
+  page.drawRectangle({
+    x: MARGIN,
+    y: y - 38,
+    width: CONTENT_WIDTH,
+    height: 42,
+    color: rgb(0.05, 0.1, 0.3),
+  });
+  page.drawText("EASA FORM 1", {
+    x: MARGIN + 10,
+    y: y - 14,
+    size: 16,
+    font: fontBold,
+    color: rgb(1, 1, 1),
+  });
+  page.drawText("AUTHORIZED RELEASE CERTIFICATE", {
+    x: MARGIN + 10,
+    y: y - 30,
+    size: 9,
+    font,
+    color: rgb(0.7, 0.75, 0.85),
+  });
+  // EU flag placeholder text on right side
+  page.drawText("EU", {
+    x: PAGE_WIDTH - MARGIN - 30,
+    y: y - 20,
+    size: 14,
+    font: fontBold,
+    color: rgb(0.8, 0.85, 1),
+  });
+  y -= 48;
+
+  // ── Block 1: Approving Competent Authority / Country ──
+  y = drawSectionHeader(page, "BLOCK 1 — APPROVING COMPETENT AUTHORITY / COUNTRY", y, fontBold);
+  y = drawField(page, "Competent Authority", content.block1 || "EASA", MARGIN + 5, y, font, fontBold, true);
+
+  // ── Block 2: EASA Form 1 Header (static) ──
+  drawLabel(page, "Block 2 — EASA FORM 1 AUTHORIZED RELEASE CERTIFICATE", MARGIN + 5, y, font);
+  y -= 16;
+  drawLine(page, y);
+
+  // ── Block 3: Form Tracking Number ──
+  y -= 8;
+  y = drawField(page, "Block 3 — Form Tracking Number", content.block3 || "—", MARGIN + 5, y, font, fontBold, true);
+  drawLine(page, y);
+
+  // ── Block 4: Organization Name and Address ──
+  y -= 8;
+  y = drawSectionHeader(page, "BLOCK 4 — ORGANIZATION NAME AND ADDRESS", y, fontBold);
+  y = drawWrappedText(page, content.block4 || "—", MARGIN + 5, y, CONTENT_WIDTH - 10, font, 9);
+  y -= 8;
+  drawLine(page, y);
+
+  // ── Block 5: Work Order / Contract / Invoice ──
+  y -= 8;
+  y = drawField(page, "Block 5 — Work Order / Contract / Invoice", content.block5 || "—", MARGIN + 5, y, font, fontBold);
+  drawLine(page, y);
+
+  // ── Block 6: Item Identification (four sub-blocks in a row) ──
+  y -= 4;
+  y = drawSectionHeader(page, "BLOCK 6 — ITEM IDENTIFICATION", y, fontBold);
+  const col6W = CONTENT_WIDTH / 4;
+  const block6Fields = [
+    { label: "6a. Description", value: content.block6a },
+    { label: "6b. Part Number", value: content.block6b },
+    { label: "6c. Serial Number", value: content.block6c },
+    { label: "6d. Quantity", value: content.block6d },
+  ];
+  for (let i = 0; i < block6Fields.length; i++) {
+    const x = MARGIN + 5 + col6W * i;
+    drawLabel(page, block6Fields[i].label, x, y, font);
+    page.drawText(block6Fields[i].value || "—", {
+      x,
+      y: y - 11,
+      size: 9,
+      font: fontBold,
+      color: BLACK,
+    });
+  }
+  y -= 28;
+  drawLine(page, y);
+
+  // ── Block 7: Remarks ──
+  y -= 4;
+  y = drawSectionHeader(page, "BLOCK 7 — REMARKS", y, fontBold);
+  const remarks = content.block7 || "—";
+  const remarkLines = remarks.split("\n").filter(Boolean);
+  for (const line of remarkLines) {
+    if (y < 160) break;
+    y = drawWrappedText(page, line.trim(), MARGIN + 5, y, CONTENT_WIDTH - 10, font, 8);
+    y -= 2;
+  }
+  y -= 4;
+  drawLine(page, y);
+
+  // ── Block 8-10: Release Type (Part 21 / Part 145) ──
+  y -= 4;
+  y = drawSectionHeader(page, "BLOCK 8-10 — RELEASE TO SERVICE", y, fontBold);
+
+  // Block 8: Part 21 production release (if applicable)
+  const hasBlock8 = content.block8 && content.block8 !== "N/A";
+  drawLabel(page, "Block 8 — Part 21 (Production)", MARGIN + 5, y, font);
+  page.drawText(hasBlock8 ? "[X]" : "[ ]", {
+    x: MARGIN + 5 + 150,
+    y: y - 1,
+    size: 8,
+    font: fontBold,
+    color: BLACK,
+  });
+  if (hasBlock8) {
+    page.drawText(content.block8, {
+      x: MARGIN + 5 + 170,
+      y: y,
+      size: 8,
+      font,
+      color: BLACK,
+    });
+  }
+  y -= 16;
+
+  // Block 9: Part 145 maintenance release
+  const hasBlock9 = content.block9 && content.block9 !== "N/A";
+  drawLabel(page, "Block 9 — Part 145 (Maintenance)", MARGIN + 5, y, font);
+  page.drawText(hasBlock9 ? "[X]" : "[ ]", {
+    x: MARGIN + 5 + 150,
+    y: y - 1,
+    size: 8,
+    font: fontBold,
+    color: BLACK,
+  });
+  if (hasBlock9) {
+    page.drawText(content.block9, {
+      x: MARGIN + 5 + 170,
+      y: y,
+      size: 8,
+      font,
+      color: BLACK,
+    });
+  }
+  y -= 16;
+
+  // Block 10: Other regulation
+  if (content.block10 && content.block10 !== "N/A") {
+    drawLabel(page, "Block 10 — Other Regulation", MARGIN + 5, y, font);
+    page.drawText(content.block10, {
+      x: MARGIN + 5 + 150,
+      y: y,
+      size: 8,
+      font,
+      color: BLACK,
+    });
+    y -= 16;
+  }
+  drawLine(page, y);
+
+  // ── Block 11: Approval / Authorization Number ──
+  y -= 8;
+  y = drawField(page, "Block 11 — Approval / Authorization Number", content.block11 || "—", MARGIN + 5, y, font, fontBold, true);
+
+  // ── Block 12: Date ──
+  y = drawField(page, "Block 12 — Date", content.block12 || "—", MARGIN + 5, y, font, fontBold);
+
+  // ── Block 13: Authorized Signature ──
+  y = drawField(page, "Block 13 — Authorized Signature", content.block13 || "[PENDING]", MARGIN + 5, y, font, fontBold, true);
+
+  // ── Block 14: Certifying Statement ──
+  y -= 4;
+  drawLine(page, y);
+  y -= 8;
+  drawLabel(page, "Block 14 — Certifying Statement", MARGIN + 5, y, font);
+  y -= 12;
+  y = drawWrappedText(
+    page,
+    content.block14 || "Certifies that the items identified above were manufactured / maintained / overhauled in conformity with the approved data and are in a condition for safe operation.",
+    MARGIN + 5,
+    y,
+    CONTENT_WIDTH - 10,
+    font,
+    8
+  );
+
+  // ── Hash fingerprint (tamper-evident) ──
+  if (hash) {
+    y -= 10;
+    page.drawText(`SHA-256: ${hash}`, {
+      x: MARGIN + 5,
+      y,
+      size: 6,
+      font: courier,
+      color: GRAY,
+    });
+  }
+
+  // Footer
+  drawFooter(page, font, hash);
+
+  return pdf.save();
+}
+
+// ══════════════════════════════════════════════════════════════
+// PDF RENDERER: FAA Form 8130-1
+// ══════════════════════════════════════════════════════════════
+// Application for Export Certificate of Airworthiness.
+// Used when a repaired/overhauled part is being exported
+// to a foreign civil aviation authority.
+
+export async function render81301Pdf(
+  content: Record<string, string>,
+  hash?: string | null
+): Promise<Uint8Array> {
+  const pdf = await PDFDocument.create();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+
+  let y = PAGE_HEIGHT - MARGIN;
+
+  // ── Header ──
+  page.drawRectangle({
+    x: MARGIN,
+    y: y - 38,
+    width: CONTENT_WIDTH,
+    height: 42,
+    color: DARK_BLUE,
+  });
+  page.drawText("FAA FORM 8130-1", {
+    x: MARGIN + 10,
+    y: y - 14,
+    size: 16,
+    font: fontBold,
+    color: rgb(1, 1, 1),
+  });
+  page.drawText("APPLICATION FOR EXPORT CERTIFICATE OF AIRWORTHINESS", {
+    x: MARGIN + 10,
+    y: y - 30,
+    size: 8,
+    font,
+    color: rgb(0.7, 0.75, 0.85),
+  });
+  y -= 48;
+
+  // ── Section 1: Applicant Information ──
+  y = drawSectionHeader(page, "SECTION 1 — APPLICANT INFORMATION", y, fontBold);
+  y = drawField(page, "Applicant Name", content.applicantName || "—", MARGIN + 5, y, font, fontBold, true);
+  y = drawField(page, "Address", content.applicantAddress || "—", MARGIN + 5, y, font, fontBold);
+  drawLine(page, y);
+
+  // ── Section 2: Product Identification ──
+  y -= 4;
+  y = drawSectionHeader(page, "SECTION 2 — PRODUCT IDENTIFICATION", y, fontBold);
+  const col2W = CONTENT_WIDTH / 3;
+  const prodFields = [
+    { label: "Type/Description", value: content.productType },
+    { label: "Part Number", value: content.partNumber },
+    { label: "Serial Number", value: content.serialNumber },
+  ];
+  for (let i = 0; i < prodFields.length; i++) {
+    const x = MARGIN + 5 + col2W * i;
+    drawLabel(page, prodFields[i].label, x, y, font);
+    page.drawText(prodFields[i].value || "—", {
+      x,
+      y: y - 11,
+      size: 9,
+      font: fontBold,
+      color: BLACK,
+    });
+  }
+  y -= 28;
+
+  y = drawField(page, "Manufacturer", content.manufacturer || "—", MARGIN + 5, y, font, fontBold);
+  y = drawField(page, "Model Designation", content.modelDesignation || "—", MARGIN + 5, y, font, fontBold);
+  drawLine(page, y);
+
+  // ── Section 3: Export Destination ──
+  y -= 4;
+  y = drawSectionHeader(page, "SECTION 3 — EXPORT DESTINATION", y, fontBold);
+  y = drawField(page, "Importing Country", content.importingCountry || "—", MARGIN + 5, y, font, fontBold, true);
+  y = drawField(page, "Foreign Authority", content.foreignAuthority || "—", MARGIN + 5, y, font, fontBold);
+  drawLine(page, y);
+
+  // ── Section 4: Basis for Issuance ──
+  y -= 4;
+  y = drawSectionHeader(page, "SECTION 4 — BASIS FOR ISSUANCE", y, fontBold);
+  y = drawWrappedText(page, content.basisForIssuance || "Product conforms to its type design and is in condition for safe operation.", MARGIN + 5, y, CONTENT_WIDTH - 10, font, 9);
+  y -= 8;
+  drawLine(page, y);
+
+  // ── Section 5: Remarks ──
+  y -= 4;
+  y = drawSectionHeader(page, "SECTION 5 — REMARKS", y, fontBold);
+  const remarks = content.remarks || "—";
+  for (const line of remarks.split("\n").filter(Boolean)) {
+    if (y < 160) break;
+    y = drawWrappedText(page, line.trim(), MARGIN + 5, y, CONTENT_WIDTH - 10, font, 8);
+    y -= 2;
+  }
+  y -= 4;
+  drawLine(page, y);
+
+  // ── Section 6: Certification ──
+  y -= 4;
+  y = drawSectionHeader(page, "SECTION 6 — CERTIFICATION", y, fontBold);
+  const certCol = CONTENT_WIDTH / 3;
+  const certFields = [
+    { label: "FAA Inspector", value: content.inspectorName },
+    { label: "Certificate Number", value: content.certificateNumber },
+    { label: "Date", value: content.date },
+  ];
+  for (let i = 0; i < certFields.length; i++) {
+    const x = MARGIN + 5 + certCol * i;
+    drawLabel(page, certFields[i].label, x, y, font);
+    page.drawText(certFields[i].value || "—", {
+      x,
+      y: y - 11,
+      size: 9,
+      font: fontBold,
+      color: BLACK,
+    });
+  }
+  y -= 28;
+  y = drawField(page, "Signature", content.signature || "[PENDING]", MARGIN + 5, y, font, fontBold, true);
+
+  // Footer
+  drawFooter(page, font, hash);
+
+  return pdf.save();
+}
+
+// ══════════════════════════════════════════════════════════════
+// PDF RENDERER: FAA Form 8130-6
+// ══════════════════════════════════════════════════════════════
+// Application for U.S. Airworthiness Certificate.
+// Filed when seeking initial or replacement airworthiness
+// certification for an aircraft, engine, or propeller.
+
+export async function render81306Pdf(
+  content: Record<string, string>,
+  hash?: string | null
+): Promise<Uint8Array> {
+  const pdf = await PDFDocument.create();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+
+  let y = PAGE_HEIGHT - MARGIN;
+
+  // ── Header ──
+  page.drawRectangle({
+    x: MARGIN,
+    y: y - 38,
+    width: CONTENT_WIDTH,
+    height: 42,
+    color: DARK_BLUE,
+  });
+  page.drawText("FAA FORM 8130-6", {
+    x: MARGIN + 10,
+    y: y - 14,
+    size: 16,
+    font: fontBold,
+    color: rgb(1, 1, 1),
+  });
+  page.drawText("APPLICATION FOR U.S. AIRWORTHINESS CERTIFICATE", {
+    x: MARGIN + 10,
+    y: y - 30,
+    size: 8,
+    font,
+    color: rgb(0.7, 0.75, 0.85),
+  });
+  y -= 48;
+
+  // ── Section I: Aircraft Description ──
+  y = drawSectionHeader(page, "SECTION I — AIRCRAFT DESCRIPTION", y, fontBold);
+  const descCol = CONTENT_WIDTH / 4;
+  const descFields = [
+    { label: "Registration Mark", value: content.registrationMark },
+    { label: "Aircraft Builder", value: content.aircraftBuilder },
+    { label: "Model Designation", value: content.modelDesignation },
+    { label: "Serial Number", value: content.serialNumber },
+  ];
+  for (let i = 0; i < descFields.length; i++) {
+    const x = MARGIN + 5 + descCol * i;
+    drawLabel(page, descFields[i].label, x, y, font);
+    page.drawText(descFields[i].value || "—", {
+      x,
+      y: y - 11,
+      size: 9,
+      font: fontBold,
+      color: BLACK,
+    });
+  }
+  y -= 28;
+
+  // Engine / Propeller
+  const epCol = CONTENT_WIDTH / 2;
+  const epFields = [
+    { label: "Engine Builder & Model", value: content.engineModel },
+    { label: "Propeller Builder & Model", value: content.propellerModel },
+  ];
+  for (let i = 0; i < epFields.length; i++) {
+    const x = MARGIN + 5 + epCol * i;
+    drawLabel(page, epFields[i].label, x, y, font);
+    page.drawText(epFields[i].value || "N/A", {
+      x,
+      y: y - 11,
+      size: 9,
+      font,
+      color: BLACK,
+    });
+  }
+  y -= 28;
+  drawLine(page, y);
+
+  // ── Section II: Certificate Requested ──
+  y -= 4;
+  y = drawSectionHeader(page, "SECTION II — CERTIFICATE REQUESTED", y, fontBold);
+  y = drawField(page, "Airworthiness Certificate Type", content.certificateType || "Standard", MARGIN + 5, y, font, fontBold, true);
+  y = drawField(page, "Category", content.category || "—", MARGIN + 5, y, font, fontBold);
+  if (content.operatingLimitations) {
+    y = drawField(page, "Operating Limitations", content.operatingLimitations, MARGIN + 5, y, font, fontBold);
+  }
+  drawLine(page, y);
+
+  // ── Section III: Certification Basis ──
+  y -= 4;
+  y = drawSectionHeader(page, "SECTION III — CERTIFICATION BASIS", y, fontBold);
+  y = drawField(page, "Type Certificate Number", content.typeCertNumber || "—", MARGIN + 5, y, font, fontBold, true);
+  y = drawField(page, "Production Basis", content.productionBasis || "—", MARGIN + 5, y, font, fontBold);
+  drawLine(page, y);
+
+  // ── Section IV: Remarks ──
+  y -= 4;
+  y = drawSectionHeader(page, "SECTION IV — REMARKS", y, fontBold);
+  const remarks = content.remarks || "—";
+  for (const line of remarks.split("\n").filter(Boolean)) {
+    if (y < 160) break;
+    y = drawWrappedText(page, line.trim(), MARGIN + 5, y, CONTENT_WIDTH - 10, font, 8);
+    y -= 2;
+  }
+  y -= 4;
+  drawLine(page, y);
+
+  // ── Section V: Applicant Certification ──
+  y -= 4;
+  y = drawSectionHeader(page, "SECTION V — APPLICANT CERTIFICATION", y, fontBold);
+  y = drawField(page, "Applicant Name", content.applicantName || "—", MARGIN + 5, y, font, fontBold, true);
+  const sigCol = CONTENT_WIDTH / 2;
+  drawLabel(page, "Signature", MARGIN + 5, y, font);
+  page.drawText(content.applicantSignature || "[PENDING]", {
+    x: MARGIN + 5,
+    y: y - 11,
+    size: 9,
+    font: fontBold,
+    color: BLACK,
+  });
+  drawLabel(page, "Date", MARGIN + 5 + sigCol, y, font);
+  page.drawText(content.date || "—", {
+    x: MARGIN + 5 + sigCol,
+    y: y - 11,
+    size: 9,
+    font,
+    color: BLACK,
+  });
+  y -= 28;
+
+  // ── Section VI: FAA Representative ──
+  y = drawSectionHeader(page, "SECTION VI — FAA REPRESENTATIVE", y, fontBold);
+  drawLabel(page, "Inspector Signature", MARGIN + 5, y, font);
+  page.drawText(content.inspectorSignature || "[PENDING]", {
+    x: MARGIN + 5,
+    y: y - 11,
+    size: 9,
+    font: fontBold,
+    color: BLACK,
+  });
+  drawLabel(page, "Date", MARGIN + 5 + sigCol, y, font);
+  page.drawText(content.inspectorDate || "—", {
+    x: MARGIN + 5 + sigCol,
+    y: y - 11,
+    size: 9,
+    font,
+    color: BLACK,
+  });
+
+  // Footer
+  drawFooter(page, font, hash);
+
+  return pdf.save();
+}

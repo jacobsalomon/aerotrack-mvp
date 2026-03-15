@@ -5,15 +5,16 @@ import { usePathname } from "next/navigation";
 import { useState, type ComponentType } from "react";
 import {
   BarChart3,
-  BookOpen,
   FileCheck,
   FileText,
+  Gauge,
   Glasses,
   LayoutDashboard,
   Menu,
   Plane,
   Play,
   ScanLine,
+  Settings,
   ShieldCheck,
   Users,
 } from "lucide-react";
@@ -60,20 +61,22 @@ const primaryNavItems: NavItem[] = [
   },
 ];
 
-const secondaryNavItems: NavItem[] = [
-  {
-    href: "/capture",
-    label: "Capture",
-    icon: ScanLine,
-    description: "Upstream evidence capture",
-  },
-  {
-    href: "/knowledge",
-    label: "Knowledge",
-    icon: BookOpen,
-    description: "Reference and tribal knowledge",
-  },
-];
+// HIDDEN — features exist but not shown in nav
+// const secondaryNavItems: NavItem[] = [
+//   {
+//     href: "/shifts",
+//     label: "Shifts",
+//     icon: Gauge,
+//     description: "Live measurement feed",
+//   },
+//   {
+//     href: "/capture",
+//     label: "Capture",
+//     icon: ScanLine,
+//     description: "Upstream evidence capture",
+//   },
+// ];
+const secondaryNavItems: NavItem[] = [];
 
 const supportNavItems: NavItem[] = [
   {
@@ -86,16 +89,23 @@ const supportNavItems: NavItem[] = [
     label: "Technicians",
     icon: Users,
   },
-  {
-    href: "/analytics",
-    label: "Analytics",
-    icon: BarChart3,
-  },
+  // {
+  //   href: "/analytics",
+  //   label: "Analytics",
+  //   icon: BarChart3,
+  // },
   {
     href: "/glasses-demo",
     label: "Glasses Preview",
     icon: Glasses,
   },
+  // HIDDEN — feature exists but not shown in nav
+  // {
+  //   href: "/admin/cmm",
+  //   label: "CMM Library",
+  //   icon: Settings,
+  //   description: "Manage maintenance manuals",
+  // },
 ];
 
 const allNavItems = [
@@ -208,12 +218,15 @@ function SidebarBody({
           items={primaryNavItems}
           onNavigate={onNavigate}
         />
-        <NavSection
-          pathname={pathname}
-          title="Supporting"
-          items={secondaryNavItems}
-          onNavigate={onNavigate}
-        />
+        {/* HIDDEN — Supporting section hidden while features are cut */}
+        {secondaryNavItems.length > 0 && (
+          <NavSection
+            pathname={pathname}
+            title="Supporting"
+            items={secondaryNavItems}
+            onNavigate={onNavigate}
+          />
+        )}
         <NavSection
           pathname={pathname}
           title="Operations"

@@ -9,6 +9,7 @@ import {
 } from "./gemini";
 import { generateDocuments } from "./openai";
 import { clampConfidence } from "./utils";
+import { getReferenceDataForPart, formatReferenceDataForPrompt } from "@/lib/reference-data";
 
 function isUniqueConstraintError(error: unknown): boolean {
   return (
@@ -276,13 +277,20 @@ export async function runSessionDraftingStage(
     }
 
     let cmmReference: string | null = null;
+    let referenceData: string | null = null;
     if (componentInfo) {
-      const cmm = await prisma.componentManual.findFirst({
-        where: { partNumber: componentInfo.partNumber },
-        select: { title: true, partNumber: true },
-      });
+      const [cmm, refEntries] = await Promise.all([
+        prisma.componentManual.findFirst({
+          where: { partNumber: componentInfo.partNumber },
+          select: { title: true, partNumber: true },
+        }),
+        getReferenceDataForPart(componentInfo.partNumber),
+      ]);
       if (cmm) {
         cmmReference = `CMM: ${cmm.title} (P/N: ${cmm.partNumber})`;
+      }
+      if (refEntries.length > 0) {
+        referenceData = formatReferenceDataForPrompt(refEntries);
       }
     }
 
@@ -304,7 +312,7 @@ export async function runSessionDraftingStage(
       videoAnalysis,
       audioTranscript,
       cmmReference,
-      referenceData: null,
+      referenceData,
     });
 
     estimatedCost += 0.065 * (generated.documents?.length || 1);
