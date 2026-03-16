@@ -28,9 +28,11 @@ const DEMO_TECHNICIAN: AuthenticatedTechnician = {
   organizationId: "demo-precision-aero",
 };
 
-// Returns the demo technician for every request (no auth check)
+// Returns the demo technician for every request (no auth check).
+// Keeps the union return type so all existing call sites compile unchanged.
 export async function authenticateRequest(
-  _request: Request
-): Promise<{ technician: AuthenticatedTechnician }> {
+  request: Request
+): Promise<{ technician: AuthenticatedTechnician } | { error: NextResponse }> {
+  void request;
   return { technician: DEMO_TECHNICIAN };
 }
