@@ -348,6 +348,14 @@ export const ShiftDeskMicRecorder = forwardRef<
     !!navigator.mediaDevices?.getUserMedia;
   const lastUploadedLabel = formatUploadTimestamp(lastUploadedAt);
   const selectedDevice = devices.find((device) => device.deviceId === selectedDeviceId);
+  const statusLabel =
+    state === "stopping"
+      ? "Stopping and flushing final chunk"
+      : isRecording
+        ? "Recording live"
+        : state === "requesting"
+          ? "Requesting microphone access"
+          : "Ready to record";
 
   return (
     <Card>
@@ -390,13 +398,7 @@ export const ShiftDeskMicRecorder = forwardRef<
             <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
               <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
                 <Mic className={`h-4 w-4 ${isRecording ? "text-green-600" : "text-slate-400"}`} />
-                {isRecording
-                  ? "Recording live"
-                  : state === "requesting"
-                    ? "Requesting microphone access"
-                    : state === "stopping"
-                      ? "Stopping and flushing final chunk"
-                      : "Ready to record"}
+                {statusLabel}
               </div>
               <p className="mt-2 text-sm text-slate-600">
                 {isRecording
