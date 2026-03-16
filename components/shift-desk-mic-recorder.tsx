@@ -340,7 +340,7 @@ export const ShiftDeskMicRecorder = forwardRef<
     };
   }, [cleanupMedia]);
 
-  const isRecording = state === "recording";
+  const isRecording = state === "recording" || state === "stopping";
   const isBusy = state === "requesting" || state === "stopping";
   const browserSupportsDeskMic =
     typeof navigator !== "undefined" &&
