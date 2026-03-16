@@ -3,6 +3,10 @@
 // A shift is an 8-12 hour work session — the container for all measurements.
 
 import { prisma } from "@/lib/db";
+import {
+  buildShiftTranscriptReviewData,
+  canExportShiftToQuantum,
+} from "@/lib/shift-transcript";
 
 // Start a new shift for a technician
 export async function startShift({
@@ -44,6 +48,7 @@ export async function startShift({
       organizationId,
       measurementSpecId: measurementSpecId || null,
       notes: notes || null,
+      transcriptReviewStatus: "capturing",
     },
     include: {
       measurementSpec: true,
@@ -95,6 +100,7 @@ export async function endShift(shiftId: string, technicianId: string) {
       status: "completed",
       endedAt,
       totalDurationMin,
+      transcriptReviewStatus: "review_required",
     },
   });
 }
@@ -107,14 +113,29 @@ export async function getShiftDetail(shiftId: string, organizationId?: string) {
     include: {
       technician: { select: { firstName: true, lastName: true, badgeNumber: true } },
       measurementSpec: true,
+      transcriptChunks: {
+        select: {
+          transcript: true,
+          source: true,
+          startedAt: true,
+          createdAt: true,
+          durationSeconds: true,
+        },
+        orderBy: [{ startedAt: "asc" }, { createdAt: "asc" }],
+      },
       _count: {
-        select: { measurements: true, captureSessions: true },
+        select: { measurements: true, captureSessions: true, transcriptChunks: true },
       },
     },
   });
 
   if (!shift) return null;
   if (organizationId && shift.organizationId !== organizationId) return null;
+
+  const transcriptReview = buildShiftTranscriptReviewData({
+    transcriptDraft: shift.transcriptDraft,
+    transcriptChunks: shift.transcriptChunks,
+  });
 
   // Get measurement status breakdown
   const measurements = await prisma.measurement.groupBy({
@@ -127,8 +148,41 @@ export async function getShiftDetail(shiftId: string, organizationId?: string) {
     measurements.map((m) => [m.status, m._count])
   );
 
+  const shiftData = {
+    id: shift.id,
+    technicianId: shift.technicianId,
+    technician: shift.technician,
+    organizationId: shift.organizationId,
+    measurementSpecId: shift.measurementSpecId,
+    measurementSpec: shift.measurementSpec,
+    status: shift.status,
+    startedAt: shift.startedAt,
+    endedAt: shift.endedAt,
+    totalDurationMin: shift.totalDurationMin,
+    notes: shift.notes,
+    transcriptUpdatedAt: shift.transcriptUpdatedAt,
+    transcriptReviewStatus: shift.transcriptReviewStatus,
+    transcriptApprovedAt: shift.transcriptApprovedAt,
+    transcriptApprovedBy: shift.transcriptApprovedBy,
+    quantumExportedAt: shift.quantumExportedAt,
+    reconciliationJson: shift.reconciliationJson,
+    createdAt: shift.createdAt,
+    updatedAt: shift.updatedAt,
+    _count: shift._count,
+  };
+
   return {
-    ...shift,
+    ...shiftData,
+    transcriptText: transcriptReview.transcriptText,
+    transcriptAutoText: transcriptReview.autoTranscriptText,
+    transcriptSources: transcriptReview.sourceSummaries,
+    transcriptSegments: transcriptReview.segments,
+    transcriptValidation: transcriptReview.validationSummary,
+    transcriptPendingReview: !canExportShiftToQuantum({
+      status: shift.status,
+      transcriptReviewStatus: shift.transcriptReviewStatus,
+      transcriptText: transcriptReview.transcriptText,
+    }),
     specItems: shift.measurementSpec
       ? JSON.parse(shift.measurementSpec.specItemsJson)
       : null,
