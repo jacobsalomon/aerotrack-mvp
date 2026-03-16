@@ -1,6 +1,8 @@
 // POST /api/mobile/auth — Authenticate a technician
-// Mobile app sends badge number + API key, gets back technician info
-// This is the "login" endpoint for the iPhone app
+// Mobile app sends an API key, gets back technician info + token
+// Supports two flows:
+//   1. API key only — looks up technician by key (primary flow)
+//   2. Badge number + API key — legacy flow
 
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
@@ -11,34 +13,45 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { badgeNumber, apiKey } = body;
 
-    if (!badgeNumber || !apiKey) {
+    if (!apiKey) {
       return NextResponse.json(
-        { success: false, error: "Badge number and API key are required" },
+        { success: false, error: "API key is required" },
         { status: 400 }
       );
     }
 
-    // Find technician by badge number and verify API key matches
-    const technician = await prisma.technician.findUnique({
-      where: { badgeNumber },
-      include: {
-        organization: {
-          select: {
-            id: true,
-            name: true,
-            faaRepairStationCert: true,
+    let technician;
+
+    if (badgeNumber) {
+      // Legacy flow: look up by badge, verify key matches
+      technician = await prisma.technician.findUnique({
+        where: { badgeNumber },
+        include: {
+          organization: {
+            select: { id: true, name: true, faaRepairStationCert: true },
           },
         },
-      },
-    });
+      });
 
-    // Use timing-safe comparison to prevent side-channel attacks
-    const storedKey = technician?.apiKey || "";
-    const keysMatch =
-      apiKey.length === storedKey.length &&
-      crypto.timingSafeEqual(Buffer.from(apiKey), Buffer.from(storedKey));
+      const storedKey = technician?.apiKey || "";
+      const keysMatch =
+        apiKey.length === storedKey.length &&
+        crypto.timingSafeEqual(Buffer.from(apiKey), Buffer.from(storedKey));
 
-    if (!technician || !keysMatch) {
+      if (!keysMatch) technician = null;
+    } else {
+      // Primary flow: look up technician directly by API key
+      technician = await prisma.technician.findUnique({
+        where: { apiKey },
+        include: {
+          organization: {
+            select: { id: true, name: true, faaRepairStationCert: true },
+          },
+        },
+      });
+    }
+
+    if (!technician) {
       return NextResponse.json(
         { success: false, error: "Invalid credentials" },
         { status: 401 }
@@ -66,17 +79,16 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       data: {
-        technician: {
+        // "user" field matches the iOS app's AuthResponse model
+        user: {
           id: technician.id,
-          firstName: technician.firstName,
-          lastName: technician.lastName,
-          email: technician.email,
+          name: `${technician.firstName} ${technician.lastName}`,
           badgeNumber: technician.badgeNumber,
+          email: technician.email,
           role: technician.role,
           organizationId: technician.organizationId,
         },
         organization: technician.organization,
-        // Return the API key as token so the mobile app can store it for future requests
         token: apiKey,
       },
     });
