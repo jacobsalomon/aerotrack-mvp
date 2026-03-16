@@ -824,7 +824,9 @@ export default function ShiftDetailPage({ params }: { params: Promise<{ id: stri
               shiftId={id}
               enabled={isActive || isPaused}
               onUnauthorized={handleExpiredDashboardSession}
-              onStopComplete={refreshShift}
+              onStopComplete={async () => {
+                await refreshShift();
+              }}
             />
           )}
 
