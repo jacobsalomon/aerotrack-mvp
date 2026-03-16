@@ -2,7 +2,7 @@
 // Accepts either:
 //   1. JSON with audioBlobUrl (from client-side Vercel Blob upload — preferred)
 //   2. FormData with file (legacy, subject to 4.5MB serverless limit)
-// Uses GPT-4o-transcribe (best accuracy ~2.5% WER) with Groq Whisper fallback
+// Uses the shared OpenAI transcription fallback chain
 // Returns word-level timestamps for searchable audio
 // Protected by API key authentication
 
@@ -12,6 +12,7 @@ export const maxDuration = 30;
 import { prisma } from "@/lib/db";
 import { authenticateRequest } from "@/lib/mobile-auth";
 import { transcribeWithFallback } from "@/lib/ai/openai";
+import { normalizeShiftTranscriptSource } from "@/lib/shift-transcript";
 import {
   getAllowedEvidenceHostsForError,
   isAllowedEvidenceUrl,
@@ -19,6 +20,18 @@ import {
 import { NextResponse } from "next/server";
 
 const PRIVILEGED_ROLES = new Set(["SUPERVISOR", "ADMIN"]);
+
+function inferTranscriptSource(
+  explicitSource: string | null,
+  sessionDescription: string | null | undefined
+) {
+  const explicit = normalizeShiftTranscriptSource(explicitSource);
+  if (explicit !== "desk_mic" || explicitSource?.trim()) {
+    return explicit;
+  }
+
+  return normalizeShiftTranscriptSource(sessionDescription);
+}
 
 export async function POST(request: Request) {
   const auth = await authenticateRequest(request);
@@ -28,6 +41,7 @@ export async function POST(request: Request) {
     let audioFile: File | Blob;
     let fileName: string;
     let evidenceId: string | null = null;
+    let transcriptSource: string | null = null;
 
     const contentType = request.headers.get("content-type") || "";
 
@@ -36,6 +50,8 @@ export async function POST(request: Request) {
       const body = await request.json();
       const { audioBlobUrl, fileName: bodyFileName, mimeType } = body;
       evidenceId = body.evidenceId || null;
+      transcriptSource =
+        typeof body.transcriptSource === "string" ? body.transcriptSource : null;
 
       if (!audioBlobUrl) {
         return NextResponse.json(
@@ -71,6 +87,7 @@ export async function POST(request: Request) {
       const formData = await request.formData();
       const formFile = formData.get("file") as File | null;
       evidenceId = formData.get("evidenceId") as string | null;
+      transcriptSource = formData.get("transcriptSource") as string | null;
 
       if (!formFile) {
         return NextResponse.json(
@@ -83,10 +100,12 @@ export async function POST(request: Request) {
       fileName = formFile.name || "audio.m4a";
     }
 
-    // Transcribe with automatic fallback (GPT-4o-transcribe → Groq Whisper)
+    // Transcribe with automatic fallback (gpt-4o-transcribe → gpt-4o-mini-transcribe)
     const startTime = Date.now();
     const result = await transcribeWithFallback(audioFile, fileName);
     const latencyMs = Date.now() - startTime;
+    let linkedShiftId: string | null = null;
+    let linkedTranscriptSource: string | null = null;
 
     // If we have an evidenceId, update the evidence record with the transcription
     if (evidenceId) {
@@ -97,6 +116,8 @@ export async function POST(request: Request) {
             select: {
               technicianId: true,
               organizationId: true,
+              shiftSessionId: true,
+              description: true,
             },
           },
         },
@@ -128,6 +149,44 @@ export async function POST(request: Request) {
           durationSeconds: result.duration,
         },
       });
+
+      if (result.text.trim() && evidence.type === "AUDIO_CHUNK" && evidence.session.shiftSessionId) {
+        linkedShiftId = evidence.session.shiftSessionId;
+        linkedTranscriptSource = inferTranscriptSource(
+          transcriptSource,
+          evidence.session.description
+        );
+        const linkedShift = await prisma.shiftSession.findUnique({
+          where: { id: linkedShiftId },
+          select: { id: true, status: true },
+        });
+
+        if (linkedShift) {
+          await prisma.$transaction([
+            prisma.shiftTranscriptChunk.create({
+              data: {
+                shiftSessionId: linkedShiftId,
+                transcript: result.text.trim(),
+                source: linkedTranscriptSource,
+                startedAt: evidence.capturedAt,
+                durationSeconds: result.duration ?? null,
+              },
+            }),
+            prisma.shiftSession.update({
+              where: { id: linkedShiftId },
+              data: {
+                transcriptDraft: null,
+                transcriptUpdatedAt: new Date(),
+                transcriptReviewStatus:
+                  linkedShift.status === "completed" ? "review_required" : "capturing",
+                transcriptApprovedAt: null,
+                transcriptApprovedBy: null,
+                quantumExportedAt: null,
+              },
+            }),
+          ]);
+        }
+      }
     }
 
     // NOTE: Real-time transcript stitching was removed to prevent race conditions.
@@ -151,6 +210,8 @@ export async function POST(request: Request) {
           transcriptionLength: result.text.length,
           wordCount: result.words.length,
           latencyMs,
+          linkedShiftId,
+          transcriptSource: linkedTranscriptSource,
         }),
       },
     });

@@ -625,17 +625,37 @@ model ShiftSession {
   endedAt           DateTime?
   totalDurationMin  Int?                              // Computed when shift ends
   notes             String?                           // Shift-level notes
+  transcriptDraft   String?                           // Technician-reviewed transcript snapshot used for export
+  transcriptUpdatedAt DateTime?
+  transcriptReviewStatus String @default("capturing") // capturing, review_required, approved
+  transcriptApprovedAt DateTime?
+  transcriptApprovedBy String?
+  quantumExportedAt DateTime?
   reconciliationJson String?                          // JSON — end-of-shift cross-check results
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
   // Relationships
   captureSessions   CaptureSession[]
+  transcriptChunks  ShiftTranscriptChunk[]
   measurements      Measurement[]
 
   @@index([technicianId])
   @@index([organizationId])
   @@index([status, startedAt])
+}
+
+model ShiftTranscriptChunk {
+  id             String   @id @default(cuid())
+  shiftSessionId String
+  shiftSession   ShiftSession @relation(fields: [shiftSessionId], references: [id], onDelete: Cascade)
+  transcript     String
+  source         String   @default("desk_mic")
+  startedAt      DateTime?
+  durationSeconds Float?
+  createdAt      DateTime @default(now())
+
+  @@index([shiftSessionId, startedAt])
 }
 
 // ──────────────────────────────────────────────────────

@@ -2,9 +2,9 @@ import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
-  // Serve all routes under /aerovision-demo so the gateway domain
+  // Serve all routes under /aerovision so the gateway domain
   // (mechanicalvisioncorp.com) can proxy here via rewrites.
-  basePath: "/aerovision-demo",
+  basePath: "/aerovision",
 
   // basePath breaks Next.js Image optimization on Vercel — disable it
   // and use unoptimized images instead.
@@ -18,7 +18,22 @@ const nextConfig: NextConfig = {
   // Expose basePath to client-side fetch() calls via lib/api-url.ts.
   // <Link> and <Image> auto-prepend basePath, but fetch() does not.
   env: {
-    NEXT_PUBLIC_BASE_PATH: "/aerovision-demo",
+    NEXT_PUBLIC_BASE_PATH: "/aerovision",
+  },
+
+  async redirects() {
+    return [
+      {
+        source: "/aerovision-demo",
+        destination: "/aerovision",
+        permanent: true,
+      },
+      {
+        source: "/aerovision-demo/:path*",
+        destination: "/aerovision/:path*",
+        permanent: true,
+      },
+    ];
   },
 
   // Tell Next.js NOT to bundle these packages — use them as-is at runtime.

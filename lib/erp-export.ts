@@ -2,6 +2,7 @@
 // Ready for import into an ERP system (SAP, Oracle, etc.)
 
 import { prisma } from "@/lib/db";
+import { buildShiftTranscript, canExportShiftToQuantum } from "@/lib/shift-transcript";
 
 export interface ErpExportPayload {
   exportVersion: string;
@@ -14,6 +15,12 @@ export interface ErpExportPayload {
     endedAt: string | null;
     durationMinutes: number | null;
     specName: string | null;
+  };
+  transcript: {
+    status: string;
+    approvedAt: string;
+    approvedBy: string;
+    text: string;
   };
   measurements: Array<{
     sequenceNumber: number;
@@ -55,10 +62,37 @@ export async function generateErpExport(shiftId: string): Promise<ErpExportPaylo
     include: {
       technician: { select: { firstName: true, lastName: true, badgeNumber: true } },
       measurementSpec: { select: { name: true } },
+      transcriptChunks: {
+        select: {
+          transcript: true,
+          source: true,
+          startedAt: true,
+          createdAt: true,
+          durationSeconds: true,
+        },
+        orderBy: [{ startedAt: "asc" }, { createdAt: "asc" }],
+      },
     },
   });
 
   if (!shift) throw new Error("Shift not found");
+
+  const transcriptText = buildShiftTranscript({
+    transcriptDraft: shift.transcriptDraft,
+    transcriptChunks: shift.transcriptChunks,
+  });
+
+  if (
+    !canExportShiftToQuantum({
+      status: shift.status,
+      transcriptReviewStatus: shift.transcriptReviewStatus,
+      transcriptText,
+    }) ||
+    !shift.transcriptApprovedAt ||
+    !shift.transcriptApprovedBy
+  ) {
+    throw new Error("Transcript approval is required before exporting to Quantum");
+  }
 
   const measurements = await prisma.measurement.findMany({
     where: { shiftSessionId: shiftId },
@@ -89,6 +123,12 @@ export async function generateErpExport(shiftId: string): Promise<ErpExportPaylo
       endedAt: shift.endedAt?.toISOString() || null,
       durationMinutes: shift.totalDurationMin,
       specName: shift.measurementSpec?.name || null,
+    },
+    transcript: {
+      status: shift.transcriptReviewStatus,
+      approvedAt: shift.transcriptApprovedAt.toISOString(),
+      approvedBy: shift.transcriptApprovedBy,
+      text: transcriptText,
     },
     measurements: measurements.map((m) => ({
       sequenceNumber: m.sequenceInShift || 0,
