@@ -29,6 +29,7 @@ export async function recordMeasurement({
   source,
   procedureStep,
   taskCardRef,
+  allowedShiftStatuses,
 }: {
   shiftSessionId: string;
   componentId?: string;
@@ -45,6 +46,7 @@ export async function recordMeasurement({
   };
   procedureStep?: string;
   taskCardRef?: string;
+  allowedShiftStatuses?: string[];
 }) {
   // Load the shift to check for a linked spec
   const shift = await prisma.shiftSession.findUnique({
@@ -53,7 +55,10 @@ export async function recordMeasurement({
   });
 
   if (!shift) throw new Error("Shift not found");
-  if (shift.status !== "active") throw new Error("Shift is not active");
+  const permittedStatuses = new Set(allowedShiftStatuses ?? ["active"]);
+  if (!permittedStatuses.has(shift.status)) {
+    throw new Error("Shift is not active");
+  }
 
   // Try to match against spec if one exists
   let specItemIndex: number | null = null;
@@ -79,6 +84,10 @@ export async function recordMeasurement({
 
   // Compute tolerance status
   const inTolerance = checkTolerance(value, toleranceLow, toleranceHigh);
+  const measurementTimestamp =
+    typeof source.timestamp === "number" && Number.isFinite(source.timestamp)
+      ? new Date(source.timestamp * 1000)
+      : new Date();
 
   // Try to cross-reference with existing measurements in this shift
   const crossRef = await crossReference(
@@ -149,7 +158,7 @@ export async function recordMeasurement({
       procedureStep: procedureStep || null,
       taskCardRef: taskCardRef || null,
       sequenceInShift: nextSequence,
-      measuredAt: new Date(),
+      measuredAt: measurementTimestamp,
       sources: {
         create: {
           sourceType: source.sourceType,
@@ -181,13 +190,13 @@ function checkTolerance(
 }
 
 // Try to find an existing measurement in this shift that matches
-// Same parameter name + type, within +/- 5 minutes
+// Same parameter name + type, within +/- 5 minutes of the source timestamp.
 async function crossReference(
   shiftSessionId: string,
   parameterName: string,
   measurementType: string,
   _value: number,
-  _timestamp?: number
+  timestamp?: number
 ): Promise<{
   id: string;
   value: number;
@@ -195,21 +204,47 @@ async function crossReference(
   status: string;
   flagReason: string | null;
 } | null> {
-  // Find measurements with matching name and type from the last 5 minutes
-  const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+  const measurementTime =
+    typeof timestamp === "number" && Number.isFinite(timestamp)
+      ? new Date(timestamp * 1000)
+      : new Date();
+  const fiveMinutesMs = 5 * 60 * 1000;
 
-  const existing = await prisma.measurement.findFirst({
+  const candidates = await prisma.measurement.findMany({
     where: {
       shiftSessionId,
       parameterName: { equals: parameterName },
       measurementType: { equals: measurementType },
-      createdAt: { gte: fiveMinAgo },
+      measuredAt: {
+        gte: new Date(measurementTime.getTime() - fiveMinutesMs),
+        lte: new Date(measurementTime.getTime() + fiveMinutesMs),
+      },
       corroborationLevel: "single", // Only cross-ref with un-corroborated ones
     },
-    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      value: true,
+      confidence: true,
+      status: true,
+      flagReason: true,
+      measuredAt: true,
+    },
   });
 
-  return existing;
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  let closest = candidates[0];
+  for (const candidate of candidates.slice(1)) {
+    const closestDistance = Math.abs(closest.measuredAt.getTime() - measurementTime.getTime());
+    const candidateDistance = Math.abs(candidate.measuredAt.getTime() - measurementTime.getTime());
+    if (candidateDistance < closestDistance) {
+      closest = candidate;
+    }
+  }
+
+  return closest;
 }
 
 // Auto-match a measurement to the closest unmatched spec item
