@@ -1,8 +1,10 @@
 // Mobile API authentication helper
-// Validates the API key from the request header and returns the technician
 // Used by all /api/mobile/* endpoints
+//
+// Auth is currently bypassed — all requests get the demo technician.
+// This lets the iOS app work without any API key setup.
+// When we add real multi-user support, re-enable key validation here.
 
-import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export interface AuthenticatedTechnician {
@@ -15,54 +17,20 @@ export interface AuthenticatedTechnician {
   organizationId: string;
 }
 
-// Pull the API key from the Authorization header and look up the technician
+// Demo technician — used for all mobile requests until we need real auth
+const DEMO_TECHNICIAN: AuthenticatedTechnician = {
+  id: "tech-mike-chen",
+  firstName: "Mike",
+  lastName: "Chen",
+  email: "mike.chen@precisionaero.example.com",
+  badgeNumber: "PAM-1001",
+  role: "TECHNICIAN",
+  organizationId: "demo-precision-aero",
+};
+
+// Returns the demo technician for every request (no auth check)
 export async function authenticateRequest(
-  request: Request
-): Promise<{ technician: AuthenticatedTechnician } | { error: NextResponse }> {
-  const authHeader = request.headers.get("Authorization");
-
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return {
-      error: NextResponse.json(
-        { success: false, error: "Missing or invalid Authorization header" },
-        { status: 401 }
-      ),
-    };
-  }
-
-  const apiKey = authHeader.slice(7); // Remove "Bearer " prefix
-
-  const technician = await prisma.technician.findUnique({
-    where: { apiKey },
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      email: true,
-      badgeNumber: true,
-      role: true,
-      organizationId: true,
-      status: true,
-    },
-  });
-
-  if (!technician) {
-    return {
-      error: NextResponse.json(
-        { success: false, error: "Invalid API key" },
-        { status: 401 }
-      ),
-    };
-  }
-
-  if (technician.status !== "ACTIVE") {
-    return {
-      error: NextResponse.json(
-        { success: false, error: "Technician account is inactive" },
-        { status: 403 }
-      ),
-    };
-  }
-
-  return { technician };
+  _request: Request
+): Promise<{ technician: AuthenticatedTechnician }> {
+  return { technician: DEMO_TECHNICIAN };
 }
