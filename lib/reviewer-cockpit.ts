@@ -3,6 +3,7 @@ import {
   dispositionResolvesBlocker,
   parseDocumentReviewState,
 } from "@/lib/document-review-state";
+import { safeParseJson } from "@/lib/utils";
 
 export interface ReviewerDocumentInput {
   id: string;
@@ -83,16 +84,6 @@ interface ProvenanceDiscrepancyValue {
 interface ProvenanceFieldPayload {
   discrepancy?: ProvenanceDiscrepancyValue | null;
   discrepancies?: ProvenanceDiscrepancyValue[] | null;
-}
-
-function safeParseJson<T>(value: string | null, fallback: T): T {
-  if (!value) return fallback;
-
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return fallback;
-  }
 }
 
 function gatherVerificationIssues(payload: VerificationPayload | null): VerificationIssue[] {

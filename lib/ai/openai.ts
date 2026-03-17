@@ -134,51 +134,12 @@ export async function transcribeAudio(
   return result.data;
 }
 
-// Keep the old name around for backwards compat in pipeline.ts
 export async function transcribeWithFallback(
   audioFile: File | Blob,
   fileName: string
 ): Promise<TranscriptionResult & { usedFallback: boolean }> {
-  const result = await callWithFallback({
-    models: TRANSCRIPTION_MODELS,
-    timeoutMs: 25000,
-    taskName: "audio_transcription",
-    execute: async (model) => {
-      const apiKey = process.env.OPENAI_API_KEY;
-      if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
-
-      const formData = new FormData();
-      formData.append("file", audioFile, fileName);
-      formData.append("model", model.id);
-      formData.append("language", "en");
-      formData.append("response_format", "verbose_json");
-      formData.append("timestamp_granularities[]", "word");
-      formData.append("prompt", AEROSPACE_VOCABULARY_PROMPT);
-
-      const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${apiKey}` },
-        body: formData,
-        signal: AbortSignal.timeout(25000),
-      });
-
-      if (!response.ok) {
-        const err = await response.text();
-        throw new Error(`Transcription failed (${response.status}): ${err.slice(0, 200)}`);
-      }
-
-      const data = await response.json();
-      return {
-        text: data.text || "",
-        duration: data.duration || 0,
-        words: data.words || [],
-        language: data.language || "en",
-        model: model.id,
-      } as TranscriptionResult;
-    },
-  });
-
-  return { ...result.data, usedFallback: result.fallbackUsed };
+  const result = await transcribeAudio(audioFile, fileName);
+  return { ...result, usedFallback: false };
 }
 
 // ──────────────────────────────────────────────────────

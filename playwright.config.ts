@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 // The app uses basePath "/aerovision-demo", so all URLs must include it.
 // We set baseURL to just the origin, and all test URLs include the basePath.
-export const BASE_PATH = "/aerovision-demo";
+export const BASE_PATH = "/aerovision";
 
 export default defineConfig({
   // Look for E2E test files matching *.spec.ts

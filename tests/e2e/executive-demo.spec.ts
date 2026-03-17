@@ -20,14 +20,14 @@ test.describe("Executive Demo", () => {
 
     await page.getByRole("link", { name: /start guided demo/i }).click();
 
-    await expect(page).toHaveURL(/\/aerovision-demo\/demo\?demo=executive&step=intro/);
+    await expect(page).toHaveURL(/\/aerovision\/demo\?demo=executive&step=intro/);
     await expect(
       page.getByRole("heading", { name: "Pain, Proof, Trust, ROI" })
     ).toBeVisible();
 
     await page.getByRole("button", { name: /^Next$/i }).click();
 
-    await expect(page).toHaveURL(/\/aerovision-demo\/sessions\?demo=executive&step=pain/);
+    await expect(page).toHaveURL(/\/aerovision\/sessions\?demo=executive&step=pain/);
     await expect(page.getByText("Pain: Review Queue")).toBeVisible();
     await expect(page.getByText("Pending Review")).toBeVisible();
   });
