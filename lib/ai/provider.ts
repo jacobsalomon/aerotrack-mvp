@@ -71,6 +71,7 @@ export async function callWithFallback<T>(opts: {
         fallbackLevel: i,
       };
       callHistory.push(log);
+      if (callHistory.length > 200) callHistory.splice(0, callHistory.length - 200);
 
       console.log(
         `[AI] ${taskName} succeeded with ${model.displayName} in ${latencyMs}ms` +
@@ -99,6 +100,7 @@ export async function callWithFallback<T>(opts: {
         fallbackLevel: i,
       };
       callHistory.push(log);
+      if (callHistory.length > 200) callHistory.splice(0, callHistory.length - 200);
 
       console.warn(
         `[AI] ${taskName} failed with ${model.displayName} (${latencyMs}ms): ${errorMsg}` +
@@ -115,13 +117,15 @@ export async function callWithFallback<T>(opts: {
   if (cachedFallback !== undefined) {
     console.warn(`[AI] ${taskName}: all ${models.length} models failed — using cached fallback`);
 
-    callHistory.push({
+    const log: CallLog = {
       model: "cached_fallback",
       provider: "openai", // Placeholder
       latencyMs: 0,
       success: true,
       fallbackLevel: models.length,
-    });
+    };
+    callHistory.push(log);
+    if (callHistory.length > 200) callHistory.splice(0, callHistory.length - 200);
 
     return {
       data: cachedFallback,

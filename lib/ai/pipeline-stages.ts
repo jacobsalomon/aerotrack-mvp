@@ -134,14 +134,7 @@ export async function runSessionAnalysisStage(
               where: { partNumber: component.partNumber },
             });
             if (cmm) {
-              try {
-                const cmmResponse = await fetch(cmm.fileUrl);
-                if (cmmResponse.ok) {
-                  cmmContent = await cmmResponse.text();
-                }
-              } catch {
-                console.warn("Pipeline analysis: could not load CMM file");
-              }
+              cmmContent = `CMM Reference: ${cmm.title} (Part Number: ${cmm.partNumber})`;
             }
           }
         }

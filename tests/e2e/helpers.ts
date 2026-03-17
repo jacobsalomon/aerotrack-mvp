@@ -5,7 +5,7 @@
 
 import type { Page } from "@playwright/test";
 
-export const BASE_PATH = "/aerovision-demo";
+export const BASE_PATH = "/aerovision";
 
 /** Prepend the basePath to a route path. e.g. url("/dashboard") → "/aerovision-demo/dashboard" */
 export function url(path: string): string {

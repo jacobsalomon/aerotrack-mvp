@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { safeParseJson } from "@/lib/utils";
 
 type RawJson = Record<string, unknown>;
 
@@ -78,15 +79,6 @@ type EvidenceLookup = {
   aliases: Map<string, EvidenceRecord>;
   byType: Map<string, EvidenceRecord[]>;
 };
-
-function safeParseJson<T>(value: string | null | undefined, fallback: T): T {
-  if (!value) return fallback;
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return fallback;
-  }
-}
 
 function clampScore(value: unknown, fallback = 0): number {
   if (typeof value !== "number" || Number.isNaN(value)) return fallback;

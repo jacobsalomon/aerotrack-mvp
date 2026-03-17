@@ -114,7 +114,11 @@ export async function recordMeasurement({
     });
 
     // Update the measurement's corroboration level
-    const valuesAgree = Math.abs(crossRef.value - value) / Math.max(Math.abs(crossRef.value), 0.001) < 0.05;
+    const absoluteDiff = Math.abs(crossRef.value - value);
+    const relativeDiff = Math.abs(crossRef.value) > 0.01
+      ? absoluteDiff / Math.abs(crossRef.value)
+      : 0;
+    const valuesAgree = absoluteDiff < 0.005 || relativeDiff < 0.05;
 
     return prisma.measurement.update({
       where: { id: crossRef.id },
@@ -131,47 +135,49 @@ export async function recordMeasurement({
   }
 
   // No existing match — create a new measurement + its first source
-  // Get next sequence number
-  const lastMeasurement = await prisma.measurement.findFirst({
-    where: { shiftSessionId },
-    orderBy: { sequenceInShift: "desc" },
-    select: { sequenceInShift: true },
-  });
-  const nextSequence = (lastMeasurement?.sequenceInShift ?? 0) + 1;
+  // Atomic read-and-create to prevent duplicate sequence numbers
+  const measurement = await prisma.$transaction(async (tx) => {
+    const lastMeasurement = await tx.measurement.findFirst({
+      where: { shiftSessionId },
+      orderBy: { sequenceInShift: "desc" },
+      select: { sequenceInShift: true },
+    });
+    const nextSequence = (lastMeasurement?.sequenceInShift ?? 0) + 1;
 
-  const measurement = await prisma.measurement.create({
-    data: {
-      shiftSessionId,
-      componentId: componentId || null,
-      specItemIndex,
-      measurementType,
-      parameterName,
-      value,
-      unit,
-      nominalValue,
-      toleranceLow,
-      toleranceHigh,
-      inTolerance,
-      confidence: source.confidence,
-      corroborationLevel: "single",
-      status: inTolerance === false ? "out_of_tolerance" : "pending",
-      procedureStep: procedureStep || null,
-      taskCardRef: taskCardRef || null,
-      sequenceInShift: nextSequence,
-      measuredAt: measurementTimestamp,
-      sources: {
-        create: {
-          sourceType: source.sourceType,
-          value,
-          unit,
-          confidence: source.confidence,
-          rawExcerpt: source.rawExcerpt || null,
-          timestamp: source.timestamp ?? null,
-          captureEvidenceId: source.captureEvidenceId || null,
+    return tx.measurement.create({
+      data: {
+        shiftSessionId,
+        componentId: componentId || null,
+        specItemIndex,
+        measurementType,
+        parameterName,
+        value,
+        unit,
+        nominalValue,
+        toleranceLow,
+        toleranceHigh,
+        inTolerance,
+        confidence: source.confidence,
+        corroborationLevel: "single",
+        status: inTolerance === false ? "out_of_tolerance" : "pending",
+        procedureStep: procedureStep || null,
+        taskCardRef: taskCardRef || null,
+        sequenceInShift: nextSequence,
+        measuredAt: measurementTimestamp,
+        sources: {
+          create: {
+            sourceType: source.sourceType,
+            value,
+            unit,
+            confidence: source.confidence,
+            rawExcerpt: source.rawExcerpt || null,
+            timestamp: source.timestamp ?? null,
+            captureEvidenceId: source.captureEvidenceId || null,
+          },
         },
       },
-    },
-    include: { sources: true },
+      include: { sources: true },
+    });
   });
 
   return measurement;

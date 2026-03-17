@@ -176,15 +176,19 @@ export async function scanAllComponents() {
   let componentsWithExceptions = 0;
   const bySeverity = { critical: 0, warning: 0, info: 0 };
 
-  for (const comp of components) {
-    const result = await scanComponent(comp.id);
-    if (result.exceptions.length > 0) {
-      componentsWithExceptions++;
+  const BATCH_SIZE = 10;
+  for (let i = 0; i < components.length; i += BATCH_SIZE) {
+    const batch = components.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(batch.map(c => scanComponent(c.id)));
+    for (const result of batchResults) {
+      if (result.exceptions.length > 0) {
+        componentsWithExceptions++;
+      }
+      totalExceptions += result.exceptions.length;
+      bySeverity.critical += result.summary.critical;
+      bySeverity.warning += result.summary.warning;
+      bySeverity.info += result.summary.info;
     }
-    totalExceptions += result.exceptions.length;
-    bySeverity.critical += result.summary.critical;
-    bySeverity.warning += result.summary.warning;
-    bySeverity.info += result.summary.info;
   }
 
   return {
@@ -377,7 +381,7 @@ function checkDocumentationGaps(component: ComponentWithRelations): DetectedIssu
       : 30;  // 30 days for remove/receiving — those should have quick follow-up
 
     if (offAircraftEvents.has(current.eventType) && gapDays > threshold) {
-      const severity = gapDays > 365 ? "critical" : gapDays > 180 ? "warning" : "warning";
+      const severity = gapDays > 365 ? "critical" : gapDays > 180 ? "warning" : "info";
       const months = Math.round(gapDays / 30);
 
       issues.push({

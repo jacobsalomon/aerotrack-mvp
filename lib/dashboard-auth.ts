@@ -114,7 +114,10 @@ export function verifyDashboardSessionToken(token: string | undefined): boolean 
   const secret = getDashboardSessionSecret();
   if (!secret) return false;
 
-  const [payloadBase64, signature] = token.split(".");
+  const dotIndex = token.indexOf(".");
+  if (dotIndex === -1) return false;
+  const payloadBase64 = token.slice(0, dotIndex);
+  const signature = token.slice(dotIndex + 1);
   if (!payloadBase64 || !signature) return false;
 
   const expectedSignature = signPayload(payloadBase64, secret);

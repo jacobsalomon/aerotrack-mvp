@@ -2,6 +2,7 @@
 // Chain: Claude Sonnet 4.6 → GPT-5.4 → cached fallback
 
 import { prisma } from "@/lib/db";
+import { safeParseJson } from "@/lib/utils";
 import type { ModelConfig } from "./models";
 import { VERIFICATION_MODELS } from "./models";
 import { callAnthropic, callOpenAI, callWithFallback } from "./provider";
@@ -74,15 +75,6 @@ interface ParsedDocumentForVerification {
   lowConfidenceFields: string[];
   provenanceJson: Record<string, unknown>;
   knownDiscrepancies: VerificationDiscrepancy[];
-}
-
-function safeParseJson<T>(value: string | null | undefined, fallback: T): T {
-  if (!value) return fallback;
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return fallback;
-  }
 }
 
 function clampScore(value: unknown, fallback = 0): number {

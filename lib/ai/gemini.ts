@@ -135,6 +135,8 @@ export async function waitForFileProcessing(
   const startTime = Date.now();
 
   while (Date.now() - startTime < maxWaitMs) {
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
     const response = await fetch(
       `${GEMINI_API_BASE}/v1beta/${fileName}?key=${apiKey}`
     );
@@ -148,7 +150,6 @@ export async function waitForFileProcessing(
     if (file.state === "ACTIVE") return file;
     if (file.state === "FAILED") throw new Error(`File processing failed: ${fileName}`);
 
-    // Still processing — wait 5 seconds before checking again
     await new Promise((resolve) => setTimeout(resolve, 5000));
   }
 
