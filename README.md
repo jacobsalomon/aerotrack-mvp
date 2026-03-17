@@ -4,7 +4,7 @@
 
 AeroVision automates the paperwork that aerospace mechanics generate during component overhauls — FAA Form 8130-3, work orders, findings reports, and test documentation. A mechanic works normally (narrating, snapping photos, inspecting parts), and AeroVision captures everything into a digital lifecycle record that follows the part across companies.
 
-Built by [The Mechanical Vision Corporation](https://github.com/jacobsalomon/aerotrack-mvp).
+Built by [The Mechanical Vision Corporation](https://github.com/jacobsalomon/aerovision-mvp).
 
 ---
 
@@ -34,8 +34,8 @@ Built by [The Mechanical Vision Corporation](https://github.com/jacobsalomon/aer
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/jacobsalomon/aerotrack-mvp.git
-cd aerotrack-mvp
+git clone https://github.com/jacobsalomon/aerovision-mvp.git
+cd aerovision-mvp
 
 # 2. Install dependencies
 npm install
@@ -55,25 +55,26 @@ npx prisma db seed
 npm run dev
 ```
 
-Open **http://localhost:3000** — you should see the AeroVision dashboard.
+Open **http://localhost:3000/aerovision-demo** — you should see the AeroVision dashboard.
 
-> **Note:** The first page load after starting the dev server takes ~10 seconds to compile. Subsequent loads are instant.
+> **Note:** This app uses `basePath: /aerovision-demo` as part of the MVC multi-zone architecture. All routes are served under this prefix. The first page load after starting the dev server takes ~10 seconds to compile. Subsequent loads are instant.
 
 ---
 
 ## Demo Pages
 
+All paths below are relative to the basePath (`/aerovision-demo`).
+
 | Page | Path | What It Shows |
 |------|------|--------------|
-| **Glasses Demo** | `/glasses-demo` | Full AR glasses experience — simulates a mechanic wearing smart glasses during an overhaul. 4 phases: pre-start, HUD overlay, document generation, and document review. |
-| **Part Detail** | `/parts/demo-hpc7-overhaul` | Complete lifecycle view of a high-pressure compressor overhaul — every event from manufacturing to release, with compliance documents and PDF downloads. |
-| **Interactive Demo** | `/demo` | Step-by-step walkthrough of the digital thread concept. |
-| **Dashboard** | `/dashboard` | Overview of all tracked components, alerts, and system status. |
-| **Capture** | `/capture` | Evidence capture interface for mechanics in the field. |
-| **Integrity** | `/integrity` | Exception and anomaly tracking across components. |
-| **Analytics** | `/analytics` | Charts and metrics for fleet-wide component health. |
-| **Knowledge Base** | `/knowledge` | Searchable reference library for maintenance procedures. |
-| **Print Labels** | `/print-labels` | QR code label generator for physical parts. |
+| **Glasses Demo** | `/aerovision-demo/glasses-demo` | Full AR glasses experience — simulates a mechanic wearing smart glasses during an overhaul. 4 phases: pre-start, HUD overlay, document generation, and document review. |
+| **Part Detail** | `/aerovision-demo/parts/demo-hpc7-overhaul` | Complete lifecycle view of a high-pressure compressor overhaul — every event from manufacturing to release, with compliance documents and PDF downloads. |
+| **Interactive Demo** | `/aerovision-demo/demo` | Step-by-step walkthrough of the digital thread concept. |
+| **Dashboard** | `/aerovision-demo/dashboard` | Overview of all tracked components, alerts, and system status. |
+| **Capture** | `/aerovision-demo/capture` | Evidence capture interface for mechanics in the field. |
+| **Integrity** | `/aerovision-demo/integrity` | Exception and anomaly tracking across components. |
+| **Analytics** | `/aerovision-demo/analytics` | Charts and metrics for fleet-wide component health. |
+| **Print Labels** | `/aerovision-demo/print-labels` | QR code label generator for physical parts. |
 
 ---
 
@@ -81,30 +82,35 @@ Open **http://localhost:3000** — you should see the AeroVision dashboard.
 
 ```
 aerovision-mvp/
-├── app/                    # Next.js App Router pages and API routes
-│   ├── (dashboard)/        # Main app pages (sidebar layout)
-│   │   ├── dashboard/      # Home dashboard
-│   │   ├── parts/[id]/     # Individual part detail pages
-│   │   ├── capture/        # Evidence capture interface
-│   │   ├── demo/           # Interactive demo walkthrough
-│   │   └── ...             # Analytics, integrity, knowledge, etc.
-│   ├── glasses-demo/       # AR glasses demo (standalone layout)
-│   ├── api/                # API routes (documents, components, AI, exports)
-│   └── layout.tsx          # Root layout
-├── components/             # React components
-│   ├── ui/                 # shadcn/ui base components
-│   ├── documents/          # FAA form renderers (8130-3, 337, 8010-4)
-│   ├── demo/               # Demo-specific components
+├── app/
+│   ├── aerovision/             # All app routes (under basePath /aerovision-demo)
+│   │   ├── (dashboard)/        # Main app pages (sidebar layout)
+│   │   │   ├── dashboard/      # Home dashboard
+│   │   │   ├── parts/[id]/     # Individual part detail pages
+│   │   │   ├── sessions/       # Capture session list and detail
+│   │   │   ├── shifts/         # Shift/measurement recording sessions
+│   │   │   ├── capture/        # Evidence capture interface
+│   │   │   ├── demo/           # Interactive demo walkthrough
+│   │   │   └── ...             # Analytics, integrity, forms, etc.
+│   │   ├── glasses-demo/       # AR glasses demo (standalone layout)
+│   │   ├── api/                # API routes (documents, components, AI, mobile)
+│   │   │   └── mobile/         # iOS companion app endpoints
+│   │   ├── login/              # Auth login page
+│   │   └── global-error.tsx    # Error boundary
+│   └── layout.tsx              # Root layout
+├── components/                 # React components
+│   ├── ui/                     # shadcn/ui base components
+│   ├── marketing/              # Landing page components (navbar, scroll, etc.)
+│   ├── documents/              # FAA form renderers (8130-3, 337, 8010-4)
 │   └── ...
-├── lib/                    # Utilities and database client
-│   └── db.ts               # Prisma database singleton
-├── prisma/                 # Database schema and seed data
-│   ├── schema.prisma       # Data model
-│   └── seed.ts             # 9 demo components with full lifecycle data
-├── public/                 # Static assets (glasses photos, icons)
-├── specs/                  # Feature specifications
-├── tasks/                  # PRDs and task tracking
-└── generated/              # Auto-generated Prisma client (gitignored)
+├── lib/                        # Utilities and database client
+│   ├── ai/                     # Multi-provider AI with fallback chains
+│   └── db.ts                   # Prisma database singleton
+├── prisma/                     # Database schema and seed data
+│   ├── schema.prisma           # Data model
+│   └── seed.ts                 # Demo components with full lifecycle data
+├── public/                     # Static assets (aviation images, icons)
+└── generated/                  # Auto-generated Prisma client (gitignored)
 ```
 
 ---
@@ -138,7 +144,13 @@ See [`.env.example`](.env.example) for all required variables.
 
 ## Deployment
 
-This app deploys to **Vercel** with **Turso** as the cloud database. See the deployment guide in `tasks/prd-github-deploy-domain.md` for full instructions.
+This app deploys to **Vercel** with **Turso** as the cloud database. It's part of a multi-zone setup at `mechanicalvisioncorp.com`:
+
+- **Gateway** (`mvc-gateway`) — landing page at root, rewrites `/aerovision-demo/*` and `/pitch/*`
+- **AeroVision MVP** (this repo) — `basePath: /aerovision-demo`
+- **Seed Deck** (`aerovision-seed-deck`) — `basePath: /pitch`
+
+All three auto-deploy from `main` via GitHub.
 
 ---
 
