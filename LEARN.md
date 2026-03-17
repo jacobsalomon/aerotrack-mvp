@@ -4,7 +4,7 @@
 
 AeroVision is a product by The Mechanical Vision Corporation (MVC). A mechanic wearing smart glasses does their job — inspecting, overhauling, repairing aircraft parts — and the glasses observe what's happening through computer vision. The AI maps those observations to FAA/EASA form fields automatically. The mechanic reviews and signs. No narration, no extra steps.
 
-This repo is the web MVP: a Next.js app that serves as the supervisor dashboard, document review system, and API backend for the iOS companion app.
+This repo is the web MVP: a Next.js app that serves as the supervisor dashboard, document review system, and API backend for the iOS companion app. All app routes live under `app/aerovision/` to support the multi-zone basePath architecture.
 
 **First client:** SilverWings, an MRO shop with 120 employees. Starting with measurement capture flowing into Quantum (their existing system).
 
@@ -40,16 +40,16 @@ The `basePath` setup means:
 Instead of depending on one AI provider, the system has ordered fallback chains per task type (defined in `lib/ai/models.ts`). If OpenAI's API is down, it falls through to Anthropic, then Google. No cached fallbacks — errors are shown honestly.
 
 ### Session-Based Capture Pipeline
-Mobile capture sessions flow through stages: Captured -> Drafting -> Verified -> Packaged -> Completed. Background AI jobs process each stage asynchronously (`lib/session-processing-jobs.ts`, `lib/ai/pipeline-stages.ts`). The Reviewer Cockpit (`/sessions/[id]`) shows supervisors the AI verification results.
+Mobile capture sessions flow through stages: Captured -> Drafting -> Verified -> Packaged -> Completed. Background AI jobs process each stage asynchronously (`lib/session-processing-jobs.ts`, `lib/ai/pipeline-stages.ts`). The Reviewer Cockpit (`/aerovision-demo/sessions/[id]`) shows supervisors the AI verification results.
 
 ### Glasses Demo as Standalone Page
-The glasses demo (`/glasses-demo`) is a self-contained 4-phase flow that simulates what the smart glasses see. It's separate from the main dashboard to keep the demo clean and focused. The HUD phase uses a dark green-on-black theme; the doc-review phase switches to the normal web app theme.
+The glasses demo (`/aerovision-demo/glasses-demo`) is a self-contained 4-phase flow that simulates what the smart glasses see. It's separate from the main dashboard to keep the demo clean and focused. The HUD phase uses a dark green-on-black theme; the doc-review phase switches to the normal web app theme.
 
 ### Demo Component (Component 9)
 A deterministic seed component (`demo-hpc7-overhaul`) exists specifically for demo walkthroughs. It has a complete lifecycle with 10 events and 3 generated documents. The glasses demo links directly to it.
 
 ### Shift-Based Measurement System
-Shifts (`/shifts`) represent desk mic recording sessions where mechanics narrate measurements while working. The system transcribes audio, extracts measurements via AI, and reconciles them against specs. This is the SilverWings integration path.
+Shifts (`/aerovision-demo/shifts`) represent desk mic recording sessions where mechanics narrate measurements while working. The system transcribes audio, extracts measurements via AI, and reconciles them against specs. This is the SilverWings integration path.
 
 ## Prisma Notes
 
