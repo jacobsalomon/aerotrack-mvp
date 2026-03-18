@@ -44,8 +44,7 @@ export async function upsertPerson(name: string, email: string) {
     body: JSON.stringify({
       data: {
         values: {
-          first_name: [{ value: firstName }],
-          last_name: [{ value: lastName }],
+          name: [{ first_name: firstName, last_name: lastName, full_name: name.trim() }],
           email_addresses: [{ email_address: email }],
         },
       },
@@ -74,7 +73,10 @@ export async function addToInboundLeads(recordId: string) {
       body: JSON.stringify({
         data: {
           name: "Inbound Leads",
+          api_slug: "inbound_leads",
           parent_object: "people",
+          workspace_access: "full-access",
+          workspace_member_access: [],
         },
       }),
     });
@@ -88,7 +90,9 @@ export async function addToInboundLeads(recordId: string) {
     method: "POST",
     body: JSON.stringify({
       data: {
+        parent_object: "people",
         parent_record_id: recordId,
+        entry_values: {},
       },
     }),
   });
@@ -103,13 +107,14 @@ export async function createNote(recordId: string, content: string) {
         parent_object: "people",
         parent_record_id: recordId,
         title: "Gate Access",
-        content_plaintext: content,
+        format: "plaintext",
+        content: content,
       },
     }),
   });
 }
 
-// Send email notification to Jake via AgentMail
+// Send email notification to Jake via AgentMail SDK
 export async function sendAccessNotification(
   visitorName: string,
   visitorEmail: string,
@@ -140,17 +145,17 @@ export async function sendAccessNotification(
   ].join("\n");
 
   try {
-    await fetch("https://api.agentmail.to/v0/messages", {
+    const inboxId = encodeURIComponent("sal@ai.mechanicalvisioncorp.com");
+    await fetch(`https://api.agentmail.to/v0/inboxes/${inboxId}/messages/send`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${agentMailKey}`,
       },
       body: JSON.stringify({
-        inbox_id: "sal@ai.mechanicalvisioncorp.com",
-        to: [{ email: "jacob.salomon@circuit.ai", name: "Jake Salomon" }],
+        to: ["jake@mechanicalvisioncorp.com"],
         subject,
-        body_text: body,
+        text: body,
       }),
     });
   } catch (err) {
