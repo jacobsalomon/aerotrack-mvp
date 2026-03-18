@@ -3,8 +3,9 @@
 // Real-time measurement feed — polls every 3 seconds for new measurements
 // Shows each measurement with source icons, confidence badge, and tolerance status
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { apiUrl } from "@/lib/api-url";
+import { useSmartPoll, formatTimeSince } from "@/lib/use-smart-poll";
 import {
   Mic,
   Video,
@@ -71,38 +72,45 @@ export function MeasurementFeed({ shiftId, isActive }: { shiftId: string; isActi
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const lastPoll = useRef<string | null>(null);
 
-  useEffect(() => {
-    const poll = async () => {
-      const params = lastPoll.current ? `?since=${encodeURIComponent(lastPoll.current)}` : "";
-      try {
-        const res = await fetch(apiUrl(`/api/shifts/${shiftId}/measurements${params}`));
-        const data = await res.json();
-        if (data.success) {
-          if (lastPoll.current && data.data.length > 0) {
-            // Merge new/updated measurements
-            setMeasurements((prev) => {
-              const map = new Map(prev.map((m) => [m.id, m]));
-              for (const m of data.data) map.set(m.id, m);
-              return Array.from(map.values()).sort(
-                (a, b) => (a.sequenceInShift || 0) - (b.sequenceInShift || 0)
-              );
-            });
-          } else if (!lastPoll.current) {
-            setMeasurements(data.data);
-          }
-          lastPoll.current = data.polledAt;
+  const pollMeasurements = useCallback(async () => {
+    const params = lastPoll.current ? `?since=${encodeURIComponent(lastPoll.current)}` : "";
+    try {
+      const res = await fetch(apiUrl(`/api/shifts/${shiftId}/measurements${params}`));
+      const data = await res.json();
+      if (data.success) {
+        if (lastPoll.current && data.data.length > 0) {
+          // Merge new/updated measurements
+          setMeasurements((prev) => {
+            const map = new Map(prev.map((m) => [m.id, m]));
+            for (const m of data.data) map.set(m.id, m);
+            return Array.from(map.values()).sort(
+              (a, b) => (a.sequenceInShift || 0) - (b.sequenceInShift || 0)
+            );
+          });
+        } else if (!lastPoll.current) {
+          setMeasurements(data.data);
         }
-      } catch (e) {
-        console.error("Poll error:", e);
+        lastPoll.current = data.polledAt;
       }
-    };
+    } catch (e) {
+      console.error("Poll error:", e);
+    }
+  }, [shiftId]);
 
-    poll(); // Initial load
-    if (!isActive) return;
+  // Initial load
+  useEffect(() => {
+    void pollMeasurements();
+  }, [pollMeasurements]);
 
-    const interval = setInterval(poll, 3000);
-    return () => clearInterval(interval);
-  }, [shiftId, isActive]);
+  // Smart polling: starts fast (2s), backs off when quiet, resets on user interaction
+  const measurementPoll = useSmartPoll({
+    pollFn: pollMeasurements,
+    enabled: isActive,
+    initialIntervalMs: 2000,
+    maxIntervalMs: 30000,
+    backoffFactor: 1.5,
+    resetKey: measurements.length, // reset to fast when new measurements arrive
+  });
 
   if (measurements.length === 0) {
     return (
@@ -116,6 +124,16 @@ export function MeasurementFeed({ shiftId, isActive }: { shiftId: string; isActi
 
   return (
     <div className="space-y-2">
+      {/* Live update indicator */}
+      {isActive && (
+        <div className="flex items-center justify-end gap-1.5 text-xs text-slate-400 pb-1">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+          </span>
+          <span>Updated {formatTimeSince(measurementPoll.secondsSinceUpdate)}</span>
+        </div>
+      )}
       {measurements.map((m) => {
         const isExpanded = expandedId === m.id;
         const confidenceColor = CONFIDENCE_COLORS[m.corroborationLevel] || CONFIDENCE_COLORS.single;

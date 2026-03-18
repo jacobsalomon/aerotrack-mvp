@@ -36,6 +36,8 @@ import {
   normalizeShiftTranscript,
   transcriptHasUnresolvedConflictMarkers,
 } from "@/lib/shift-transcript";
+import { useSmartPoll } from "@/lib/use-smart-poll";
+import { PollStatusBadge } from "@/components/poll-status-badge";
 
 interface ShiftDetail {
   id: string;
@@ -190,56 +192,70 @@ export default function ShiftDetailPage({ params }: { params: Promise<{ id: stri
     }
   }, [shift?.id, shift?.transcriptText, shift?.transcriptUpdatedAt, transcriptDirty]);
 
-  useEffect(() => {
-    const shouldPollShift =
-      shift &&
-      (
-        shift.status === "active" ||
-        shift.status === "paused" ||
-        shift.status === "reconciling" ||
-        (shift.status === "completed" && shift.transcriptReviewStatus !== "approved")
-      );
+  // Smart polling for shift data: backs off from 2s to 30s, resets on status change
+  const shouldPollShift = !!(
+    shift &&
+    (
+      shift.status === "active" ||
+      shift.status === "paused" ||
+      shift.status === "reconciling" ||
+      (shift.status === "completed" && shift.transcriptReviewStatus !== "approved")
+    )
+  );
 
-    if (!shouldPollShift) {
-      return;
+  const shiftPollFn = useCallback(async () => {
+    try {
+      const res = await fetch(apiUrl(`/api/shifts/${id}`));
+      if (handleExpiredDashboardSession(res)) return;
+      const data = await res.json();
+      if (data.success) {
+        setShift(data.data);
+      }
+    } catch (error) {
+      console.error("Shift poll error:", error);
     }
+  }, [handleExpiredDashboardSession, id]);
 
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(apiUrl(`/api/shifts/${id}`));
-        if (handleExpiredDashboardSession(res)) return;
-        const data = await res.json();
-        if (data.success) {
-          setShift(data.data);
-        }
-      } catch (error) {
-        console.error("Shift poll error:", error);
+  const shiftPoll = useSmartPoll({
+    pollFn: shiftPollFn,
+    enabled: shouldPollShift,
+    initialIntervalMs: 2000,
+    maxIntervalMs: 30000,
+    backoffFactor: 1.5,
+    resetKey: `${shift?.status}-${shift?.transcriptReviewStatus}`,
+  });
+
+  // Smart polling for spec/measurement progress (only while shift is active)
+  const shouldPollSpec = !!(shift && (shift.status === "active" || shift.status === "paused"));
+
+  const specPollFn = useCallback(async () => {
+    try {
+      const res = await fetch(apiUrl(`/api/shifts/${id}/measurements`));
+      if (handleExpiredDashboardSession(res)) return;
+      const data = await res.json();
+      if (data.success && data.specProgress) {
+        setSpecProgress(data.specProgress);
       }
-    }, 5000);
+    } catch (error) {
+      console.error("Spec poll error:", error);
+    }
+  }, [handleExpiredDashboardSession, id]);
 
-    return () => clearInterval(interval);
-  }, [handleExpiredDashboardSession, id, shift?.status, shift?.transcriptReviewStatus]);
-
+  // Initial spec load
   useEffect(() => {
-    if (!shift || (shift.status !== "active" && shift.status !== "paused")) return;
+    if (shouldPollSpec) {
+      void specPollFn();
+    }
+  }, [shouldPollSpec, specPollFn]);
 
-    const pollSpec = async () => {
-      try {
-        const res = await fetch(apiUrl(`/api/shifts/${id}/measurements`));
-        if (handleExpiredDashboardSession(res)) return;
-        const data = await res.json();
-        if (data.success && data.specProgress) {
-          setSpecProgress(data.specProgress);
-        }
-      } catch (error) {
-        console.error("Spec poll error:", error);
-      }
-    };
-
-    void pollSpec();
-    const interval = setInterval(pollSpec, 5000);
-    return () => clearInterval(interval);
-  }, [handleExpiredDashboardSession, id, shift?.status]);
+  useSmartPoll({
+    pollFn: specPollFn,
+    enabled: shouldPollSpec,
+    initialIntervalMs: 2000,
+    maxIntervalMs: 30000,
+    backoffFactor: 1.5,
+    resetKey: shift?.status ?? null,
+  });
 
   const refreshShift = async () => {
     const shiftRes = await fetch(apiUrl(`/api/shifts/${id}`));
@@ -487,12 +503,15 @@ export default function ShiftDetailPage({ params }: { params: Promise<{ id: stri
             <h1 className="text-xl font-semibold text-slate-900">
               {shift.technician.firstName} {shift.technician.lastName}&apos;s Shift
             </h1>
-            <p className="text-sm text-slate-500">
-              {startDate.toLocaleDateString()}{" "}
-              {startDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-              {shift.totalDurationMin &&
-                ` · ${Math.floor(shift.totalDurationMin / 60)}h ${shift.totalDurationMin % 60}m`}
-            </p>
+            <div className="flex items-center gap-3">
+              <p className="text-sm text-slate-500">
+                {startDate.toLocaleDateString()}{" "}
+                {startDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                {shift.totalDurationMin &&
+                  ` · ${Math.floor(shift.totalDurationMin / 60)}h ${shift.totalDurationMin % 60}m`}
+              </p>
+              <PollStatusBadge poll={shiftPoll} isPolling={shouldPollShift} />
+            </div>
           </div>
         </div>
 

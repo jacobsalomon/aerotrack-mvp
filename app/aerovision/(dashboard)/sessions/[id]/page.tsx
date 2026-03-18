@@ -34,6 +34,8 @@ import {
 } from "@/lib/session-status";
 import { shouldPollSessionProgress } from "@/lib/session-progress";
 import { apiUrl } from "@/lib/api-url";
+import { useSmartPoll } from "@/lib/use-smart-poll";
+import { PollStatusBadge } from "@/components/poll-status-badge";
 import {
   ArrowLeft,
   Camera,
@@ -465,15 +467,17 @@ export default function SessionDetailPage() {
     fetchSession();
   }, [fetchSession]);
 
-  useEffect(() => {
-    if (!session || !shouldPollSessionProgress(session.processingProgress)) return;
-
-    const intervalId = window.setInterval(() => {
-      void fetchSession();
-    }, 5000);
-
-    return () => window.clearInterval(intervalId);
-  }, [fetchSession, session]);
+  // Smart polling: starts fast (2s), backs off to 30s, resets on status change or user interaction
+  const isPollingEnabled = !!session && shouldPollSessionProgress(session.processingProgress);
+  const sessionPoll = useSmartPoll({
+    pollFn: fetchSession,
+    enabled: isPollingEnabled,
+    initialIntervalMs: 2000,
+    maxIntervalMs: 30000,
+    backoffFactor: 1.5,
+    // When the processing stage changes, reset to fast polling
+    resetKey: session?.processingProgress?.internalStage ?? session?.status ?? null,
+  });
 
   useEffect(() => {
     if (!session || hasAutoExpanded || expandedDoc) return;
@@ -922,6 +926,7 @@ export default function SessionDetailPage() {
                 AI stage: {activeInternalStage}
               </p>
             )}
+            <PollStatusBadge poll={sessionPoll} isPolling={isPollingEnabled} />
           </div>
         </div>
         <div className="flex gap-6 mt-4 text-sm" style={{ color: "rgb(80, 80, 80)" }}>
