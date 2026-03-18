@@ -58,8 +58,8 @@ dev.db
 Icon?
 
 # local SQLite WAL files (root only)
-/auth
-/auth-wal
+/auth.db
+/auth.db-wal
 
 # dev screenshots
 /screenshots/
@@ -67,3 +67,4 @@ Icon?
 
 # generated client (all)
 /generated/
+.env*.local

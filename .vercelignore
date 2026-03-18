@@ -13,5 +13,5 @@ lib/generated
 * 2*
 dev.db
 test.db
-auth
-auth-wal
+auth.db
+auth.db-wal
