@@ -3,7 +3,7 @@
 // exposed in the client-side JavaScript bundle.
 // Sets a cookie on success so subsequent API calls can be authenticated.
 
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import crypto from "crypto";
 import {
   createDashboardSessionToken,
@@ -80,10 +80,15 @@ export async function POST(request: Request) {
       maxAge: DASHBOARD_SESSION_TTL_SECONDS,
     });
 
-    // Push to Attio CRM and email Jake (async — don't block the response)
-    trackGateAccess(trimmedName, trimmedEmail, "AeroVision demo").catch((err) =>
-      console.error("[verify-passcode] CRM/notification error:", err)
-    );
+    // Push to Attio CRM and email Jake after response is sent
+    // (after() keeps the function alive past the response)
+    after(async () => {
+      try {
+        await trackGateAccess(trimmedName, trimmedEmail, "AeroVision demo");
+      } catch (err) {
+        console.error("[verify-passcode] CRM/notification error:", err);
+      }
+    });
 
     return response;
   } catch {
