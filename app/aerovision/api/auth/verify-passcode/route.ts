@@ -11,10 +11,30 @@ import {
   DASHBOARD_SESSION_TTL_SECONDS,
   getConfiguredDashboardPasscode,
 } from "@/lib/dashboard-auth";
+import { trackGateAccess } from "@/lib/attio-client";
 
 export async function POST(request: Request) {
   try {
-    const { passcode } = await request.json();
+    const { passcode, name, email } = await request.json();
+
+    // Validate name and email are present
+    const trimmedName = String(name || "").trim();
+    const trimmedEmail = String(email || "").trim();
+
+    if (!trimmedName || !trimmedEmail) {
+      return NextResponse.json(
+        { success: false, error: "Name and email are required" },
+        { status: 400 }
+      );
+    }
+
+    // Basic email format check
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      return NextResponse.json(
+        { success: false, error: "Invalid email format" },
+        { status: 400 }
+      );
+    }
 
     const expectedPasscode = getConfiguredDashboardPasscode();
     if (!expectedPasscode) {
@@ -59,6 +79,11 @@ export async function POST(request: Request) {
       secure: process.env.NODE_ENV === "production",
       maxAge: DASHBOARD_SESSION_TTL_SECONDS,
     });
+
+    // Push to Attio CRM and email Jake (async — don't block the response)
+    trackGateAccess(trimmedName, trimmedEmail, "AeroVision demo").catch((err) =>
+      console.error("[verify-passcode] CRM/notification error:", err)
+    );
 
     return response;
   } catch {

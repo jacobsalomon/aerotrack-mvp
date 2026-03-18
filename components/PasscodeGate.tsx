@@ -6,33 +6,31 @@ import { apiUrl } from "@/lib/api-url";
 const SESSION_KEY = "demo-unlocked";
 
 // Passcode gate — wraps protected content.
-// Validates the code server-side (never exposes it in the browser bundle).
-// Sets an HTTP-only cookie on success so API routes can also check auth.
+// Collects name, email, and a 4-digit code before granting access.
+// Validates server-side and sets an HTTP-only cookie on success.
 export default function PasscodeGate({ children }: { children: ReactNode }) {
   const [unlocked, setUnlocked] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [digits, setDigits] = useState(["", "", "", ""]);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const nameRef = useRef<HTMLInputElement | null>(null);
 
-  // Check if already unlocked this session (wait for hydration to avoid flash)
-  // Also verify the server-side cookie is still valid — it expires after 72 hours
-  // while sessionStorage persists until the tab closes
+  // Check if already unlocked (wait for hydration to avoid flash)
   useEffect(() => {
     if (sessionStorage.getItem(SESSION_KEY) === "true") {
-      // Verify the cookie is still valid with a lightweight API call
       fetch(apiUrl("/api/auth/check"), { method: "HEAD" })
         .then((res) => {
           if (res.ok) {
             setUnlocked(true);
           } else {
-            // Cookie expired — clear flag so passcode form shows
             sessionStorage.removeItem(SESSION_KEY);
           }
         })
         .catch(() => {
-          // Network error — let them through, API calls will fail with clearer errors
           setUnlocked(true);
         })
         .finally(() => setHydrated(true));
@@ -41,96 +39,138 @@ export default function PasscodeGate({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Auto-submit when all 4 digits are filled
-  useEffect(() => {
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
     const code = digits.join("");
-    if (code.length === 4 && !checking) {
-      verifyPasscode(code);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [digits]);
 
-  async function verifyPasscode(code: string) {
+    if (!name.trim()) {
+      setError("Please enter your name");
+      nameRef.current?.focus();
+      return;
+    }
+    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError("Please enter a valid email");
+      return;
+    }
+    if (code.length < 4) {
+      setError("Please enter the 4-digit code");
+      inputRefs.current[0]?.focus();
+      return;
+    }
+
     setChecking(true);
+    setError(null);
+
     try {
       const res = await fetch(apiUrl("/api/auth/verify-passcode"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ passcode: code }),
+        body: JSON.stringify({ passcode: code, name: name.trim(), email: email.trim() }),
       });
 
       if (res.ok) {
         sessionStorage.setItem(SESSION_KEY, "true");
         setUnlocked(true);
       } else {
-        setError(true);
-        setTimeout(() => {
-          setDigits(["", "", "", ""]);
-          setError(false);
-          setChecking(false);
-          inputRefs.current[0]?.focus();
-        }, 600);
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          setError("Incorrect code");
+          setTimeout(() => {
+            setDigits(["", "", "", ""]);
+            setChecking(false);
+            inputRefs.current[0]?.focus();
+          }, 600);
+          return;
+        }
+        setError(data.error || "Something went wrong");
+        setChecking(false);
       }
     } catch {
-      setError(true);
-      setTimeout(() => {
-        setDigits(["", "", "", ""]);
-        setError(false);
-        setChecking(false);
-        inputRefs.current[0]?.focus();
-      }, 600);
+      setError("Connection error — please try again");
+      setChecking(false);
     }
   }
 
-  const handleChange = (index: number, value: string) => {
-    // Only accept single digits
+  const handleDigitChange = (index: number, value: string) => {
     const digit = value.replace(/\D/g, "").slice(-1);
     const next = [...digits];
     next[index] = digit;
     setDigits(next);
 
-    // Auto-advance to next input
     if (digit && index < 3) {
       inputRefs.current[index + 1]?.focus();
     }
   };
 
   const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
-    // Backspace moves to previous input
     if (e.key === "Backspace" && !digits[index] && index > 0) {
       inputRefs.current[index - 1]?.focus();
     }
   };
 
-  // Auto-focus first input on mount
+  // Auto-focus name field on mount
   useEffect(() => {
-    if (!unlocked) {
-      inputRefs.current[0]?.focus();
+    if (!unlocked && hydrated) {
+      nameRef.current?.focus();
     }
-  }, [unlocked]);
+  }, [unlocked, hydrated]);
 
   if (unlocked) return <>{children}</>;
-
-  // Don't render passcode UI until hydration completes (prevents flash)
   if (!hydrated) return null;
+
+  const isShaking = error === "Incorrect code";
 
   return (
     <div className="flex h-screen w-screen items-center justify-center" style={{ backgroundColor: 'rgb(12, 12, 12)' }}>
-      <div className="flex flex-col items-center gap-8">
+      <form onSubmit={handleSubmit} className="flex flex-col items-center gap-6 w-full max-w-sm px-6">
         {/* Logo / brand */}
-        <div className="flex flex-col items-center gap-2">
+        <div className="flex flex-col items-center gap-2 mb-2">
           <div className="text-3xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(230, 227, 224)' }}>
             AeroVision
           </div>
           <p className="text-sm" style={{ color: 'rgba(230, 227, 224, 0.5)' }}>
-            Enter access code to continue
+            Enter your details and access code
           </p>
         </div>
 
+        {/* Name field */}
+        <input
+          ref={nameRef}
+          type="text"
+          placeholder="Your name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="w-full h-12 px-4 rounded-md text-sm outline-none transition-all"
+          style={{
+            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+            border: '2px solid rgba(230, 227, 224, 0.2)',
+            color: 'rgb(230, 227, 224)',
+          }}
+          autoComplete="name"
+        />
+
+        {/* Email field */}
+        <input
+          type="email"
+          placeholder="Email address"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full h-12 px-4 rounded-md text-sm outline-none transition-all"
+          style={{
+            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+            border: '2px solid rgba(230, 227, 224, 0.2)',
+            color: 'rgb(230, 227, 224)',
+          }}
+          autoComplete="email"
+        />
+
+        {/* Code label */}
+        <p className="text-xs" style={{ color: 'rgba(230, 227, 224, 0.4)' }}>
+          Access code
+        </p>
+
         {/* 4-digit input */}
-        <div
-          className={`flex gap-3 ${error ? "animate-shake" : ""}`}
-        >
+        <div className={`flex gap-3 ${isShaking ? "animate-shake" : ""}`}>
           {digits.map((digit, i) => (
             <input
               key={i}
@@ -139,11 +179,11 @@ export default function PasscodeGate({ children }: { children: ReactNode }) {
               inputMode="numeric"
               maxLength={1}
               value={digit}
-              onChange={(e) => handleChange(i, e.target.value)}
+              onChange={(e) => handleDigitChange(i, e.target.value)}
               onKeyDown={(e) => handleKeyDown(i, e)}
               aria-label={`Passcode digit ${i + 1}`}
               className="w-14 h-16 text-center text-2xl font-mono rounded-md outline-none transition-all"
-              style={error ? {
+              style={isShaking ? {
                 backgroundColor: 'rgba(255, 255, 255, 0.05)',
                 border: '2px solid rgb(220, 38, 38)',
                 color: 'rgb(230, 227, 224)'
@@ -156,9 +196,25 @@ export default function PasscodeGate({ children }: { children: ReactNode }) {
           ))}
         </div>
 
+        {/* Error message */}
         {error && (
-          <p className="text-sm text-red-400">Incorrect code</p>
+          <p className="text-sm text-red-400">{error}</p>
         )}
+
+        {/* Submit button */}
+        <button
+          type="submit"
+          disabled={checking}
+          className="w-full h-12 rounded-md text-sm font-medium transition-all"
+          style={{
+            backgroundColor: checking ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.1)',
+            color: checking ? 'rgba(230, 227, 224, 0.4)' : 'rgb(230, 227, 224)',
+            border: '2px solid rgba(230, 227, 224, 0.15)',
+            cursor: checking ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {checking ? "Verifying..." : "Continue"}
+        </button>
 
         {/* Contact for access */}
         <p className="text-sm" style={{ color: 'rgba(230, 227, 224, 0.4)' }}>
@@ -171,7 +227,7 @@ export default function PasscodeGate({ children }: { children: ReactNode }) {
             jacobrsalomon@gmail.com
           </a>
         </p>
-      </div>
+      </form>
 
       {/* Shake animation */}
       <style>{`
