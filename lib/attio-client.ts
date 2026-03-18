@@ -163,12 +163,26 @@ export async function sendAccessNotification(
   }
 }
 
+// Jake's emails — skip CRM push and notification for these
+const OWNER_EMAILS = [
+  "jake@mechanicalvisioncorp.com",
+  "jacob.salomon@circuit.ai",
+  "jacobrsalomon@gmail.com",
+];
+
+function isOwner(email: string): boolean {
+  return OWNER_EMAILS.includes(email.toLowerCase().trim());
+}
+
 // Main function — call this after successful passcode verification
 export async function trackGateAccess(
   name: string,
   email: string,
   page: "investor deck" | "AeroVision demo"
 ) {
+  // Skip tracking for Jake
+  if (isOwner(email)) return;
+
   try {
     const now = new Date().toLocaleDateString("en-US", {
       year: "numeric",
