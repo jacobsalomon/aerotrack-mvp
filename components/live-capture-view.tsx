@@ -44,7 +44,6 @@ export function LiveCaptureView({
   const [ending, setEnding] = useState(false);
   const [elapsed, setElapsed] = useState("");
   const [transcriptChunks, setTranscriptChunks] = useState<string[]>([]);
-  const [chunksUploaded, setChunksUploaded] = useState(0);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
 
   // Update elapsed timer every second
@@ -100,7 +99,7 @@ export function LiveCaptureView({
     initialIntervalMs: 3000,
     maxIntervalMs: 10000,
     backoffFactor: 1.3,
-    resetKey: chunksUploaded,
+    resetKey: transcriptChunks.length,
   });
 
   // End the capture session: stop mic, PATCH session to capture_complete
@@ -251,7 +250,6 @@ export function LiveCaptureView({
               autoStart={true}
               compact={true}
               onUnauthorized={handleUnauthorized}
-              onChunkUploaded={(uploaded) => setChunksUploaded(uploaded)}
             />
           </div>
         </Card>

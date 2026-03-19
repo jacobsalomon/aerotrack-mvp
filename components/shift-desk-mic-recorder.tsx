@@ -51,8 +51,6 @@ interface ShiftDeskMicRecorderProps {
   autoStart?: boolean;
   // When true, render a minimal inline bar instead of the full Card UI
   compact?: boolean;
-  // Called after each chunk is uploaded — passes uploaded count and pending count
-  onChunkUploaded?: (uploaded: number, pending: number) => void;
 }
 
 function getSupportedDeskMicMimeType(): string {
@@ -82,7 +80,7 @@ export const ShiftDeskMicRecorder = forwardRef<
   ShiftDeskMicRecorderHandle,
   ShiftDeskMicRecorderProps
 >(function ShiftDeskMicRecorder(
-  { shiftId, enabled, onUnauthorized, onStopComplete, autoStart, compact, onChunkUploaded },
+  { shiftId, enabled, onUnauthorized, onStopComplete, autoStart, compact },
   ref
 ) {
   const [devices, setDevices] = useState<DeskMicDeviceOption[]>([]);
@@ -169,12 +167,7 @@ export const ShiftDeskMicRecorder = forwardRef<
             throw new Error(payload?.error || "Failed to upload desk mic chunk");
           }
 
-          setUploadedChunks((current) => {
-            const next = current + 1;
-            // Notify parent after state update (pending will decrement in finally)
-            setTimeout(() => onChunkUploaded?.(next, 0), 0);
-            return next;
-          });
+          setUploadedChunks((current) => current + 1);
           setLastUploadedAt(new Date().toISOString());
           if (lastErrorRef.current) {
             lastErrorRef.current = null;
@@ -194,7 +187,7 @@ export const ShiftDeskMicRecorder = forwardRef<
           setPendingChunks((current) => Math.max(0, current - 1));
         });
     },
-    [onUnauthorized, onChunkUploaded, shiftId]
+    [onUnauthorized, shiftId]
   );
 
   const stopAndFlush = useCallback(async () => {

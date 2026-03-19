@@ -1,10 +1,15 @@
 // Mobile API authentication helper
 // Used by all /api/mobile/* endpoints
 //
-// Auth is currently bypassed — all requests get the demo technician.
-// This lets the iOS app work without any API key setup.
-// When we add real multi-user support, re-enable key validation here.
+// Supports two auth methods:
+// 1. JWT Bearer token (from /api/mobile/login) — resolves to the real technician
+// 2. Legacy fallback — returns demo technician when no auth header is present
+//
+// JWT is tried first. If no Authorization header, falls back to demo technician
+// so existing mobile flows don't break during migration.
 
+import { jwtVerify } from "jose";
+import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export interface AuthenticatedTechnician {
@@ -17,7 +22,13 @@ export interface AuthenticatedTechnician {
   organizationId: string;
 }
 
-// Demo technician — used for all mobile requests until we need real auth
+function getSigningKey(): Uint8Array {
+  const secret = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
+  if (!secret) throw new Error("No signing secret configured");
+  return new TextEncoder().encode(secret);
+}
+
+// Demo technician — used as fallback when no auth header is present
 const DEMO_TECHNICIAN: AuthenticatedTechnician = {
   id: "tech-mike-chen",
   firstName: "Mike",
@@ -28,11 +39,63 @@ const DEMO_TECHNICIAN: AuthenticatedTechnician = {
   organizationId: "demo-precision-aero",
 };
 
-// Returns the demo technician for every request (no auth check).
-// Keeps the union return type so all existing call sites compile unchanged.
 export async function authenticateRequest(
   request: Request
 ): Promise<{ technician: AuthenticatedTechnician } | { error: NextResponse }> {
-  void request;
-  return { technician: DEMO_TECHNICIAN };
+  const authHeader = request.headers.get("Authorization");
+
+  // No auth header → fall back to demo technician (backwards compatible)
+  if (!authHeader?.startsWith("Bearer ")) {
+    return { technician: DEMO_TECHNICIAN };
+  }
+
+  const token = authHeader.slice(7);
+
+  // Try JWT verification
+  try {
+    const { payload } = await jwtVerify(token, getSigningKey());
+
+    const technicianId = payload.technicianId as string | undefined;
+    if (!technicianId) {
+      return {
+        error: NextResponse.json(
+          { error: "Invalid token: missing technicianId" },
+          { status: 401 }
+        ),
+      };
+    }
+
+    // Look up the technician from the database
+    const technician = await prisma.technician.findUnique({
+      where: { id: technicianId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        badgeNumber: true,
+        role: true,
+        organizationId: true,
+      },
+    });
+
+    if (!technician) {
+      return {
+        error: NextResponse.json(
+          { error: "Technician not found" },
+          { status: 401 }
+        ),
+      };
+    }
+
+    return { technician };
+  } catch {
+    // JWT verification failed (expired, bad signature, etc.)
+    return {
+      error: NextResponse.json(
+        { error: "Invalid or expired token" },
+        { status: 401 }
+      ),
+    };
+  }
 }
