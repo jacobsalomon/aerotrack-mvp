@@ -359,6 +359,7 @@ model Organization {
   measurementSpecs MeasurementSpec[]
   auditLog        AuditLogEntry[]
   inviteCodes     InviteCode[]
+  orgDocuments    OrgDocument[]
 }
 
 // ──────────────────────────────────────────────────────
@@ -376,6 +377,23 @@ model InviteCode {
   expiresAt      DateTime?                              // null = never expires
   status         String    @default("active")           // active, revoked
   createdAt      DateTime  @default(now())
+
+  @@index([organizationId])
+}
+
+// ──────────────────────────────────────────────────────
+// OrgDocument — internal PDFs uploaded by org members (checklists, SOPs, etc.)
+// Scoped to organization — only members of the same org can see these.
+// ──────────────────────────────────────────────────────
+model OrgDocument {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  title          String                                    // Display name (e.g., "Station Handoff Checklist")
+  fileUrl        String                                    // Vercel Blob URL
+  fileSizeBytes  Int      @default(0)
+  uploadedBy     String?                                   // userId who uploaded it
+  createdAt      DateTime @default(now())
 
   @@index([organizationId])
 }
