@@ -185,14 +185,14 @@ export default function SessionsPage() {
     setShowFormPicker(false);
     setCreatingSession(true);
     setCreateError(null);
-    const formLabel = TARGET_FORMS.find((f) => f.id === targetFormType)?.formNumber ?? targetFormType;
+    const formLabel = TARGET_FORMS.find((f) => f.id === targetFormType)?.formNumber;
     try {
       const res = await fetch(apiUrl("/api/sessions"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          description: `Capture for ${formLabel}`,
-          targetFormType,
+          description: formLabel ? `Capture for ${formLabel}` : "Web capture session",
+          targetFormType: targetFormType || null,
         }),
       });
       if (!res.ok) {
@@ -515,6 +515,12 @@ export default function SessionsPage() {
               </button>
             ))}
           </div>
+          <button
+            onClick={() => void handleStartSession("")}
+            className="mt-1 text-sm text-slate-400 hover:text-slate-600 transition-colors"
+          >
+            Skip — just record without a form
+          </button>
         </DialogContent>
       </Dialog>
     </div>
