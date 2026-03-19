@@ -89,8 +89,10 @@ interface SessionDetail {
   startedAt: string;
   completedAt: string | null;
   user: {
-    name: string;
-    badgeNumber: string;
+    name: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    badgeNumber: string | null;
     email: string | null;
     role: string;
   };
@@ -631,10 +633,12 @@ export default function SessionDetailPage() {
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight" style={{ fontFamily: "var(--font-space-grotesk)", color: "rgb(20, 20, 20)" }}>
-              {session.user.name}
+              {session.user.firstName && session.user.lastName
+                ? `${session.user.firstName} ${session.user.lastName}`
+                : session.user.name || "Unknown"}
             </h1>
             <p className="text-sm mt-1" style={{ color: "rgb(100, 100, 100)" }}>
-              Badge: {session.user.badgeNumber} &middot; {session.organization.name}
+              {session.user.badgeNumber ? `Badge: ${session.user.badgeNumber} · ` : ""}{session.organization.name}
             </p>
           </div>
           <div className="flex flex-col items-end gap-2">

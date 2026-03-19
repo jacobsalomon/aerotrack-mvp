@@ -85,9 +85,10 @@ interface SessionData {
   completedAt: string | null;
   user: {
     id: string;
-    firstName: string;
-    lastName: string;
-    badgeNumber: string;
+    name: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    badgeNumber: string | null;
   };
   organization: { name: string };
   component: { id: string; partNumber: string; description: string } | null;
@@ -450,11 +451,15 @@ export default function SessionsPage() {
                         <TableCell>
                           <div>
                             <p className="font-medium text-sm">
-                              {session.user.firstName} {session.user.lastName}
+                              {session.user.firstName && session.user.lastName
+                                ? `${session.user.firstName} ${session.user.lastName}`
+                                : session.user.name || "Unknown"}
                             </p>
-                            <p className="text-xs text-slate-400">
-                              {session.user.badgeNumber}
-                            </p>
+                            {session.user.badgeNumber && (
+                              <p className="text-xs text-slate-400">
+                                {session.user.badgeNumber}
+                              </p>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="text-sm text-slate-600">
