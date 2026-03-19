@@ -87,8 +87,7 @@ export async function GET(request: Request) {
 
 // Start a new capture session from the web dashboard (no glasses required).
 // Looks up (or auto-creates) a User profile for the logged-in user,
-// creates a ShiftSession for mic recording / measurements, then creates
-// the CaptureSession linked to both.
+// then creates a CaptureSession directly.
 export async function POST(request: Request) {
   const authResult = await requireAuth(request);
   if (authResult.error) return authResult.error;
@@ -150,21 +149,10 @@ export async function POST(request: Request) {
       );
     }
 
-    // Create a ShiftSession so mic recording and measurement extraction work
-    const shiftSession = await prisma.shiftSession.create({
-      data: {
-        userId: userProfile.id,
-        organizationId: userProfile.organizationId,
-        status: "active",
-        startedAt: new Date(),
-      },
-    });
-
     const session = await prisma.captureSession.create({
       data: {
         userId: userProfile.id,
         organizationId: userProfile.organizationId,
-        shiftSessionId: shiftSession.id,
         description: description || "Web capture session",
         targetFormType: targetFormType || null,
         status: "capturing",

@@ -18,9 +18,8 @@ export interface SpecItem {
 }
 
 // Create a measurement and its initial source, with tolerance checking
-// and automatic spec-matching if the shift has a spec.
 export async function recordMeasurement({
-  shiftSessionId,
+  sessionId,
   componentId,
   measurementType,
   parameterName,
@@ -29,9 +28,8 @@ export async function recordMeasurement({
   source,
   procedureStep,
   taskCardRef,
-  allowedShiftStatuses,
 }: {
-  shiftSessionId: string;
+  sessionId: string;
   componentId?: string;
   measurementType: string;
   parameterName: string;
@@ -46,52 +44,27 @@ export async function recordMeasurement({
   };
   procedureStep?: string;
   taskCardRef?: string;
-  allowedShiftStatuses?: string[];
 }) {
-  // Load the shift to check for a linked spec
-  const shift = await prisma.shiftSession.findUnique({
-    where: { id: shiftSessionId },
-    include: { measurementSpec: true },
+  // Verify session exists
+  const session = await prisma.captureSession.findUnique({
+    where: { id: sessionId },
   });
 
-  if (!shift) throw new Error("Shift not found");
-  const permittedStatuses = new Set(allowedShiftStatuses ?? ["active"]);
-  if (!permittedStatuses.has(shift.status)) {
-    throw new Error("Shift is not active");
+  if (!session) throw new Error("Session not found");
+  if (session.status !== "capturing") {
+    throw new Error("Session is not actively capturing");
   }
 
-  // Try to match against spec if one exists
-  let specItemIndex: number | null = null;
-  let nominalValue: number | null = null;
-  let toleranceLow: number | null = null;
-  let toleranceHigh: number | null = null;
-
-  if (shift.measurementSpec) {
-    const specItems: SpecItem[] = JSON.parse(shift.measurementSpec.specItemsJson);
-    const matchResult = await matchToSpec(
-      specItems,
-      shiftSessionId,
-      parameterName,
-      measurementType
-    );
-    if (matchResult) {
-      specItemIndex = matchResult.index;
-      nominalValue = matchResult.item.nominalValue ?? null;
-      toleranceLow = matchResult.item.toleranceLow ?? null;
-      toleranceHigh = matchResult.item.toleranceHigh ?? null;
-    }
-  }
-
-  // Compute tolerance status
-  const inTolerance = checkTolerance(value, toleranceLow, toleranceHigh);
+  // Compute tolerance status (no spec matching for now — can be added later)
+  const inTolerance = checkTolerance(value, null, null);
   const measurementTimestamp =
     typeof source.timestamp === "number" && Number.isFinite(source.timestamp)
       ? new Date(source.timestamp * 1000)
       : new Date();
 
-  // Try to cross-reference with existing measurements in this shift
+  // Try to cross-reference with existing measurements in this session
   const crossRef = await crossReference(
-    shiftSessionId,
+    sessionId,
     parameterName,
     measurementType,
     value,
@@ -135,10 +108,9 @@ export async function recordMeasurement({
   }
 
   // No existing match — create a new measurement + its first source
-  // Atomic read-and-create to prevent duplicate sequence numbers
   const measurement = await prisma.$transaction(async (tx) => {
     const lastMeasurement = await tx.measurement.findFirst({
-      where: { shiftSessionId },
+      where: { captureSessionId: sessionId },
       orderBy: { sequenceInShift: "desc" },
       select: { sequenceInShift: true },
     });
@@ -146,16 +118,12 @@ export async function recordMeasurement({
 
     return tx.measurement.create({
       data: {
-        shiftSessionId,
+        captureSessionId: sessionId,
         componentId: componentId || null,
-        specItemIndex,
         measurementType,
         parameterName,
         value,
         unit,
-        nominalValue,
-        toleranceLow,
-        toleranceHigh,
         inTolerance,
         confidence: source.confidence,
         corroborationLevel: "single",
@@ -195,10 +163,10 @@ function checkTolerance(
   return true;
 }
 
-// Try to find an existing measurement in this shift that matches
+// Try to find an existing measurement in this session that matches
 // Same parameter name + type, within +/- 5 minutes of the source timestamp.
 async function crossReference(
-  shiftSessionId: string,
+  sessionId: string,
   parameterName: string,
   measurementType: string,
   _value: number,
@@ -218,14 +186,14 @@ async function crossReference(
 
   const candidates = await prisma.measurement.findMany({
     where: {
-      shiftSessionId,
+      captureSessionId: sessionId,
       parameterName: { equals: parameterName },
       measurementType: { equals: measurementType },
       measuredAt: {
         gte: new Date(measurementTime.getTime() - fiveMinutesMs),
         lte: new Date(measurementTime.getTime() + fiveMinutesMs),
       },
-      corroborationLevel: "single", // Only cross-ref with un-corroborated ones
+      corroborationLevel: "single",
     },
     select: {
       id: true,
@@ -251,80 +219,4 @@ async function crossReference(
   }
 
   return closest;
-}
-
-// Auto-match a measurement to the closest unmatched spec item
-async function matchToSpec(
-  specItems: SpecItem[],
-  shiftSessionId: string,
-  parameterName: string,
-  measurementType: string
-): Promise<{ index: number; item: SpecItem } | null> {
-  // Get existing measurements that are already matched to spec items
-  const matched = await prisma.measurement.findMany({
-    where: { shiftSessionId, specItemIndex: { not: null } },
-    select: { specItemIndex: true },
-  });
-  const matchedIndices = new Set(matched.map((m) => m.specItemIndex));
-
-  // Find the best matching unmatched spec item
-  for (let i = 0; i < specItems.length; i++) {
-    if (matchedIndices.has(i)) continue;
-
-    const item = specItems[i];
-    // Match on measurement type and similar parameter name
-    if (
-      item.measurementType === measurementType &&
-      item.parameterName.toLowerCase().includes(parameterName.toLowerCase().split(" ")[0])
-    ) {
-      return { index: i, item };
-    }
-  }
-
-  // Fallback: match on measurement type alone
-  for (let i = 0; i < specItems.length; i++) {
-    if (matchedIndices.has(i)) continue;
-    if (specItems[i].measurementType === measurementType) {
-      return { index: i, item: specItems[i] };
-    }
-  }
-
-  return null;
-}
-
-// Get spec progress — how many measurements have been captured vs expected
-export async function getSpecProgress(shiftSessionId: string) {
-  const shift = await prisma.shiftSession.findUnique({
-    where: { id: shiftSessionId },
-    include: { measurementSpec: true },
-  });
-
-  if (!shift?.measurementSpec) return null;
-
-  const specItems: SpecItem[] = JSON.parse(shift.measurementSpec.specItemsJson);
-  const measurements = await prisma.measurement.findMany({
-    where: { shiftSessionId, specItemIndex: { not: null } },
-    select: { specItemIndex: true, status: true, inTolerance: true },
-  });
-
-  const captured = new Set(measurements.map((m) => m.specItemIndex));
-  const totalRequired = specItems.filter((s) => s.required !== false).length;
-  const capturedRequired = specItems.filter(
-    (s, i) => s.required !== false && captured.has(i)
-  ).length;
-
-  return {
-    specName: shift.measurementSpec.name,
-    totalItems: specItems.length,
-    totalRequired,
-    capturedTotal: captured.size,
-    capturedRequired,
-    missingRequired: totalRequired - capturedRequired,
-    items: specItems.map((item, i) => ({
-      ...item,
-      index: i,
-      captured: captured.has(i),
-      measurement: measurements.find((m) => m.specItemIndex === i) || null,
-    })),
-  };
 }

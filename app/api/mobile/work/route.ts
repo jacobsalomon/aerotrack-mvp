@@ -1,61 +1,15 @@
+// GET /api/mobile/work — Get the user's active capture session status
+// POST /api/mobile/work — Start or resume a capture session
+// Protected by API key authentication
+
 import { prisma } from "@/lib/db";
 import { authenticateRequest } from "@/lib/mobile-auth";
-import { resumeShift, startShift } from "@/lib/shift-session";
 import { NextResponse } from "next/server";
-
-const shiftSummarySelect = {
-  id: true,
-  status: true,
-  startedAt: true,
-  endedAt: true,
-  totalDurationMin: true,
-  notes: true,
-  transcriptReviewStatus: true,
-  transcriptApprovedAt: true,
-  transcriptUpdatedAt: true,
-  quantumExportedAt: true,
-  _count: {
-    select: {
-      measurements: true,
-      captureSessions: true,
-      transcriptChunks: true,
-    },
-  },
-} as const;
-
-async function getActiveShiftSummary(userId: string, organizationId: string) {
-  return prisma.shiftSession.findFirst({
-    where: {
-      userId,
-      organizationId,
-      status: { in: ["active", "paused"] },
-    },
-    select: shiftSummarySelect,
-    orderBy: { startedAt: "desc" },
-  });
-}
-
-async function getPendingTranscriptShiftSummary(
-  userId: string,
-  organizationId: string
-) {
-  return prisma.shiftSession.findFirst({
-    where: {
-      userId,
-      organizationId,
-      status: "completed",
-      transcriptReviewStatus: "review_required",
-    },
-    select: shiftSummarySelect,
-    orderBy: [{ endedAt: "desc" }, { updatedAt: "desc" }],
-  });
-}
 
 export async function GET(request: Request) {
   const auth = await authenticateRequest(request);
   if ("error" in auth) return auth.error;
 
-  // Mobile users must belong to an organization
   if (!auth.user.organizationId) {
     return NextResponse.json(
       { success: false, error: "Organization required" },
@@ -64,17 +18,18 @@ export async function GET(request: Request) {
   }
 
   try {
-    const [activeShift, pendingTranscriptShift] = await Promise.all([
-      getActiveShiftSummary(auth.user.id, auth.user.organizationId),
-      getPendingTranscriptShiftSummary(auth.user.id, auth.user.organizationId),
-    ]);
+    const activeSession = await prisma.captureSession.findFirst({
+      where: {
+        userId: auth.user.id,
+        organizationId: auth.user.organizationId,
+        status: "capturing",
+      },
+      orderBy: { startedAt: "desc" },
+    });
 
     return NextResponse.json({
       success: true,
-      data: {
-        activeShift,
-        pendingTranscriptShift,
-      },
+      data: { activeSession },
     });
   } catch (error) {
     console.error("Get mobile work status error:", error);
@@ -89,7 +44,6 @@ export async function POST(request: Request) {
   const auth = await authenticateRequest(request);
   if ("error" in auth) return auth.error;
 
-  // Mobile users must belong to an organization
   if (!auth.user.organizationId) {
     return NextResponse.json(
       { success: false, error: "Organization required" },
@@ -99,60 +53,38 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json().catch(() => ({}));
-    const notes =
-      typeof body?.notes === "string" && body.notes.trim().length > 0
-        ? body.notes.trim()
-        : undefined;
-    const measurementSpecId =
-      typeof body?.measurementSpecId === "string" && body.measurementSpecId.trim().length > 0
-        ? body.measurementSpecId.trim()
+    const description =
+      typeof body?.description === "string" && body.description.trim().length > 0
+        ? body.description.trim()
         : undefined;
 
-    const current = await prisma.shiftSession.findFirst({
+    // Check for an already-active session
+    const current = await prisma.captureSession.findFirst({
       where: {
         userId: auth.user.id,
         organizationId: auth.user.organizationId,
-        status: { in: ["active", "paused"] },
+        status: "capturing",
       },
-      select: { id: true, status: true },
       orderBy: { startedAt: "desc" },
     });
 
-    let shiftId = current?.id ?? null;
+    if (current) {
+      return NextResponse.json({ success: true, data: current });
+    }
 
-    if (!current) {
-      const created = await startShift({
+    // Create a new capture session
+    const session = await prisma.captureSession.create({
+      data: {
         userId: auth.user.id,
         organizationId: auth.user.organizationId,
-        measurementSpecId,
-        notes,
-      });
-      shiftId = created.id;
-    } else if (current.status === "paused") {
-      await resumeShift(current.id, auth.user.id);
-      shiftId = current.id;
-    }
-
-    if (!shiftId) {
-      return NextResponse.json(
-        { success: false, error: "Could not create or resume a work shift" },
-        { status: 500 }
-      );
-    }
-
-    const shift = await prisma.shiftSession.findUnique({
-      where: { id: shiftId },
-      select: shiftSummarySelect,
+        description: description || "Mobile capture session",
+        status: "capturing",
+      },
     });
 
-    return NextResponse.json({ success: true, data: shift });
+    return NextResponse.json({ success: true, data: session });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to start work";
-    const status =
-      message.includes("already has an active") ? 409
-      : message.includes("not found") ? 404
-      : message.includes("must be active") ? 400
-      : 500;
-    return NextResponse.json({ success: false, error: message }, { status });
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

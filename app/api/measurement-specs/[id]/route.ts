@@ -1,6 +1,6 @@
 // GET    /api/measurement-specs/[id] — Get a single measurement spec
 // PATCH  /api/measurement-specs/[id] — Update a spec (name, items, status)
-// DELETE /api/measurement-specs/[id] — Delete a spec (only if no shifts use it)
+// DELETE /api/measurement-specs/[id] — Delete a spec
 // Protected by API key authentication
 
 import { prisma } from "@/lib/db";
@@ -18,7 +18,6 @@ export async function GET(request: Request, { params }: RouteParams) {
   try {
     const spec = await prisma.measurementSpec.findUnique({
       where: { id },
-      include: { _count: { select: { shiftSessions: true } } },
     });
 
     if (!spec || spec.organizationId !== auth.user.organizationId) {
@@ -33,7 +32,6 @@ export async function GET(request: Request, { params }: RouteParams) {
       data: {
         ...spec,
         specItems: JSON.parse(spec.specItemsJson),
-        shiftsUsingThis: spec._count.shiftSessions,
       },
     });
   } catch (error) {
@@ -114,20 +112,12 @@ export async function DELETE(request: Request, { params }: RouteParams) {
   try {
     const existing = await prisma.measurementSpec.findUnique({
       where: { id },
-      include: { _count: { select: { shiftSessions: true } } },
     });
 
     if (!existing || existing.organizationId !== auth.user.organizationId) {
       return NextResponse.json(
         { success: false, error: "Measurement spec not found" },
         { status: 404 }
-      );
-    }
-
-    if (existing._count.shiftSessions > 0) {
-      return NextResponse.json(
-        { success: false, error: `Cannot delete — ${existing._count.shiftSessions} shift(s) use this spec. Archive it instead.` },
-        { status: 409 }
       );
     }
 
