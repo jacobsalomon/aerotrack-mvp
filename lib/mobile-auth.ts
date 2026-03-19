@@ -11,6 +11,7 @@
 import { jwtVerify } from "jose";
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
+import { getMobileSigningKey } from "@/lib/mobile-jwt";
 
 export interface AuthenticatedTechnician {
   id: string;
@@ -20,12 +21,6 @@ export interface AuthenticatedTechnician {
   badgeNumber: string;
   role: string;
   organizationId: string;
-}
-
-function getSigningKey(): Uint8Array {
-  const secret = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
-  if (!secret) throw new Error("No signing secret configured");
-  return new TextEncoder().encode(secret);
 }
 
 // Demo technician — used as fallback when no auth header is present
@@ -53,7 +48,7 @@ export async function authenticateRequest(
 
   // Try JWT verification
   try {
-    const { payload } = await jwtVerify(token, getSigningKey());
+    const { payload } = await jwtVerify(token, getMobileSigningKey());
 
     const technicianId = payload.technicianId as string | undefined;
     if (!technicianId) {

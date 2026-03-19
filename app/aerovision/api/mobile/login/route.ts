@@ -7,15 +7,9 @@ import { prisma } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { SignJWT } from "jose";
 import { NextResponse } from "next/server";
+import { getMobileSigningKey } from "@/lib/mobile-jwt";
 
-// 90-day token lifetime
 const TOKEN_EXPIRY = "90d";
-
-function getSigningKey(): Uint8Array {
-  const secret = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
-  if (!secret) throw new Error("No signing secret configured");
-  return new TextEncoder().encode(secret);
-}
 
 export async function POST(request: Request) {
   try {
@@ -80,7 +74,7 @@ export async function POST(request: Request) {
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
       .setExpirationTime(TOKEN_EXPIRY)
-      .sign(getSigningKey());
+      .sign(getMobileSigningKey());
 
     return NextResponse.json({
       token,

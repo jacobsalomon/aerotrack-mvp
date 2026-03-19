@@ -73,7 +73,10 @@ export function LiveSessionPanel({
   };
 
   const handleTranscript = useCallback((text: string) => {
-    setTranscriptLines((prev) => [...prev, text]);
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    // Keep only the last 50 lines to avoid unbounded growth in long sessions
+    setTranscriptLines((prev) => [...prev.slice(-49), trimmed]);
   }, []);
 
   const handleEndSession = useCallback(async () => {

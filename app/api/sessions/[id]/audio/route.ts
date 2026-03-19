@@ -45,22 +45,22 @@ export async function POST(request: Request, { params }: RouteParams) {
       );
     }
 
-    // Step 1: Persist the raw audio to Vercel Blob so it's replayable
+    // Read the file once — the FormData File stream can only be consumed once
     const audioBuffer = Buffer.from(await audioFile.arrayBuffer());
     const mimeType = audioFile.type || "audio/webm";
     const ext = mimeType.includes("mp4") ? "m4a" : mimeType.includes("mpeg") ? "mp3" : "webm";
+    const fileName = audioFile.name || `desk-mic-chunk.${ext}`;
     const timestamp = chunkTimestamp
       ? new Date(chunkTimestamp).toISOString().replace(/[:.]/g, "-")
       : String(Date.now());
     const blobPath = `evidence/${sessionId}/desk-mic-${timestamp}.${ext}`;
 
+    // Step 1: Persist the raw audio to Vercel Blob so it's replayable
     const blob = await uploadFile(audioBuffer, blobPath, mimeType);
 
-    // Step 2: Transcribe the audio chunk
-    const transcription = await transcribeAudio(
-      audioFile,
-      audioFile.name || `desk-mic-chunk.${ext}`
-    );
+    // Step 2: Transcribe using a fresh File from the buffer (original stream is consumed)
+    const fileForTranscription = new File([audioBuffer], fileName, { type: mimeType });
+    const transcription = await transcribeAudio(fileForTranscription, fileName);
     const transcriptText = transcription.text.trim();
 
     // Step 3: Register as AUDIO_CHUNK evidence with the real Blob URL
