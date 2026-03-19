@@ -49,13 +49,26 @@ interface LiveCaptureViewProps {
 // This is LOCAL ONLY — not saved to the database. It shows the mechanic
 // their words instantly, then gets replaced by the server transcription.
 
-function useWebSpeechRecognition(enabled: boolean) {
+function useWebSpeechRecognition(enabled: boolean, serverSegmentCount: number) {
   const [draftText, setDraftText] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [supported, setSupported] = useState(true);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
+  // Accumulate finalized results so text stays visible until server replaces it
+  const finalizedRef = useRef("");
+
+  // When new server segments arrive, clear the finalized buffer since the
+  // server transcript now covers what the user said
+  const prevSegmentCountRef = useRef(serverSegmentCount);
+  useEffect(() => {
+    if (serverSegmentCount > prevSegmentCountRef.current) {
+      finalizedRef.current = "";
+      setDraftText("");
+    }
+    prevSegmentCountRef.current = serverSegmentCount;
+  }, [serverSegmentCount]);
 
   useEffect(() => {
     // Check if Web Speech API is available (Chrome is the main target)
@@ -83,15 +96,19 @@ function useWebSpeechRecognition(enabled: boolean) {
     recognitionRef.current = recognition;
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
-      // Build the current interim text from all results not yet finalized
+      // Build text from finalized + current interim results
       let interim = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
-        if (!result.isFinal) {
+        if (result.isFinal) {
+          // Accumulate finalized text so it stays visible
+          finalizedRef.current += result[0].transcript + " ";
+        } else {
           interim += result[0].transcript;
         }
       }
-      setDraftText(interim);
+      // Show: all finalized text we've accumulated + the current interim words
+      setDraftText((finalizedRef.current + interim).trim());
     };
 
     recognition.onstart = () => setIsListening(true);
@@ -127,10 +144,7 @@ function useWebSpeechRecognition(enabled: boolean) {
     };
   }, [enabled]);
 
-  // Clear the draft text (called when server transcript arrives)
-  const clearDraft = useCallback(() => setDraftText(""), []);
-
-  return { draftText, isListening, supported, clearDraft };
+  return { draftText, isListening, supported };
 }
 
 // ── Main component ──────────────────────────────────────────────────
@@ -151,7 +165,7 @@ export function LiveCaptureView({
 
   // Web Speech API for instant draft text
   const { draftText, isListening, supported: webSpeechSupported } =
-    useWebSpeechRecognition(!ending);
+    useWebSpeechRecognition(!ending, segments.length);
 
   // Track whether user is scrolled to bottom (for auto-scroll behavior)
   const isAtBottomRef = useRef(true);

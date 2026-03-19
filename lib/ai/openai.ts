@@ -177,8 +177,9 @@ async function transcribeWithElevenLabs(
   formData.append("timestamps_granularity", "word");
   formData.append("tag_audio_events", "false");
   // Add keyterms so ElevenLabs recognizes aerospace vocabulary
+  // ElevenLabs API expects repeated "keyterms" fields (not "keyterms[]")
   for (const term of keyterms) {
-    formData.append("keyterms[]", term);
+    formData.append("keyterms", term);
   }
 
   const response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {

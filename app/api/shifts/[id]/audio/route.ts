@@ -10,6 +10,7 @@ import { transcribeAudio } from "@/lib/ai/openai";
 import { correctTranscriptSegment } from "@/lib/ai/transcript-correction";
 import { extractMeasurementsFromTranscript } from "@/lib/ai/measurement-extraction";
 import { recordMeasurement } from "@/lib/measurement-ledger";
+import { getCallHistory } from "@/lib/ai/provider";
 import { NextResponse } from "next/server";
 
 // Allow up to 60 seconds — transcription + measurement extraction can take 15-25s
@@ -79,9 +80,17 @@ export async function POST(request: Request, { params }: RouteParams) {
     const chunkStartTime = chunkTimestamp ? new Date(chunkTimestamp).getTime() : Date.now();
 
     // Step 1: Transcribe the audio
-    console.log("[Audio] Step 1: Starting transcription...");
+    console.log(`[Audio] Step 1: Starting transcription (chunk size=${audioFile.size} bytes, type=${audioFile.type})...`);
     const t1 = Date.now();
-    const transcription = await transcribeAudio(audioFile, audioFile.name || "chunk.webm");
+    let transcription;
+    try {
+      transcription = await transcribeAudio(audioFile, audioFile.name || "chunk.webm");
+    } catch (transcriptionError) {
+      // Log the full error chain so we can debug which models failed and why
+      const msg = transcriptionError instanceof Error ? transcriptionError.message : String(transcriptionError);
+      console.error(`[Audio] Step 1 FAILED after ${Date.now() - t1}ms: ${msg}`);
+      throw transcriptionError;
+    }
     const transcriptText = transcription.text.trim();
     console.log(
       `[Audio] Step 1 done in ${Date.now() - t1}ms: "${transcriptText.slice(0, 100)}" (model=${transcription.model})`
@@ -193,11 +202,15 @@ export async function POST(request: Request, { params }: RouteParams) {
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("Audio processing error:", errorMessage, error);
+    // Include the recent AI call history so we can see exactly which models failed and why
+    const recentCalls = getCallHistory().slice(-6);
+    console.error("Audio processing error:", errorMessage, "Recent AI calls:", JSON.stringify(recentCalls));
     return NextResponse.json(
       {
         success: false,
         error: `Failed to process audio chunk: ${errorMessage.slice(0, 200)}`,
+        // Include model failure details for debugging
+        debug: recentCalls.map(c => `${c.model}: ${c.success ? "ok" : c.error?.slice(0, 100)}`),
       },
       { status: 500 }
     );
