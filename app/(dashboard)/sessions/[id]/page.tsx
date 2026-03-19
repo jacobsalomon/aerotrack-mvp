@@ -190,9 +190,8 @@ interface SessionDetail {
   expectedSteps: string | null;
   startedAt: string;
   completedAt: string | null;
-  technician: {
-    firstName: string;
-    lastName: string;
+  user: {
+    name: string;
     badgeNumber: string;
     email: string | null;
     role: string;
@@ -226,7 +225,7 @@ interface AuditEntry {
   entityId: string | null;
   metadata: string | null;
   timestamp: string;
-  technician: { firstName: string; lastName: string } | null;
+  user: { name: string } | null;
 }
 
 interface SessionDetailLoadError {
@@ -969,10 +968,10 @@ export default function SessionDetailPage() {
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight" style={{ fontFamily: "var(--font-space-grotesk)", color: "rgb(20, 20, 20)" }}>
-              {session.technician.firstName} {session.technician.lastName}
+              {session.user.name}
             </h1>
             <p className="text-sm mt-1" style={{ color: "rgb(100, 100, 100)" }}>
-              Badge: {session.technician.badgeNumber} &middot; {session.organization.name}
+              Badge: {session.user.badgeNumber} &middot; {session.organization.name}
             </p>
           </div>
           <div className="flex flex-col items-end gap-2">
@@ -2897,9 +2896,9 @@ export default function SessionDetailPage() {
                       <span className="font-medium" style={{ color: "rgb(40, 40, 40)" }}>
                         {humanizeAction(entry.action)}
                       </span>
-                      {entry.technician && (
+                      {entry.user && (
                         <span style={{ color: "rgb(100, 100, 100)" }}>
-                          by {entry.technician.firstName} {entry.technician.lastName}
+                          by {entry.user.firstName} {entry.user.lastName}
                         </span>
                       )}
                       {meta && typeof meta.notes === "string" && meta.notes && (
