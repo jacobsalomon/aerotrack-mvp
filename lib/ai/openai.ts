@@ -120,8 +120,8 @@ async function transcribeWithOpenAI(
   formData.append("file", audioFile, fileName);
   formData.append("model", modelId);
   formData.append("language", "en");
-  formData.append("response_format", "verbose_json");
-  formData.append("timestamp_granularities[]", "word");
+  // gpt-4o-transcribe only supports "json" or "text" (NOT verbose_json)
+  formData.append("response_format", "json");
   formData.append("prompt", AEROSPACE_VOCABULARY_PROMPT);
 
   const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
@@ -177,8 +177,10 @@ async function transcribeWithElevenLabs(
   formData.append("timestamps_granularity", "word");
   formData.append("tag_audio_events", "false");
   // Add keyterms so ElevenLabs recognizes aerospace vocabulary
-  // ElevenLabs expects keyterms as a single JSON array string
-  formData.append("keyterms", JSON.stringify(keyterms));
+  // Each keyword is a separate repeated form field (max 100 terms, each < 50 chars)
+  for (const term of keyterms) {
+    formData.append("keyterms", term);
+  }
 
   const response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
     method: "POST",
