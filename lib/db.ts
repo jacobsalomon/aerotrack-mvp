@@ -1,57 +1,20 @@
-// Database connection singleton
-// Uses Turso (cloud SQLite) when TURSO_DATABASE_URL is set (production),
-// otherwise respects DATABASE_URL (used by Prisma CLI) and finally falls
-// back to local SQLite for local development.
-//
-// Keep this module server-only without requiring the `server-only` package so
-// unit tests can run in environments that do not resolve it.
+// Database connection singleton.
+// Uses DATABASE_URL from environment (Neon Postgres in production, local in dev).
+
 if (typeof window !== "undefined") {
   throw new Error("lib/db must only be imported on the server");
 }
 
-import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { PrismaClient } from "@/generated/prisma/client";
-import { PrismaLibSql } from "@prisma/adapter-libsql";
-
-function createPrismaClient() {
-  const databaseUrl =
-    process.env.TURSO_DATABASE_URL ??
-    process.env.DATABASE_URL ??
-    "file:./dev.db";
-
-  const adapter = new PrismaLibSql({
-    url: databaseUrl,
-    authToken: process.env.TURSO_AUTH_TOKEN,
-  });
-
-  return new PrismaClient({ adapter });
-}
-
-function getSchemaFingerprint() {
-  const schemaPath = join(process.cwd(), "prisma", "schema.prisma");
-  if (!existsSync(schemaPath)) return "schema-missing";
-
-  return createHash("sha1")
-    .update(readFileSync(schemaPath, "utf8"))
-    .digest("hex");
-}
+import { PrismaPg } from "@prisma/adapter-pg";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
-  prismaSchemaFingerprint: string | undefined;
 };
 
-const schemaFingerprint = getSchemaFingerprint();
-
-if (
-  !globalForPrisma.prisma ||
-  globalForPrisma.prismaSchemaFingerprint !== schemaFingerprint
-) {
-  void globalForPrisma.prisma?.$disconnect().catch(() => undefined);
-  globalForPrisma.prisma = createPrismaClient();
-  globalForPrisma.prismaSchemaFingerprint = schemaFingerprint;
+if (!globalForPrisma.prisma) {
+  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+  globalForPrisma.prisma = new PrismaClient({ adapter });
 }
 
-export const prisma = globalForPrisma.prisma as PrismaClient;
+export const prisma = globalForPrisma.prisma;

@@ -26,7 +26,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.73.0",
     "@auth/prisma-adapter": "^2.11.1",
-    "@prisma/adapter-libsql": "^7.4.0",
+    "@prisma/adapter-pg": "^7.5.0",
     "@prisma/client": "^7.4.0",
     "@sentry/nextjs": "^10.43.0",
     "@vercel/blob": "^2.3.0",
