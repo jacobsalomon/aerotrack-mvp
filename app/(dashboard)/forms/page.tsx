@@ -1,6 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Upload, Sparkles } from "lucide-react";
+import { FileText, Sparkles } from "lucide-react";
+import InternalForms from "./internal-forms";
 
 // The 3 FAA forms AeroVision auto-generates from capture session evidence
 const faaForms = [
@@ -82,30 +83,8 @@ export default function FormsPage() {
         </div>
       </div>
 
-      {/* Section 2: Internal Forms (coming soon) */}
-      <div>
-        <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">
-          Internal Forms
-        </h2>
-        <Card className="border-dashed border-slate-300 bg-slate-50/50">
-          <CardContent className="py-10 px-6 text-center">
-            <div className="mx-auto w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mb-4">
-              <Upload className="h-5 w-5 text-slate-400" />
-            </div>
-            <p className="text-sm text-slate-600 max-w-md mx-auto">
-              Upload your shop&apos;s internal forms — inspection checklists,
-              station-to-station handoff forms, and more. AeroVision will fill
-              them automatically from captured evidence.
-            </p>
-            <Badge
-              variant="outline"
-              className="mt-4 text-xs text-slate-400 border-slate-300"
-            >
-              Coming Soon
-            </Badge>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Section 2: Internal Forms — org-scoped PDF uploads */}
+      <InternalForms />
     </div>
   );
 }
