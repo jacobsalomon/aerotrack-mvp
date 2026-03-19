@@ -82,7 +82,9 @@ export async function GET(request: Request) {
 }
 
 // Start a new capture session from the web dashboard (no glasses required).
-// The technician picks the logged-in user's technician record.
+// Looks up (or auto-creates) a Technician record for the logged-in user,
+// creates a ShiftSession for mic recording / measurements, then creates
+// the CaptureSession linked to both.
 export async function POST(request: Request) {
   const authResult = await requireAuth(request);
   if (authResult.error) return authResult.error;
@@ -90,36 +92,68 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { description } = body;
+    const user = authResult.user;
 
-    // Use the first technician in the demo org as the session owner.
-    // In production this would use the logged-in user's technician record.
-    const technician = await prisma.technician.findFirst({
-      select: { id: true, organizationId: true },
-      orderBy: { createdAt: "asc" },
-    });
+    // Look up technician by the logged-in user's email
+    let technician = user.email
+      ? await prisma.technician.findUnique({
+          where: { email: user.email },
+          select: { id: true, organizationId: true },
+        })
+      : null;
 
+    // Auto-create a technician record if one doesn't exist yet
     if (!technician) {
-      return NextResponse.json(
-        { error: "No technician found" },
-        { status: 404 }
-      );
+      // Use the first organization as the default (production has one org)
+      const org = await prisma.organization.findFirst({
+        select: { id: true },
+        orderBy: { createdAt: "asc" },
+      });
+
+      if (!org) {
+        return NextResponse.json(
+          { error: "No organization found. Please contact support." },
+          { status: 500 }
+        );
+      }
+
+      // Split the user's display name into first/last
+      const nameParts = (user.name || "").trim().split(/\s+/);
+      const firstName = nameParts[0] || "User";
+      const lastName = nameParts.slice(1).join(" ") || user.email?.split("@")[0] || "Unknown";
+
+      // Generate a badge number from the user ID
+      const badgeNumber = `WEB-${user.id.slice(-6).toUpperCase()}`;
+
+      technician = await prisma.technician.create({
+        data: {
+          firstName,
+          lastName,
+          email: user.email || `${user.id}@aerovision.local`,
+          badgeNumber,
+          organizationId: org.id,
+          role: "TECHNICIAN",
+          status: "ACTIVE",
+        },
+        select: { id: true, organizationId: true },
+      });
     }
 
-    // Find the active shift for this technician (if any)
-    const activeShift = await prisma.shiftSession.findFirst({
-      where: {
+    // Create a ShiftSession so mic recording and measurement extraction work
+    const shiftSession = await prisma.shiftSession.create({
+      data: {
         technicianId: technician.id,
-        status: { in: ["active", "paused"] },
+        organizationId: technician.organizationId,
+        status: "active",
+        startedAt: new Date(),
       },
-      select: { id: true },
-      orderBy: { startedAt: "desc" },
     });
 
     const session = await prisma.captureSession.create({
       data: {
         technicianId: technician.id,
         organizationId: technician.organizationId,
-        shiftSessionId: activeShift?.id ?? null,
+        shiftSessionId: shiftSession.id,
         description: description || "Web capture session",
         status: "capturing",
       },

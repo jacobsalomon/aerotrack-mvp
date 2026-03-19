@@ -7,6 +7,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { LiveCaptureView } from "@/components/live-capture-view";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -184,6 +185,7 @@ interface SessionDetail {
   id: string;
   status: string;
   description: string | null;
+  shiftSessionId: string | null;
   componentId: string | null;
   expectedSteps: string | null;
   startedAt: string;
@@ -353,18 +355,18 @@ function buildSessionDetailLoadError(
   if (detail.includes("404")) {
     return {
       title: "Session not found",
-      error: `The review session ${sessionId} is not present in the local demo dataset.`,
+      error: `The session ${sessionId} could not be found.`,
       nextStep:
-        "Return to the review queue or open the seeded reviewer proof route instead.",
+        "Return to the review queue and try another session.",
       technicalDetails: detail,
     };
   }
 
   return {
     title: "Reviewer cockpit unavailable",
-    error: "AeroVision could not load this session from the local demo backend.",
+    error: "AeroVision could not load this session.",
     nextStep:
-      "Retry this page or return to the review queue. If the problem persists, restart the local demo server and try again.",
+      "Retry this page or return to the review queue. If the problem persists, check your connection and try again.",
     technicalDetails: detail,
   };
 }
@@ -689,9 +691,6 @@ export default function SessionDetailPage() {
               <Button asChild variant="outline">
                 <Link href="/sessions">Back to Review Queue</Link>
               </Button>
-              <Button asChild variant="ghost">
-                <Link href="/demo">Open Demo</Link>
-              </Button>
             </div>
             <p className="mt-5 text-xs font-mono" style={{ color: "rgb(180, 83, 9)" }}>
               Session: {sessionId}
@@ -700,6 +699,21 @@ export default function SessionDetailPage() {
           </CardContent>
         </Card>
       </div>
+    );
+  }
+
+  // If the session is actively capturing and has a linked shift, show the live capture view
+  // instead of the full reviewer cockpit
+  if (session.status === "capturing" && session.shiftSessionId) {
+    return (
+      <LiveCaptureView
+        sessionId={session.id}
+        shiftSessionId={session.shiftSessionId}
+        description={session.description}
+        startedAt={session.startedAt}
+        evidenceCount={session.evidence.length}
+        onSessionEnded={() => void fetchSession()}
+      />
     );
   }
 

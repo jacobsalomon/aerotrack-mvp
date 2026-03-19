@@ -124,6 +124,18 @@ export async function PATCH(
       data: updateData,
     });
 
+    // When a capture session ends, also complete its linked ShiftSession
+    if (isEnding && session.shiftSessionId) {
+      try {
+        await prisma.shiftSession.update({
+          where: { id: session.shiftSessionId },
+          data: { status: "completed", endedAt: new Date() },
+        });
+      } catch (err) {
+        console.error("Failed to complete shift session:", err);
+      }
+    }
+
     // Trigger processing immediately when session ends — don't wait for the next poll
     if (isEnding) {
       try {

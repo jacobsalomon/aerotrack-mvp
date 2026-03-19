@@ -4,7 +4,6 @@
 // Two tabs: "All Sessions" and "Review Queue" (pending supervisor review)
 // Rows are clickable — navigate to /sessions/[id] for full detail
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -39,9 +38,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Loader2,
-  ArrowRight,
   RefreshCw,
-  Plus,
   Mic,
 } from "lucide-react";
 
@@ -105,9 +102,9 @@ function buildSessionLoadError(error: unknown): SessionLoadError {
 
   return {
     title: "Review queue unavailable",
-    error: "AeroVision could not load reviewer sessions from the local demo backend.",
+    error: "AeroVision could not load reviewer sessions.",
     nextStep:
-      "Refresh this page. If the problem persists, restart the local demo server and try again.",
+      "Refresh this page. If the problem persists, check your connection and try again.",
     technicalDetails: detail,
   };
 }
@@ -120,6 +117,7 @@ export default function SessionsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [activeTab, setActiveTab] = useState<"all" | "review">("all");
   const [creatingSession, setCreatingSession] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const fetchSessions = useCallback(async () => {
     setLoading(true);
@@ -157,17 +155,22 @@ export default function SessionsPage() {
   // Start a new capture session from the web dashboard (no glasses required)
   async function handleStartSession() {
     setCreatingSession(true);
+    setCreateError(null);
     try {
       const res = await fetch(apiUrl("/api/sessions"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ description: "Web capture session" }),
       });
-      if (!res.ok) throw new Error("Failed to create session");
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error || "Failed to create session");
+      }
       const session = await res.json();
       router.push(`/sessions/${session.id}`);
     } catch (err) {
       console.error("Failed to start session:", err);
+      setCreateError(err instanceof Error ? err.message : "Failed to start session");
       setCreatingSession(false);
     }
   }
@@ -219,68 +222,33 @@ export default function SessionsPage() {
       <div className="mb-8">
         <div className="flex items-start justify-between">
           <div>
-            <p
-              className="text-xs font-semibold uppercase tracking-[0.18em]"
-              style={{ color: "rgb(147, 51, 234)" }}
-            >
-              Reviewer-first workflow
-            </p>
-            <h1 className="text-3xl font-bold tracking-tight mt-2" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>Review Queue</h1>
+            <h1 className="text-3xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>Review Queue</h1>
             <p className="text-sm mt-2" style={{ color: 'rgb(100, 100, 100)' }}>
-              Open reviewer-ready sessions, inspect the evidence trail, and move release paperwork toward sign-off.
+              Sessions appear here as technicians capture maintenance work. Open a session to review evidence and approve documents.
             </p>
           </div>
-          <Button
-            onClick={() => void handleStartSession()}
-            disabled={creatingSession}
-            className="gap-2 shrink-0"
-            style={{ backgroundColor: "rgb(239, 68, 68)", color: "white" }}
-          >
-            {creatingSession ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Mic className="h-4 w-4" />
+          <div className="shrink-0 text-right">
+            <Button
+              onClick={() => void handleStartSession()}
+              disabled={creatingSession}
+              className="gap-2"
+              style={{ backgroundColor: "rgb(239, 68, 68)", color: "white" }}
+            >
+              {creatingSession ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Mic className="h-4 w-4" />
+              )}
+              Start Session
+            </Button>
+            {createError && (
+              <p className="text-xs mt-2" style={{ color: "rgb(239, 68, 68)" }}>
+                {createError}
+              </p>
             )}
-            Start Session
-          </Button>
+          </div>
         </div>
       </div>
-
-      <Card
-        className="mb-8 overflow-hidden border-0 shadow-sm"
-        data-demo-focus="sessions-seeded-review"
-        style={{
-          background:
-            "linear-gradient(135deg, rgba(17, 24, 39, 0.96) 0%, rgba(30, 41, 59, 0.98) 56%, rgba(248, 250, 252, 1) 56%)",
-        }}
-      >
-        <CardContent className="flex flex-col gap-6 px-6 py-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
-              Demo-safe proof path
-            </p>
-            <h2 className="mt-3 text-2xl font-semibold tracking-tight text-white">
-              Start with the seeded reviewer cockpit, not the capture tool.
-            </h2>
-            <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">
-              This is the clearest product story in the app: draft release documents, evidence-backed
-              field provenance, and the exact blockers that stand between a reviewer and sign-off.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Button asChild size="lg" className="gap-2 rounded-full px-6">
-              <Link href="/sessions/test-session-reviewer-cockpit">
-                Continue Seeded Review
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-            <Button asChild size="lg" variant="outline" className="rounded-full border-slate-300 bg-white/90 px-6 text-slate-900 hover:bg-white">
-              <Link href="/demo">Open Demo</Link>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Summary cards */}
       {!loadError && (
@@ -420,13 +388,10 @@ export default function SessionsPage() {
               <p className="mt-2 text-sm leading-6" style={{ color: "rgb(146, 64, 14)" }}>
                 Next step: {loadError.nextStep}
               </p>
-              <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+              <div className="mt-6">
                 <Button onClick={() => void fetchSessions()} className="gap-2">
                   <RefreshCw className="h-4 w-4" />
                   Retry Review Queue
-                </Button>
-                <Button asChild variant="outline">
-                  <Link href="/demo">Open Demo Instead</Link>
                 </Button>
               </div>
               <p className="mt-5 text-xs font-mono" style={{ color: "rgb(180, 83, 9)" }}>

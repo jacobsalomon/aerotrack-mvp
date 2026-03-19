@@ -9,6 +9,30 @@ import { NextResponse } from "next/server";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
+// GET /api/shifts/[id]/transcript — return raw transcript chunks for the live capture view
+export async function GET(request: Request, { params }: RouteParams) {
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.error;
+
+  const { id: shiftId } = await params;
+
+  try {
+    const chunks = await prisma.shiftTranscriptChunk.findMany({
+      where: { shiftSessionId: shiftId },
+      select: { id: true, transcript: true, startedAt: true, createdAt: true },
+      orderBy: [{ startedAt: "asc" }, { createdAt: "asc" }],
+    });
+
+    return NextResponse.json({
+      success: true,
+      chunks: chunks.map((c) => ({ id: c.id, text: c.transcript, at: c.startedAt || c.createdAt })),
+    });
+  } catch (error) {
+    console.error("Get transcript chunks error:", error);
+    return NextResponse.json({ success: false, error: "Failed to load transcript" }, { status: 500 });
+  }
+}
+
 export async function PATCH(request: Request, { params }: RouteParams) {
   const authResult = await requireAuth(request);
   if (authResult.error) return authResult.error;

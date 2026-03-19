@@ -34,16 +34,10 @@ type NavItem = {
 
 const primaryNavItems: NavItem[] = [
   {
-    href: "/demo",
-    label: "Demo",
-    icon: Play,
-    description: "Guided buyer story",
-  },
-  {
     href: "/sessions",
     label: "Review Queue",
     icon: FileCheck,
-    description: "Reviewer proof path",
+    description: "Document review and approval",
   },
   {
     href: "/dashboard",
@@ -59,23 +53,6 @@ const primaryNavItems: NavItem[] = [
   },
 ];
 
-// HIDDEN — features exist but not shown in nav
-// const secondaryNavItems: NavItem[] = [
-//   {
-//     href: "/shifts",
-//     label: "Shifts",
-//     icon: Gauge,
-//     description: "Live measurement feed",
-//   },
-//   {
-//     href: "/capture",
-//     label: "Capture",
-//     icon: ScanLine,
-//     description: "Upstream evidence capture",
-//   },
-// ];
-const secondaryNavItems: NavItem[] = [];
-
 const supportNavItems: NavItem[] = [
   {
     href: "/forms",
@@ -87,29 +64,25 @@ const supportNavItems: NavItem[] = [
     label: "Technicians",
     icon: Users,
   },
-  // {
-  //   href: "/analytics",
-  //   label: "Analytics",
-  //   icon: BarChart3,
-  // },
+];
+
+const onboardingNavItems: NavItem[] = [
+  {
+    href: "/demo",
+    label: "Product Walkthrough",
+    icon: Play,
+  },
   {
     href: "/glasses-demo",
     label: "Glasses Preview",
     icon: Glasses,
   },
-  // HIDDEN — feature exists but not shown in nav
-  // {
-  //   href: "/admin/cmm",
-  //   label: "CMM Library",
-  //   icon: Settings,
-  //   description: "Manage maintenance manuals",
-  // },
 ];
 
 const allNavItems = [
   ...primaryNavItems,
-  ...secondaryNavItems,
   ...supportNavItems,
+  ...onboardingNavItems,
 ];
 
 function isActivePath(pathname: string, href: string) {
@@ -204,7 +177,7 @@ function SidebarBody({
             >
               AeroVision
             </p>
-            <p className="text-xs text-white/40">Reviewer-first release proof</p>
+            <p className="text-xs text-white/40">AI-powered maintenance docs</p>
           </div>
         </div>
       </Link>
@@ -212,23 +185,20 @@ function SidebarBody({
       <nav className="flex-1 space-y-8 overflow-y-auto px-3 py-5">
         <NavSection
           pathname={pathname}
-          title="Primary Workflow"
+          title="Workflow"
           items={primaryNavItems}
           onNavigate={onNavigate}
         />
-        {/* HIDDEN — Supporting section hidden while features are cut */}
-        {secondaryNavItems.length > 0 && (
-          <NavSection
-            pathname={pathname}
-            title="Supporting"
-            items={secondaryNavItems}
-            onNavigate={onNavigate}
-          />
-        )}
         <NavSection
           pathname={pathname}
           title="Operations"
           items={supportNavItems}
+          onNavigate={onNavigate}
+        />
+        <NavSection
+          pathname={pathname}
+          title="Intro & Onboarding"
+          items={onboardingNavItems}
           onNavigate={onNavigate}
         />
       </nav>
@@ -282,7 +252,7 @@ export function Sidebar() {
                   {activeItem?.label || "AeroVision"}
                 </p>
                 <p className="truncate text-xs text-white/40">
-                  {activeItem?.description || "Reviewer-first demo"}
+                  {activeItem?.description || "AI-powered maintenance docs"}
                 </p>
               </div>
             </div>

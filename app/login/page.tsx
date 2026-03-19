@@ -34,7 +34,7 @@ function LoginForm() {
       if (result?.error) {
         setError("Invalid email or password");
       } else {
-        router.push("/demo");
+        router.push("/sessions");
       }
     } catch {
       setError("Connection failed");
