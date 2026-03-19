@@ -38,6 +38,7 @@ interface DeskMicDeviceOption {
 
 export interface ShiftDeskMicRecorderHandle {
   isRecording: () => boolean;
+  startRecording: () => Promise<void>;
   stopAndFlush: () => Promise<void>;
 }
 
@@ -46,6 +47,12 @@ interface ShiftDeskMicRecorderProps {
   enabled: boolean;
   onUnauthorized: (response: Response) => boolean;
   onStopComplete?: () => void | Promise<void>;
+  // When true, start recording immediately on mount (no manual click needed)
+  autoStart?: boolean;
+  // When true, render a minimal inline bar instead of the full Card UI
+  compact?: boolean;
+  // Called after each chunk is uploaded — passes uploaded count and pending count
+  onChunkUploaded?: (uploaded: number, pending: number) => void;
 }
 
 function getSupportedDeskMicMimeType(): string {
@@ -75,7 +82,7 @@ export const ShiftDeskMicRecorder = forwardRef<
   ShiftDeskMicRecorderHandle,
   ShiftDeskMicRecorderProps
 >(function ShiftDeskMicRecorder(
-  { shiftId, enabled, onUnauthorized, onStopComplete },
+  { shiftId, enabled, onUnauthorized, onStopComplete, autoStart, compact, onChunkUploaded },
   ref
 ) {
   const [devices, setDevices] = useState<DeskMicDeviceOption[]>([]);
@@ -162,7 +169,12 @@ export const ShiftDeskMicRecorder = forwardRef<
             throw new Error(payload?.error || "Failed to upload desk mic chunk");
           }
 
-          setUploadedChunks((current) => current + 1);
+          setUploadedChunks((current) => {
+            const next = current + 1;
+            // Notify parent after state update (pending will decrement in finally)
+            setTimeout(() => onChunkUploaded?.(next, 0), 0);
+            return next;
+          });
           setLastUploadedAt(new Date().toISOString());
           if (lastErrorRef.current) {
             lastErrorRef.current = null;
@@ -182,7 +194,7 @@ export const ShiftDeskMicRecorder = forwardRef<
           setPendingChunks((current) => Math.max(0, current - 1));
         });
     },
-    [onUnauthorized, shiftId]
+    [onUnauthorized, onChunkUploaded, shiftId]
   );
 
   const stopAndFlush = useCallback(async () => {
@@ -308,9 +320,10 @@ export const ShiftDeskMicRecorder = forwardRef<
     ref,
     () => ({
       isRecording: () => state === "recording" || state === "requesting" || state === "stopping",
+      startRecording,
       stopAndFlush,
     }),
-    [state, stopAndFlush]
+    [state, startRecording, stopAndFlush]
   );
 
   useEffect(() => {
@@ -324,6 +337,15 @@ export const ShiftDeskMicRecorder = forwardRef<
     mediaDevices.addEventListener("devicechange", refreshDevices);
     return () => mediaDevices.removeEventListener("devicechange", refreshDevices);
   }, [refreshDevices]);
+
+  // Auto-start recording on mount when autoStart is true
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (autoStart && enabled && !autoStartedRef.current && state === "idle") {
+      autoStartedRef.current = true;
+      void startRecording();
+    }
+  }, [autoStart, enabled, state, startRecording]);
 
   useEffect(() => {
     if (!enabled && mediaRecorderRef.current?.state === "recording") {
@@ -356,6 +378,66 @@ export const ShiftDeskMicRecorder = forwardRef<
         : state === "requesting"
           ? "Requesting microphone access"
           : "Ready to record";
+
+  // Compact mode: minimal inline bar for embedding in other views
+  if (compact) {
+    return (
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm" style={{ color: isRecording ? "rgb(22, 163, 74)" : "rgb(107, 114, 128)" }}>
+          {isRecording ? (
+            <>
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+              </span>
+              <span className="font-medium">Recording</span>
+              <span className="text-xs" style={{ color: "rgb(156, 163, 175)" }}>
+                {uploadedChunks} chunk{uploadedChunks === 1 ? "" : "s"} uploaded
+                {pendingChunks > 0 ? ` · ${pendingChunks} sending` : ""}
+              </span>
+            </>
+          ) : state === "requesting" ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Requesting microphone...</span>
+            </>
+          ) : (
+            <>
+              <Mic className="h-4 w-4" />
+              <span>Mic idle</span>
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {error && (
+            <span className="text-xs" style={{ color: "rgb(220, 38, 38)" }}>
+              {error.length > 50 ? error.slice(0, 50) + "..." : error}
+            </span>
+          )}
+          {isRecording ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void stopAndFlush()}
+              disabled={isBusy}
+            >
+              {state === "stopping" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Square className="h-3.5 w-3.5" />}
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              onClick={() => void startRecording()}
+              disabled={!enabled || isBusy}
+              className="gap-1.5"
+            >
+              <Mic className="h-3.5 w-3.5" />
+              Record
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Card>

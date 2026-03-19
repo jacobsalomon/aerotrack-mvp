@@ -470,7 +470,15 @@ export default function SessionDetailPage() {
   }, [fetchSession]);
 
   // Smart polling: starts fast (2s), backs off to 30s, resets on status change or user interaction
-  const isPollingEnabled = !!session && shouldPollSessionProgress(session.processingProgress);
+  // Also poll when session is in a transitional state (capture_complete / processing) even if no job yet
+  const isInTransitionalState = !!session && (
+    session.status === "capturing" ||
+    session.status === "capture_complete" ||
+    session.status === "processing"
+  );
+  const isPollingEnabled = !!session && (
+    shouldPollSessionProgress(session.processingProgress) || isInTransitionalState
+  );
   const sessionPoll = useSmartPoll({
     pollFn: fetchSession,
     enabled: isPollingEnabled,
@@ -711,9 +719,55 @@ export default function SessionDetailPage() {
         shiftSessionId={session.shiftSessionId}
         description={session.description}
         startedAt={session.startedAt}
-        evidenceCount={session.evidence.length}
         onSessionEnded={() => void fetchSession()}
       />
+    );
+  }
+
+  // For freshly ended sessions that are still processing, show a simpler view
+  // instead of the full reviewer cockpit (which is overwhelming with no documents yet)
+  const isProcessing =
+    session.status === "capture_complete" ||
+    session.status === "processing" ||
+    (session.processingProgress?.running && session.documents.length === 0);
+
+  if (isProcessing) {
+    return (
+      <div className="max-w-xl mx-auto py-16 text-center">
+        <Link href="/sessions" className="inline-flex items-center gap-1 text-sm mb-8 hover:underline" style={{ color: "rgb(100, 100, 100)" }}>
+          <ArrowLeft className="h-4 w-4" /> Back to Sessions
+        </Link>
+        <div className="mb-6">
+          <Loader2 className="h-10 w-10 animate-spin mx-auto" style={{ color: "rgb(147, 51, 234)" }} />
+        </div>
+        <h1 className="text-2xl font-bold tracking-tight mb-3" style={{ fontFamily: "var(--font-space-grotesk)", color: "rgb(20, 20, 20)" }}>
+          Processing your capture
+        </h1>
+        <p className="text-sm leading-relaxed mb-2" style={{ color: "rgb(100, 100, 100)" }}>
+          AeroVision is analyzing the transcript and measurements, drafting documents, and verifying evidence.
+        </p>
+        {session.processingProgress?.userFacingState && (
+          <span
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium mt-4 ${
+              (session.processingProgress.userFacingState && PROGRESS_STATE_COLORS[session.processingProgress.userFacingState]) || "bg-slate-100 text-slate-700"
+            }`}
+          >
+            <Clock className="h-3 w-3" />
+            {session.processingProgress.userFacingState}
+          </span>
+        )}
+        {session.processingProgress?.failed && (
+          <div className="mt-6 rounded-lg border px-4 py-3 text-sm" style={{ borderColor: "rgb(254, 202, 202)", backgroundColor: "rgb(254, 242, 242)", color: "rgb(153, 27, 27)" }}>
+            Processing failed{session.processingProgress.lastError ? `: ${session.processingProgress.lastError}` : ""}
+          </div>
+        )}
+        <div className="mt-4">
+          <PollStatusBadge poll={sessionPoll} isPolling={isPollingEnabled} />
+        </div>
+        <p className="text-xs mt-6" style={{ color: "rgb(156, 163, 175)" }}>
+          This page will update automatically when documents are ready.
+        </p>
+      </div>
     );
   }
 

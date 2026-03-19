@@ -2,8 +2,8 @@
 
 // Live Capture View — shown when a session is actively capturing (status === "capturing").
 // Two-panel layout: measurements on the left, live transcript on the right.
-// Uses ShiftDeskMicRecorder for audio recording/transcription and MeasurementFeed
-// for real-time measurement display. Both rely on the existing shift audio pipeline.
+// Recording starts immediately on mount. Uses ShiftDeskMicRecorder (compact mode)
+// for audio recording/transcription and MeasurementFeed for real-time measurements.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -18,7 +18,6 @@ import { apiUrl } from "@/lib/api-url";
 import { useSmartPoll } from "@/lib/use-smart-poll";
 import {
   ArrowLeft,
-  Camera,
   Clock,
   Loader2,
   Mic,
@@ -31,7 +30,6 @@ interface LiveCaptureViewProps {
   shiftSessionId: string;
   description: string | null;
   startedAt: string;
-  evidenceCount: number;
   onSessionEnded: () => void;
 }
 
@@ -40,13 +38,13 @@ export function LiveCaptureView({
   shiftSessionId,
   description,
   startedAt,
-  evidenceCount,
   onSessionEnded,
 }: LiveCaptureViewProps) {
   const micRef = useRef<ShiftDeskMicRecorderHandle>(null);
   const [ending, setEnding] = useState(false);
   const [elapsed, setElapsed] = useState("");
   const [transcriptChunks, setTranscriptChunks] = useState<string[]>([]);
+  const [chunksUploaded, setChunksUploaded] = useState(0);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
 
   // Update elapsed timer every second
@@ -92,7 +90,6 @@ export function LiveCaptureView({
     }
   }, [shiftSessionId]);
 
-  // Initial fetch + smart polling with backoff
   useEffect(() => {
     void pollTranscript();
   }, [pollTranscript]);
@@ -103,7 +100,7 @@ export function LiveCaptureView({
     initialIntervalMs: 3000,
     maxIntervalMs: 10000,
     backoffFactor: 1.3,
-    resetKey: transcriptChunks.length,
+    resetKey: chunksUploaded,
   });
 
   // End the capture session: stop mic, PATCH session to capture_complete
@@ -169,16 +166,10 @@ export function LiveCaptureView({
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-3 text-sm" style={{ color: "rgb(107, 114, 128)" }}>
-            <span className="flex items-center gap-1">
-              <Clock className="h-4 w-4" />
-              {elapsed}
-            </span>
-            <span className="flex items-center gap-1">
-              <Camera className="h-4 w-4" />
-              {evidenceCount}
-            </span>
-          </div>
+          <span className="flex items-center gap-1 text-sm" style={{ color: "rgb(107, 114, 128)" }}>
+            <Clock className="h-4 w-4" />
+            {elapsed}
+          </span>
           <Button
             onClick={() => void handleEndSession()}
             disabled={ending}
@@ -216,11 +207,18 @@ export function LiveCaptureView({
         {/* Right panel: Live Transcript + Mic Controls */}
         <Card className="border-0 shadow-sm flex flex-col min-h-0">
           <div className="px-4 py-3 border-b" style={{ borderColor: "rgb(243, 244, 246)" }}>
-            <div className="flex items-center gap-2">
-              <Mic className="h-4 w-4" style={{ color: "rgb(107, 114, 128)" }} />
-              <h2 className="text-sm font-semibold" style={{ fontFamily: "var(--font-space-grotesk)", color: "rgb(17, 24, 39)" }}>
-                Live Transcript
-              </h2>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Mic className="h-4 w-4" style={{ color: "rgb(107, 114, 128)" }} />
+                <h2 className="text-sm font-semibold" style={{ fontFamily: "var(--font-space-grotesk)", color: "rgb(17, 24, 39)" }}>
+                  Live Transcript
+                </h2>
+              </div>
+              {transcriptChunks.length > 0 && (
+                <span className="text-xs" style={{ color: "rgb(156, 163, 175)" }}>
+                  {transcriptChunks.length} segment{transcriptChunks.length === 1 ? "" : "s"}
+                </span>
+              )}
             </div>
           </div>
           <CardContent className="flex-1 overflow-y-auto p-4">
@@ -228,10 +226,10 @@ export function LiveCaptureView({
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <Mic className="h-8 w-8 mb-3" style={{ color: "rgb(209, 213, 219)" }} />
                 <p className="text-sm" style={{ color: "rgb(107, 114, 128)" }}>
-                  No transcript yet
+                  Listening...
                 </p>
                 <p className="text-xs mt-1" style={{ color: "rgb(156, 163, 175)" }}>
-                  Start recording to see live transcription here
+                  Speak normally — transcription appears here every few seconds
                 </p>
               </div>
             ) : (
@@ -244,13 +242,16 @@ export function LiveCaptureView({
             )}
           </CardContent>
 
-          {/* Mic recorder controls pinned at the bottom */}
+          {/* Compact mic controls pinned at the bottom */}
           <div className="px-4 py-3 border-t" style={{ borderColor: "rgb(243, 244, 246)" }}>
             <ShiftDeskMicRecorder
               ref={micRef}
               shiftId={shiftSessionId}
               enabled={true}
+              autoStart={true}
+              compact={true}
               onUnauthorized={handleUnauthorized}
+              onChunkUploaded={(uploaded) => setChunksUploaded(uploaded)}
             />
           </div>
         </Card>
