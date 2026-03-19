@@ -145,7 +145,7 @@ interface DocumentData {
   reviewedAt: string | null;
   reviewNotes: string | null;
   verificationJson: string | null;
-  reviewedBy: { id: string; firstName: string; lastName: string } | null;
+  reviewedBy: { id: string; name: string | null } | null;
 }
 
 interface SessionAnalysis {
@@ -2780,7 +2780,7 @@ export default function SessionDetailPage() {
                         {doc.reviewedAt && (
                           <div className="mb-4 text-xs" style={{ color: "rgb(120, 120, 120)" }}>
                             Reviewed {formatDate(doc.reviewedAt)}
-                            {doc.reviewedBy && ` by ${doc.reviewedBy.firstName} ${doc.reviewedBy.lastName}`}
+                            {doc.reviewedBy ? ` by ${doc.reviewedBy.name}` : ""}
                             {rejectionNote && (
                               <p className="mt-1 p-2 rounded" style={{ backgroundColor: "rgb(255, 245, 245)", color: "rgb(180, 50, 50)" }}>
                                 Notes: {rejectionNote}
@@ -2898,7 +2898,7 @@ export default function SessionDetailPage() {
                       </span>
                       {entry.user && (
                         <span style={{ color: "rgb(100, 100, 100)" }}>
-                          by {entry.user.firstName} {entry.user.lastName}
+                          by {entry.user.name}
                         </span>
                       )}
                       {meta && typeof meta.notes === "string" && meta.notes && (
