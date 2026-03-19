@@ -38,6 +38,10 @@ export async function POST(request: Request) {
       }
     }
 
+    if (!auth.user.organizationId) {
+      return NextResponse.json({ success: false, error: "Organization required" }, { status: 400 });
+    }
+
     const spec = await prisma.measurementSpec.create({
       data: {
         organizationId: auth.user.organizationId,
@@ -72,7 +76,7 @@ export async function GET(request: Request) {
 
     const specs = await prisma.measurementSpec.findMany({
       where: {
-        organizationId: auth.user.organizationId,
+        organizationId: auth.user.organizationId ?? undefined,
         ...(status && { status }),
         ...(partNumber && { componentPartNumber: partNumber }),
       },

@@ -55,6 +55,14 @@ export async function GET(request: Request) {
   const auth = await authenticateRequest(request);
   if ("error" in auth) return auth.error;
 
+  // Mobile users must belong to an organization
+  if (!auth.user.organizationId) {
+    return NextResponse.json(
+      { success: false, error: "Organization required" },
+      { status: 400 }
+    );
+  }
+
   try {
     const [activeShift, pendingTranscriptShift] = await Promise.all([
       getActiveShiftSummary(auth.user.id, auth.user.organizationId),
@@ -80,6 +88,14 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const auth = await authenticateRequest(request);
   if ("error" in auth) return auth.error;
+
+  // Mobile users must belong to an organization
+  if (!auth.user.organizationId) {
+    return NextResponse.json(
+      { success: false, error: "Organization required" },
+      { status: 400 }
+    );
+  }
 
   try {
     const body = await request.json().catch(() => ({}));

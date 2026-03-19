@@ -17,6 +17,14 @@ export async function POST(request: Request) {
   const auth = await authenticateRequest(request);
   if ("error" in auth) return auth.error;
 
+  // Mobile users must belong to an organization
+  if (!auth.user.organizationId) {
+    return NextResponse.json(
+      { success: false, error: "Organization required" },
+      { status: 400 }
+    );
+  }
+
   try {
     const body = await request.json();
     const { evidenceId, imageBase64, sessionId, mimeType: bodyMimeType } = body;

@@ -85,6 +85,14 @@ export async function PATCH(
   const auth = await authenticateRequest(request);
   if ("error" in auth) return auth.error;
 
+  // Mobile users must belong to an organization
+  if (!auth.user.organizationId) {
+    return NextResponse.json(
+      { success: false, error: "Organization required" },
+      { status: 400 }
+    );
+  }
+
   const { id } = await params;
 
   const session = await prisma.captureSession.findUnique({ where: { id } });

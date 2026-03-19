@@ -52,10 +52,17 @@ export async function POST(request: Request) {
       );
     }
 
-    // Sign a JWT with user claims
+    // Sign a JWT with all user claims — mobile-auth reads these
+    // directly from the token without a DB lookup
     const token = await new SignJWT({
       sub: user.id,
       userId: user.id,
+      email: user.email,
+      name: user.name,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      badgeNumber: user.badgeNumber,
+      role: user.role,
       organizationId: user.organizationId,
     })
       .setProtectedHeader({ alg: "HS256" })

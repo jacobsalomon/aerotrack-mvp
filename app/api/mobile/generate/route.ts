@@ -30,6 +30,14 @@ export async function POST(request: Request) {
   const auth = await authenticateRequest(request);
   if ("error" in auth) return auth.error;
 
+  // Mobile users must belong to an organization
+  if (!auth.user.organizationId) {
+    return NextResponse.json(
+      { success: false, error: "Organization required" },
+      { status: 400 }
+    );
+  }
+
   // Parse request body with its own error handling so malformed JSON
   // returns 400 instead of crashing and leaving the session stuck
   let sessionId: string;

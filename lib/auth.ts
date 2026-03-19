@@ -92,22 +92,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   adapter: PrismaAdapter(prisma),
   providers: getProviders(),
-  callbacks: {
-    ...authConfig.callbacks,
-
-    // Override the session callback to add user profile fields from the JWT
-    async session({ session, token }) {
-      if (session.user) {
-        session.user.id = token.id as string;
-        session.user.role = (token.role as string) ?? "USER";
-        session.user.organizationId = (token.organizationId as string) ?? null;
-        session.user.badgeNumber = (token.badgeNumber as string) ?? null;
-        session.user.firstName = (token.firstName as string) ?? null;
-        session.user.lastName = (token.lastName as string) ?? null;
-      }
-      return session;
-    },
-  },
+  // All callbacks (jwt, session, authorized) are defined in auth.config.ts
+  // No overrides needed here — the JWT stores all user fields at login,
+  // and the session callback reads them back from the token.
 });
 
 // TypeScript augmentation so session.user has our custom fields

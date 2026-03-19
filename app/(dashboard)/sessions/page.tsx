@@ -404,12 +404,12 @@ export default function SessionsPage() {
               <p className="text-sm">
                 {activeTab === "review"
                   ? "No sessions awaiting review"
-                  : "No review sessions yet"}
+                  : "No capture sessions yet"}
               </p>
               <p className="text-xs mt-1">
                 {activeTab === "review"
-                  ? "Sessions appear here when technicians submit completed work"
-                  : "Sessions appear here when evidence packs and mobile captures are ready for reviewer follow-up"}
+                  ? "Sessions appear here when completed work is submitted for review"
+                  : "Start a capture session to begin recording maintenance work"}
               </p>
             </div>
           ) : (

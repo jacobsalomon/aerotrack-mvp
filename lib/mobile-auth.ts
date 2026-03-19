@@ -9,19 +9,12 @@
 // so existing mobile flows don't break during migration.
 
 import { jwtVerify } from "jose";
-import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { getMobileSigningKey } from "@/lib/mobile-jwt";
+import type { AuthenticatedUser } from "@/lib/rbac";
 
-export interface AuthenticatedUser {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  badgeNumber: string;
-  role: string;
-  organizationId: string;
-}
+// Re-export for convenience — all consumers use the same type
+export type { AuthenticatedUser } from "@/lib/rbac";
 
 // Demo user — used as fallback when no auth header is present
 const DEMO_USER: AuthenticatedUser = {
@@ -30,7 +23,8 @@ const DEMO_USER: AuthenticatedUser = {
   lastName: "Chen",
   email: "mike.chen@precisionaero.example.com",
   badgeNumber: "PAM-1001",
-  role: "TECHNICIAN",
+  role: "USER",
+  name: "Mike Chen",
   organizationId: "demo-precision-aero",
 };
 
@@ -46,7 +40,8 @@ export async function authenticateRequest(
 
   const token = authHeader.slice(7);
 
-  // Try JWT verification
+  // Try JWT verification — all user data is in the token claims,
+  // no database lookup needed (faster + works even if DB is slow)
   try {
     const { payload } = await jwtVerify(token, getMobileSigningKey());
 
@@ -60,38 +55,16 @@ export async function authenticateRequest(
       };
     }
 
-    // Look up the user from the database
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        badgeNumber: true,
-        role: true,
-        organizationId: true,
-      },
-    });
-
-    if (!user || !user.email || !user.badgeNumber || !user.organizationId) {
-      return {
-        error: NextResponse.json(
-          { error: "User not found or missing profile data" },
-          { status: 401 }
-        ),
-      };
-    }
-
     return {
       user: {
-        id: user.id,
-        firstName: user.firstName ?? "",
-        lastName: user.lastName ?? "",
-        email: user.email,
-        badgeNumber: user.badgeNumber,
-        role: user.role,
-        organizationId: user.organizationId,
+        id: userId,
+        email: (payload.email as string) ?? null,
+        name: (payload.name as string) ?? null,
+        firstName: (payload.firstName as string) ?? null,
+        lastName: (payload.lastName as string) ?? null,
+        badgeNumber: (payload.badgeNumber as string) ?? null,
+        role: ((payload.role as string) ?? "USER") as AuthenticatedUser["role"],
+        organizationId: (payload.organizationId as string) ?? null,
       },
     };
   } catch {
