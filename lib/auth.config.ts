@@ -30,10 +30,11 @@ export const authConfig: NextAuthConfig = {
       const isApiRoute = pathname.startsWith("/api/");
       const hasOrg = !!auth.user.organizationId;
 
-      // If user has no org and is trying to access a protected page, send them to /join-org
+      // If user has no org and is trying to access a protected page, send them to /join-org.
+      // Use request.nextUrl and set pathname so basePath ("/aerovision") is preserved automatically.
       if (!hasOrg && !isJoinOrgPage && !isApiRoute) {
-        const joinUrl = new URL("/join-org", request.nextUrl.origin);
-        joinUrl.search = request.nextUrl.search;
+        const joinUrl = request.nextUrl.clone();
+        joinUrl.pathname = "/join-org";
         return Response.redirect(joinUrl);
       }
 
@@ -41,9 +42,9 @@ export const authConfig: NextAuthConfig = {
     },
 
     // Store user info in the JWT token.
-    // Also handles refresh: when client calls update() after joining an org,
-    // trigger === "update" lets us pull fresh data into the token.
-    async jwt({ token, user, trigger }) {
+    // This runs in middleware to decode the token — auth.ts overrides it with a
+    // version that also handles DB refresh, but this base version is still needed here.
+    async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
         token.role = (user as { role?: string }).role ?? "USER";
@@ -52,14 +53,6 @@ export const authConfig: NextAuthConfig = {
         token.firstName = (user as { firstName?: string | null }).firstName ?? null;
         token.lastName = (user as { lastName?: string | null }).lastName ?? null;
       }
-
-      // When client calls update(), re-read organizationId from the session data.
-      // The actual DB fetch happens in auth.ts (full config) — this edge-compatible
-      // version just passes through the update trigger signal.
-      if (trigger === "update" && token.triggerRefresh) {
-        // The full auth.ts jwt callback handles the DB lookup
-      }
-
       return token;
     },
 

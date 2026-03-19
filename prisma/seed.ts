@@ -41,6 +41,7 @@ function makeHash(data: string): string {
 
 async function main() {
   // Clear existing data (new mobile capture tables first, then original tables)
+  await prisma.inviteCode.deleteMany();
   await prisma.auditLogEntry.deleteMany();
   await prisma.videoAnnotation.deleteMany();
   await prisma.sessionAnalysis.deleteMany();
@@ -2746,7 +2747,18 @@ async function main() {
     },
   });
 
+  // Demo invite code — anyone can use this to join the demo org
+  await prisma.inviteCode.create({
+    data: {
+      organizationId: demoOrg.id,
+      code: "DEMO-JOIN",
+      createdBy: techMike.id,
+      status: "active",
+    },
+  });
+
   console.log(`✅ Demo organization created: ${demoOrg.name}`);
+  console.log(`   Invite code: DEMO-JOIN`);
   console.log(`   Users: ${techMike.firstName} ${techMike.lastName}, ${techSarah.firstName} ${techSarah.lastName}, ${techJuan.firstName} ${techJuan.lastName}`);
 
   await prisma.captureSession.create({
