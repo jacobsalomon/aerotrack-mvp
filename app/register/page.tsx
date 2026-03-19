@@ -10,6 +10,7 @@ import { apiUrl } from "@/lib/api-url";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const [accessCode, setAccessCode] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -20,6 +21,11 @@ export default function RegisterPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    if (accessCode !== "2206") {
+      setError("Invalid access code");
+      return;
+    }
 
     if (password !== confirmPassword) {
       setError("Passwords don't match");
@@ -81,12 +87,21 @@ export default function RegisterPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <input
             type="text"
+            value={accessCode}
+            onChange={(e) => setAccessCode(e.target.value)}
+            placeholder="Access code"
+            required
+            className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-white/30 outline-none transition-colors focus:border-white/20 focus:bg-white/[0.06]"
+            autoFocus
+          />
+
+          <input
+            type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Full name"
             className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-white/30 outline-none transition-colors focus:border-white/20 focus:bg-white/[0.06]"
             autoComplete="name"
-            autoFocus
           />
 
           <input
