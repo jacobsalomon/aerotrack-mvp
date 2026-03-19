@@ -342,6 +342,7 @@ model Organization {
   id                    String   @id @default(cuid())
   name                  String                          // e.g., "Precision Aerospace MRO"
   faaRepairStationCert  String?                         // FAA Part 145 certificate number
+  emailDomain           String?                         // e.g., "silverwingsaviation.com" — auto-join users with matching email
   address               String?
   city                  String?
   state                 String?
@@ -357,6 +358,26 @@ model Organization {
   shiftSessions   ShiftSession[]
   measurementSpecs MeasurementSpec[]
   auditLog        AuditLogEntry[]
+  inviteCodes     InviteCode[]
+}
+
+// ──────────────────────────────────────────────────────
+// InviteCode — lets admins generate codes that new users enter to join an org.
+// Codes look like "SLVR-8K2M". Can be limited by usage count or expiration date.
+// ──────────────────────────────────────────────────────
+model InviteCode {
+  id             String    @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code           String    @unique                      // 8-char code like "SLVR-8K2M"
+  createdBy      String?                                // userId who generated it
+  maxUses        Int?                                   // null = unlimited
+  useCount       Int       @default(0)
+  expiresAt      DateTime?                              // null = never expires
+  status         String    @default("active")           // active, revoked
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId])
 }
 
 // ──────────────────────────────────────────────────────
@@ -374,6 +395,7 @@ model CaptureSession {
   componentId     String?                               // Linked after AI identifies the part
   status          String    @default("capturing")       // capturing, processing, documents_generated, submitted, approved, rejected
   description     String?
+  targetFormType  String?                               // Which FAA form to auto-populate: "8130-3", "337", or "8010-4"
   expectedSteps   String?                               // Free-text SOP — expected maintenance steps for this session
   startedAt       DateTime  @default(now())
   completedAt     DateTime?

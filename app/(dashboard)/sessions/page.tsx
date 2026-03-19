@@ -29,6 +29,12 @@ import {
   SESSION_STATUS_LABELS,
 } from "@/lib/session-status";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Smartphone,
   Camera,
   FileText,
@@ -39,7 +45,30 @@ import {
   Loader2,
   RefreshCw,
   Mic,
+  Sparkles,
 } from "lucide-react";
+
+// The 3 FAA forms AeroVision can auto-generate
+const TARGET_FORMS = [
+  {
+    id: "8130-3",
+    formNumber: "FAA 8130-3",
+    title: "Authorized Release Certificate",
+    shortDesc: "Releasing a part back to service after maintenance",
+  },
+  {
+    id: "337",
+    formNumber: "FAA 337",
+    title: "Major Repair and Alteration",
+    shortDesc: "Documenting a major repair or alteration",
+  },
+  {
+    id: "8010-4",
+    formNumber: "FAA 8010-4",
+    title: "Malfunction or Defect Report",
+    shortDesc: "Reporting a defect found during maintenance",
+  },
+];
 
 const PROGRESS_STATE_COLORS: Record<string, string> = {
   Captured: "bg-cyan-100 text-cyan-700",
@@ -116,6 +145,7 @@ export default function SessionsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [creatingSession, setCreatingSession] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [showFormPicker, setShowFormPicker] = useState(false);
 
   const fetchSessions = useCallback(async () => {
     setLoading(true);
@@ -150,15 +180,20 @@ export default function SessionsPage() {
     void fetchSessions();
   }, [fetchSessions]);
 
-  // Start a new capture session from the web dashboard (no glasses required)
-  async function handleStartSession() {
+  // Start a new capture session with the selected target form
+  async function handleStartSession(targetFormType: string) {
+    setShowFormPicker(false);
     setCreatingSession(true);
     setCreateError(null);
+    const formLabel = TARGET_FORMS.find((f) => f.id === targetFormType)?.formNumber ?? targetFormType;
     try {
       const res = await fetch(apiUrl("/api/sessions"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description: "Web capture session" }),
+        body: JSON.stringify({
+          description: `Capture for ${formLabel}`,
+          targetFormType,
+        }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
@@ -217,7 +252,7 @@ export default function SessionsPage() {
           </div>
           <div className="shrink-0 text-right">
             <Button
-              onClick={() => void handleStartSession()}
+              onClick={() => setShowFormPicker(true)}
               disabled={creatingSession}
               className="gap-2"
               style={{ backgroundColor: "rgb(239, 68, 68)", color: "white" }}
@@ -447,6 +482,41 @@ export default function SessionsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Form picker dialog — select which FAA form this session will populate */}
+      <Dialog open={showFormPicker} onOpenChange={setShowFormPicker}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
+              What are you working on?
+            </DialogTitle>
+            <p className="text-sm text-slate-500 mt-1">
+              Pick the form AeroVision should auto-populate from your capture.
+            </p>
+          </DialogHeader>
+          <div className="grid gap-2 mt-2">
+            {TARGET_FORMS.map((form) => (
+              <button
+                key={form.id}
+                onClick={() => void handleStartSession(form.id)}
+                className="flex items-start gap-3 rounded-lg border border-slate-200 p-4 text-left transition-colors hover:bg-slate-50 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <div className="shrink-0 mt-0.5 w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
+                  <Sparkles className="h-4 w-4 text-blue-600" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-mono text-sm font-semibold text-slate-900">
+                    {form.formNumber}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {form.shortDesc}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

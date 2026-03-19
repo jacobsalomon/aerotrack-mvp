@@ -19,6 +19,10 @@ export async function GET(request: Request) {
 
     const where: Record<string, unknown> = {};
     if (status && status !== "all") where.status = status;
+    // Scope to the authenticated user's organization
+    if (authResult.user.organizationId) {
+      where.organizationId = authResult.user.organizationId;
+    }
 
     const sessions = await prisma.captureSession.findMany({
       where,
@@ -91,7 +95,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { description } = body;
+    const { description, targetFormType } = body;
     const user = authResult.user;
 
     // Look up user profile by the logged-in user's email
@@ -162,6 +166,7 @@ export async function POST(request: Request) {
         organizationId: userProfile.organizationId,
         shiftSessionId: shiftSession.id,
         description: description || "Web capture session",
+        targetFormType: targetFormType || null,
         status: "capturing",
       },
     });

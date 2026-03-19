@@ -92,9 +92,41 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   adapter: PrismaAdapter(prisma),
   providers: getProviders(),
-  // All callbacks (jwt, session, authorized) are defined in auth.config.ts
-  // No overrides needed here — the JWT stores all user fields at login,
-  // and the session callback reads them back from the token.
+  callbacks: {
+    ...authConfig.callbacks,
+
+    // Override jwt to support refresh after joining an org.
+    // When client calls update(), we re-fetch the user's organizationId from the DB
+    // so the JWT reflects the new org assignment without requiring re-login.
+    async jwt({ token, user, trigger }) {
+      // Initial login — store all user fields in the token
+      if (user) {
+        token.id = user.id;
+        token.role = (user as { role?: string }).role ?? "USER";
+        token.organizationId = (user as { organizationId?: string | null }).organizationId ?? null;
+        token.badgeNumber = (user as { badgeNumber?: string | null }).badgeNumber ?? null;
+        token.firstName = (user as { firstName?: string | null }).firstName ?? null;
+        token.lastName = (user as { lastName?: string | null }).lastName ?? null;
+      }
+
+      // Session refresh — re-read org assignment from DB (e.g., after joining an org)
+      if (trigger === "update" && token.id) {
+        const freshUser = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { organizationId: true, role: true, badgeNumber: true, firstName: true, lastName: true },
+        });
+        if (freshUser) {
+          token.organizationId = freshUser.organizationId;
+          token.role = freshUser.role;
+          token.badgeNumber = freshUser.badgeNumber;
+          token.firstName = freshUser.firstName;
+          token.lastName = freshUser.lastName;
+        }
+      }
+
+      return token;
+    },
+  },
 });
 
 // TypeScript augmentation so session.user has our custom fields

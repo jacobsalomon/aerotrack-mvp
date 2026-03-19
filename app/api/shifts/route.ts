@@ -6,6 +6,7 @@ import { authenticateRequest } from "@/lib/mobile-auth";
 import { startShift } from "@/lib/shift-session";
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/rbac";
 
 // POST requires Bearer auth (mobile app starts shifts)
 export async function POST(request: Request) {
@@ -42,8 +43,11 @@ export async function POST(request: Request) {
   }
 }
 
-// GET is open for the web dashboard (like other dashboard API routes)
+// GET — list shifts for the authenticated user's organization
 export async function GET(request: Request) {
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
@@ -52,6 +56,8 @@ export async function GET(request: Request) {
     const shifts = await prisma.shiftSession.findMany({
       where: {
         ...(status && { status }),
+        // Scope to the authenticated user's organization
+        ...(authResult.user.organizationId && { organizationId: authResult.user.organizationId }),
       },
       include: {
         user: { select: { firstName: true, lastName: true, badgeNumber: true } },

@@ -18,13 +18,32 @@ export const authConfig: NextAuthConfig = {
 
   callbacks: {
     // The authorized callback runs in middleware to check if the user can access the route.
-    // Returning false redirects to the signIn page.
-    authorized({ auth }) {
-      return !!auth?.user;
+    // Returns false → redirect to signIn page.
+    // If user is logged in but has no org → redirect to /join-org so they can get assigned.
+    authorized({ auth, request }) {
+      const isLoggedIn = !!auth?.user;
+      if (!isLoggedIn) return false;
+
+      // Let orgless users access the join-org page and API routes (they need both)
+      const { pathname } = request.nextUrl;
+      const isJoinOrgPage = pathname === "/join-org";
+      const isApiRoute = pathname.startsWith("/api/");
+      const hasOrg = !!auth.user.organizationId;
+
+      // If user has no org and is trying to access a protected page, send them to /join-org
+      if (!hasOrg && !isJoinOrgPage && !isApiRoute) {
+        const joinUrl = new URL("/join-org", request.nextUrl.origin);
+        joinUrl.search = request.nextUrl.search;
+        return Response.redirect(joinUrl);
+      }
+
+      return true;
     },
 
-    // Store user info in the JWT token
-    async jwt({ token, user }) {
+    // Store user info in the JWT token.
+    // Also handles refresh: when client calls update() after joining an org,
+    // trigger === "update" lets us pull fresh data into the token.
+    async jwt({ token, user, trigger }) {
       if (user) {
         token.id = user.id;
         token.role = (user as { role?: string }).role ?? "USER";
@@ -33,6 +52,14 @@ export const authConfig: NextAuthConfig = {
         token.firstName = (user as { firstName?: string | null }).firstName ?? null;
         token.lastName = (user as { lastName?: string | null }).lastName ?? null;
       }
+
+      // When client calls update(), re-read organizationId from the session data.
+      // The actual DB fetch happens in auth.ts (full config) — this edge-compatible
+      // version just passes through the update trigger signal.
+      if (trigger === "update" && token.triggerRefresh) {
+        // The full auth.ts jwt callback handles the DB lookup
+      }
+
       return token;
     },
 

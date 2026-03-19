@@ -21,6 +21,6 @@ export default middleware;
 // E.g., /aerovision/demo becomes /demo in the matcher.
 export const config = {
   matcher: [
-    "/((?!login|register|forgot-password|reset-password|api/auth|api/mobile|api/capture|api/shifts/.*/audio|_next/static|_next/image|favicon.ico).*)",
+    "/((?!login|register|forgot-password|reset-password|api/auth|api/org|api/mobile|api/capture|api/shifts/.*/audio|_next/static|_next/image|favicon.ico).*)",
   ],
 };

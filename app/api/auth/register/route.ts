@@ -53,13 +53,50 @@ export async function POST(request: Request) {
     // Hash the password (bcryptjs, 12 rounds)
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // Create the user
+    // Check if the user's email domain matches any organization's emailDomain.
+    // If so, auto-assign them to that org at registration — zero friction.
+    const emailDomain = trimmedEmail.split("@")[1];
+    let organizationId: string | null = null;
+
+    if (emailDomain) {
+      const matchingOrg = await prisma.organization.findFirst({
+        where: { emailDomain: emailDomain.toLowerCase() },
+        select: { id: true },
+      });
+      if (matchingOrg) {
+        organizationId = matchingOrg.id;
+      }
+    }
+
+    // Also check for an optional invite code — if provided and valid, use it
+    const { inviteCode } = body;
+    if (!organizationId && inviteCode) {
+      const code = await prisma.inviteCode.findUnique({
+        where: { code: inviteCode.toUpperCase().trim() },
+      });
+      if (
+        code &&
+        code.status === "active" &&
+        (!code.expiresAt || code.expiresAt > new Date()) &&
+        (!code.maxUses || code.useCount < code.maxUses)
+      ) {
+        organizationId = code.organizationId;
+        // Increment the use count
+        await prisma.inviteCode.update({
+          where: { id: code.id },
+          data: { useCount: { increment: 1 } },
+        });
+      }
+    }
+
+    // Create the user (with org if matched, otherwise null — they'll see join-org page)
     await prisma.user.create({
       data: {
         name: trimmedName,
         email: trimmedEmail,
         passwordHash,
         role: "USER",
+        organizationId,
       },
     });
 
