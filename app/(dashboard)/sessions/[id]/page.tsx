@@ -7,6 +7,8 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { LiveCaptureView } from "@/components/live-capture-view";
+import { AudioPlaylistPlayer } from "@/components/audio-playlist-player";
+import { highlightTranscript } from "@/lib/transcript-highlights";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { humanizeFieldLabel } from "@/lib/document-field-layout";
@@ -269,7 +271,6 @@ export default function SessionDetailPage() {
   const [rejectNotes, setRejectNotes] = useState("");
   const [showRejectDialog, setShowRejectDialog] = useState<string | null>(null);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
-  const [transcriptOpen, setTranscriptOpen] = useState(false);
 
   // Document field editing state
   const [editingField, setEditingField] = useState<{ docId: string; field: string } | null>(null);
@@ -1123,33 +1124,33 @@ export default function SessionDetailPage() {
                   </div>
                 )}
 
-                {/* Audio */}
+                {/* Audio — unified playlist player + smart transcript */}
                 {audioChunks.length > 0 && (
                   <div>
                     <h3 className="text-sm font-semibold mb-3 flex items-center gap-1.5" style={{ color: "rgb(60, 60, 60)" }}>
-                      <Mic className="h-4 w-4" /> Audio Chunks ({audioChunks.length})
+                      <Mic className="h-4 w-4" /> Audio Recording ({audioChunks.length} chunk{audioChunks.length !== 1 ? "s" : ""})
                     </h3>
-                    <div className="space-y-3">
-                      {audioChunks.map((audio) => (
-                        <div key={audio.id} className="border rounded-lg p-4" style={{ borderColor: "rgb(230, 230, 230)" }}>
-                          <audio controls className="w-full mb-2">
-                            <source src={audio.fileUrl} type={audio.mimeType} />
-                            Your browser does not support audio playback.
-                          </audio>
-                          <div className="flex gap-4 text-xs mb-2" style={{ color: "rgb(120, 120, 120)" }}>
-                            {audio.durationSeconds && <span>{Math.round(audio.durationSeconds)}s</span>}
-                            <span>{formatFileSize(audio.fileSize)}</span>
-                            <span>{formatDate(audio.capturedAt)}</span>
-                          </div>
-                          {audio.transcription && (
-                            <div className="text-xs p-3 rounded" style={{ backgroundColor: "rgb(248, 248, 248)", color: "rgb(60, 60, 60)" }}>
-                              <p className="font-semibold mb-1" style={{ color: "rgb(80, 80, 80)" }}>Transcription:</p>
-                              <p className="whitespace-pre-wrap">{audio.transcription}</p>
-                            </div>
-                          )}
+                    {/* Single playlist player for all chunks */}
+                    <AudioPlaylistPlayer
+                      chunks={audioChunks.map((a, i) => ({
+                        id: a.id,
+                        url: a.fileUrl,
+                        mimeType: a.mimeType,
+                        durationSeconds: a.durationSeconds,
+                        label: audioChunks.length > 1 ? `Chunk ${i + 1}` : undefined,
+                      }))}
+                    />
+                    {/* Smart transcript with highlighted entities */}
+                    {fullTranscript && (
+                      <div className="mt-3 rounded-lg p-4" style={{ backgroundColor: "rgb(248, 248, 248)" }}>
+                        <p className="text-xs font-semibold mb-2" style={{ color: "rgb(80, 80, 80)" }}>
+                          Transcript
+                        </p>
+                        <div className="text-sm whitespace-pre-wrap leading-relaxed max-h-64 overflow-y-auto" style={{ color: "rgb(60, 60, 60)" }}>
+                          {highlightTranscript(fullTranscript)}
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1158,27 +1159,6 @@ export default function SessionDetailPage() {
         </Card>
       )}
 
-      {/* ═══ FULL TRANSCRIPT (collapsed by default) ═══ */}
-      {fullTranscript && (
-        <Card className="border-0 shadow-sm mb-6">
-          <CardHeader
-            className="cursor-pointer"
-            onClick={() => setTranscriptOpen(!transcriptOpen)}
-          >
-            <CardTitle className="text-lg font-bold flex items-center gap-2" style={{ fontFamily: "var(--font-space-grotesk)", color: "rgb(20, 20, 20)" }}>
-              <Mic className="h-5 w-5" /> Full Transcript
-              {transcriptOpen ? <ChevronDown className="h-4 w-4 ml-auto" /> : <ChevronRight className="h-4 w-4 ml-auto" />}
-            </CardTitle>
-          </CardHeader>
-          {transcriptOpen && (
-            <CardContent>
-              <div className="text-sm whitespace-pre-wrap leading-relaxed max-h-64 overflow-y-auto" style={{ color: "rgb(60, 60, 60)" }}>
-                {fullTranscript}
-              </div>
-            </CardContent>
-          )}
-        </Card>
-      )}
     </div>
   );
 }
