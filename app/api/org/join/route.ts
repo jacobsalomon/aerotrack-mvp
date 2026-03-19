@@ -43,26 +43,26 @@ export async function POST(request: Request) {
     }
 
     // Assign the user to the organization and increment the code's use count
-    await prisma.$transaction([
-      prisma.user.update({
-        where: { id: session.user.id },
-        data: { organizationId: code.organizationId },
-      }),
-      prisma.inviteCode.update({
-        where: { id: code.id },
-        data: { useCount: { increment: 1 } },
-      }),
-      prisma.auditLogEntry.create({
-        data: {
-          organizationId: code.organizationId,
-          userId: session.user.id,
-          action: "user_joined_org",
-          entityType: "Organization",
-          entityId: code.organizationId,
-          metadata: JSON.stringify({ inviteCode: code.code }),
-        },
-      }),
-    ]);
+    await prisma.user.update({
+      where: { id: session.user.id },
+      data: { organizationId: code.organizationId },
+    });
+
+    await prisma.inviteCode.update({
+      where: { id: code.id },
+      data: { useCount: { increment: 1 } },
+    });
+
+    await prisma.auditLogEntry.create({
+      data: {
+        organizationId: code.organizationId,
+        userId: session.user.id,
+        action: "user_joined_org",
+        entityType: "Organization",
+        entityId: code.organizationId,
+        metadata: JSON.stringify({ inviteCode: code.code }),
+      },
+    });
 
     return NextResponse.json({
       success: true,
