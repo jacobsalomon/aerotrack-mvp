@@ -2,7 +2,7 @@
 // GET  /api/shifts/[id]/export — Download the export as a file
 // Protected by dashboard passcode auth
 
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { requireAuth } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
 import { generateErpExport } from "@/lib/erp-export";
 import { buildShiftTranscript, canExportShiftToQuantum } from "@/lib/shift-transcript";
@@ -11,8 +11,8 @@ import { NextResponse } from "next/server";
 type RouteParams = { params: Promise<{ id: string }> };
 
 export async function POST(_request: Request, { params }: RouteParams) {
-  const authError = requireDashboardAuth(_request);
-  if (authError) return authError;
+  const authResult = await requireAuth(_request);
+  if (authResult.error) return authResult.error;
 
   const { id: shiftId } = await params;
 
@@ -76,8 +76,8 @@ export async function POST(_request: Request, { params }: RouteParams) {
 }
 
 export async function GET(_request: Request, { params }: RouteParams) {
-  const authError = requireDashboardAuth(_request);
-  if (authError) return authError;
+  const authResult = await requireAuth(_request);
+  if (authResult.error) return authResult.error;
 
   const { id: shiftId } = await params;
 

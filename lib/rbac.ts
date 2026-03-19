@@ -1,26 +1,22 @@
 // Role-Based Access Control (RBAC) for AeroVision API routes.
-// Enforces three roles: TECHNICIAN, SUPERVISOR, ADMIN.
-//
-// TECHNICIAN — can view own sessions, upload evidence, view own data
-// SUPERVISOR — can review/approve documents, view all sessions in their org
-// ADMIN      — can manage everything: users, CMM library, system settings
+// With email/password auth, everyone gets the "USER" role.
+// The role system is kept in place for future expansion.
 //
 // Usage in API routes:
-//   const authResult = await requireRole(request, ["SUPERVISOR", "ADMIN"]);
+//   const authResult = await requireAuth(request);
 //   if (authResult.error) return authResult.error;
 //   // authResult.user is available with id, role, email, technicianId
 
 import { auth } from "@/lib/auth";
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
 import { NextResponse } from "next/server";
 
 // All valid roles, ordered by privilege level
-export const ROLES = ["TECHNICIAN", "SUPERVISOR", "ADMIN"] as const;
+export const ROLES = ["USER", "SUPERVISOR", "ADMIN"] as const;
 export type Role = (typeof ROLES)[number];
 
 // Role hierarchy — higher roles include lower role permissions
 const ROLE_LEVEL: Record<Role, number> = {
-  TECHNICIAN: 1,
+  USER: 1,
   SUPERVISOR: 2,
   ADMIN: 3,
 };
@@ -31,7 +27,6 @@ export interface AuthenticatedUser {
   name: string | null;
   role: Role;
   technicianId: string | null;
-  authMethod: "oauth" | "passcode";
 }
 
 type RbacSuccess = { user: AuthenticatedUser; error?: never };
@@ -51,48 +46,14 @@ export function isRoleAllowed(userRole: string, allowedRoles: Role[]): boolean {
 }
 
 // Main RBAC guard for API routes.
-// Checks authentication (OAuth session or passcode cookie) then verifies role.
-// Pass an array of allowed roles, or a single minimum role for hierarchy check.
+// Checks NextAuth session and verifies role.
 export async function requireRole(
-  request: Request,
+  _request: Request,
   allowedRoles: Role[]
 ): Promise<RbacResult> {
-  // Try OAuth session first (Auth.js)
   const session = await auth();
 
-  if (session?.user) {
-    const userRole = (session.user.role || "TECHNICIAN") as Role;
-
-    if (!isRoleAllowed(userRole, allowedRoles)) {
-      return {
-        error: NextResponse.json(
-          {
-            error: "Forbidden",
-            message: `Role "${userRole}" does not have access. Required: ${allowedRoles.join(" or ")}`,
-          },
-          { status: 403 }
-        ),
-      };
-    }
-
-    return {
-      user: {
-        id: session.user.id,
-        email: session.user.email ?? null,
-        name: session.user.name ?? null,
-        role: userRole,
-        technicianId: session.user.technicianId ?? null,
-        authMethod: "oauth",
-      },
-    };
-  }
-
-  // Fall back to passcode cookie (demo mode)
-  // Passcode users are treated as ADMIN (they have the passcode = full access)
-  const passcodeError = requireDashboardAuth(request);
-
-  if (passcodeError) {
-    // Neither OAuth nor passcode authenticated
+  if (!session?.user) {
     return {
       error: NextResponse.json(
         { error: "Unauthorized", message: "Sign in required" },
@@ -101,13 +62,15 @@ export async function requireRole(
     };
   }
 
-  // Passcode-authenticated users get ADMIN role (they have the secret)
-  const passcodeRole: Role = "ADMIN";
+  const userRole = (session.user.role || "USER") as Role;
 
-  if (!isRoleAllowed(passcodeRole, allowedRoles)) {
+  if (!isRoleAllowed(userRole, allowedRoles)) {
     return {
       error: NextResponse.json(
-        { error: "Forbidden", message: "Insufficient role" },
+        {
+          error: "Forbidden",
+          message: `Role "${userRole}" does not have access. Required: ${allowedRoles.join(" or ")}`,
+        },
         { status: 403 }
       ),
     };
@@ -115,21 +78,20 @@ export async function requireRole(
 
   return {
     user: {
-      id: "passcode-user",
-      email: null,
-      name: "Demo User",
-      role: passcodeRole,
-      technicianId: null,
-      authMethod: "passcode",
+      id: session.user.id,
+      email: session.user.email ?? null,
+      name: session.user.name ?? null,
+      role: userRole,
+      technicianId: session.user.technicianId ?? null,
     },
   };
 }
 
 // Convenience wrappers for common role checks
 
-// Any authenticated user (TECHNICIAN, SUPERVISOR, or ADMIN)
+// Any authenticated user
 export async function requireAuth(request: Request): Promise<RbacResult> {
-  return requireRole(request, ["TECHNICIAN", "SUPERVISOR", "ADMIN"]);
+  return requireRole(request, ["USER", "SUPERVISOR", "ADMIN"]);
 }
 
 // Supervisor or Admin only

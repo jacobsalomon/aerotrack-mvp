@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { requireAuth } from "@/lib/rbac";
 
 // POST /api/documents/render-8130-pdf
 // Generates a downloadable PDF that looks like an official FAA Form 8130-3.
@@ -32,9 +32,9 @@ interface Form8130Data {
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
-  // Require dashboard authentication
-  const authError = requireDashboardAuth(req);
-  if (authError) return authError;
+  // Require authentication
+  const authResult = await requireAuth(req);
+  if (authResult.error) return authResult.error;
 
   const body = await req.json();
   const data: Form8130Data = body.data;

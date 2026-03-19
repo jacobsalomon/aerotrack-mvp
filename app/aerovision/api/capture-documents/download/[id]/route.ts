@@ -5,14 +5,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { render8130Pdf, render337Pdf, render8010Pdf } from "@/lib/pdf-renderers";
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { requireAuth } from "@/lib/rbac";
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = requireDashboardAuth(request);
-  if (authError) return authError;
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.error;
 
   const { id } = await params;
 

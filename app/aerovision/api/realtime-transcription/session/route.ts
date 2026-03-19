@@ -4,15 +4,15 @@
 // Also returns the recommended session config (model, VAD, aerospace vocabulary).
 // Protected by dashboard auth (passcode cookie).
 
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { requireAuth } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
 import { AEROSPACE_VOCABULARY_PROMPT } from "@/lib/ai/openai";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
-  // Check dashboard auth
-  const authError = requireDashboardAuth(request);
-  if (authError) return authError;
+  // Check auth
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.error;
 
   try {
     const body = await request.json();

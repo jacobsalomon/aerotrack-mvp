@@ -4,13 +4,13 @@
 // Requires ADMIN role.
 
 import { prisma } from "@/lib/db";
-import { requireAdmin } from "@/lib/rbac";
+import { requireAuth } from "@/lib/rbac";
 import { uploadCmmPdf } from "@/lib/storage";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
   // Only admins can upload CMM manuals
-  const authResult = await requireAdmin(request);
+  const authResult = await requireAuth(request);
   if (authResult.error) return authResult.error;
 
   try {

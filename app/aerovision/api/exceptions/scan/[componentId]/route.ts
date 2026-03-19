@@ -3,15 +3,15 @@
 // Returns all exceptions found (existing + newly detected).
 
 import { scanComponent } from "@/lib/exception-engine";
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { requireAuth } from "@/lib/rbac";
 import { NextResponse } from "next/server";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ componentId: string }> }
 ) {
-  const authError = requireDashboardAuth(request);
-  if (authError) return authError;
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.error;
 
   const { componentId } = await params;
 

@@ -1,4 +1,4 @@
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { requireAuth } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
 import {
   buildShiftTranscriptReviewData,
@@ -10,8 +10,8 @@ import { NextResponse } from "next/server";
 type RouteParams = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: Request, { params }: RouteParams) {
-  const authError = requireDashboardAuth(request);
-  if (authError) return authError;
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.error;
 
   const { id: shiftId } = await params;
 

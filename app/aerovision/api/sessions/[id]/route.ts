@@ -5,17 +5,21 @@
 
 import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { requireAuth } from "@/lib/rbac";
 import { decorateSessionWithProgress } from "@/lib/session-progress";
-import { scheduleSessionProcessingIfNeeded } from "@/lib/session-processing-jobs";
+import {
+  ensureSessionProcessingJob,
+  scheduleSessionProcessing,
+  scheduleSessionProcessingIfNeeded,
+} from "@/lib/session-processing-jobs";
 import { buildSessionApiErrorResponse } from "@/lib/session-api-error";
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = requireDashboardAuth(request);
-  if (authError) return authError;
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.error;
 
   try {
     const { id } = await params;
@@ -88,8 +92,8 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = requireDashboardAuth(request);
-  if (authError) return authError;
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.error;
 
   const { id } = await params;
 
@@ -100,16 +104,45 @@ export async function PATCH(
 
   try {
     const body = await request.json();
-    const { expectedSteps, description } = body;
+    const { expectedSteps, description, status } = body;
 
     const updateData: Record<string, unknown> = {};
     if (expectedSteps !== undefined) updateData.expectedSteps = expectedSteps;
     if (description !== undefined) updateData.description = description;
+    // Allow the web dashboard to end a session (capturing → capture_complete)
+    const isEnding = status === "capture_complete" && session.status === "capturing";
+    if (isEnding) {
+      updateData.status = "capture_complete";
+      updateData.completedAt = new Date();
+    }
+
+    // Allow retrying a failed processing job
+    const isRetry = status === "retry_processing" && session.status === "failed";
 
     const updated = await prisma.captureSession.update({
       where: { id },
       data: updateData,
     });
+
+    // Trigger processing immediately when session ends — don't wait for the next poll
+    if (isEnding) {
+      try {
+        const job = await ensureSessionProcessingJob(id);
+        scheduleSessionProcessing(job.id);
+      } catch (err) {
+        console.error("Failed to enqueue processing:", err);
+      }
+    }
+
+    // Retry failed processing
+    if (isRetry) {
+      try {
+        const job = await ensureSessionProcessingJob(id, { forceRetry: true });
+        scheduleSessionProcessing(job.id);
+      } catch (err) {
+        console.error("Failed to retry processing:", err);
+      }
+    }
 
     return NextResponse.json(updated);
   } catch (error) {

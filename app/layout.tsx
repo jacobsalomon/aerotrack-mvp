@@ -3,7 +3,7 @@ import { Inter, Space_Grotesk } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
-import PasscodeGate from "@/components/PasscodeGate";
+import SessionProvider from "@/components/providers/session-provider";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -53,9 +53,9 @@ gtag('config', '${process.env.NEXT_PUBLIC_GA_ID}');`}
       <body
         className={`${inter.variable} ${spaceGrotesk.variable} antialiased`}
       >
-        <PasscodeGate>
+        <SessionProvider>
           {children}
-        </PasscodeGate>
+        </SessionProvider>
         <Toaster />
       </body>
     </html>

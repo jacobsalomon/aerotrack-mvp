@@ -41,6 +41,8 @@ import {
   Loader2,
   ArrowRight,
   RefreshCw,
+  Plus,
+  Mic,
 } from "lucide-react";
 
 const PROGRESS_STATE_COLORS: Record<string, string> = {
@@ -117,6 +119,7 @@ export default function SessionsPage() {
   const [loadError, setLoadError] = useState<SessionLoadError | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
   const [activeTab, setActiveTab] = useState<"all" | "review">("all");
+  const [creatingSession, setCreatingSession] = useState(false);
 
   const fetchSessions = useCallback(async () => {
     setLoading(true);
@@ -127,9 +130,8 @@ export default function SessionsPage() {
       const res = await fetch(apiUrl(`/api/sessions${params}`));
       const payload = await res.json().catch(() => null);
 
-      // Session cookie expired — clear gate flag and reload to show passcode entry
+      // Session expired — reload to trigger login redirect
       if (res.status === 401) {
-        sessionStorage.removeItem("demo-unlocked");
         window.location.reload();
         return;
       }
@@ -151,6 +153,24 @@ export default function SessionsPage() {
   useEffect(() => {
     void fetchSessions();
   }, [fetchSessions]);
+
+  // Start a new capture session from the web dashboard (no glasses required)
+  async function handleStartSession() {
+    setCreatingSession(true);
+    try {
+      const res = await fetch(apiUrl("/api/sessions"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: "Web capture session" }),
+      });
+      if (!res.ok) throw new Error("Failed to create session");
+      const session = await res.json();
+      router.push(`/sessions/${session.id}`);
+    } catch (err) {
+      console.error("Failed to start session:", err);
+      setCreatingSession(false);
+    }
+  }
 
   function formatDate(iso: string): string {
     return new Date(iso).toLocaleString("en-US", {
@@ -197,16 +217,33 @@ export default function SessionsPage() {
     <div>
       {/* Page header */}
       <div className="mb-8">
-        <p
-          className="text-xs font-semibold uppercase tracking-[0.18em]"
-          style={{ color: "rgb(147, 51, 234)" }}
-        >
-          Reviewer-first workflow
-        </p>
-        <h1 className="text-3xl font-bold tracking-tight mt-2" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>Review Queue</h1>
-        <p className="text-sm mt-2" style={{ color: 'rgb(100, 100, 100)' }}>
-          Open reviewer-ready sessions, inspect the evidence trail, and move release paperwork toward sign-off.
-        </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <p
+              className="text-xs font-semibold uppercase tracking-[0.18em]"
+              style={{ color: "rgb(147, 51, 234)" }}
+            >
+              Reviewer-first workflow
+            </p>
+            <h1 className="text-3xl font-bold tracking-tight mt-2" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>Review Queue</h1>
+            <p className="text-sm mt-2" style={{ color: 'rgb(100, 100, 100)' }}>
+              Open reviewer-ready sessions, inspect the evidence trail, and move release paperwork toward sign-off.
+            </p>
+          </div>
+          <Button
+            onClick={() => void handleStartSession()}
+            disabled={creatingSession}
+            className="gap-2 shrink-0"
+            style={{ backgroundColor: "rgb(239, 68, 68)", color: "white" }}
+          >
+            {creatingSession ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Mic className="h-4 w-4" />
+            )}
+            Start Session
+          </Button>
+        </div>
       </div>
 
       <Card

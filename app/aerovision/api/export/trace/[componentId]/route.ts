@@ -11,7 +11,7 @@ import { calculateTraceCompleteness, formatDuration } from "@/lib/trace-complete
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { requireAuth } from "@/lib/rbac";
 
 // ── Color constants ──
 
@@ -53,9 +53,9 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ componentId: string }> }
 ) {
-  // Require dashboard authentication
-  const authError = requireDashboardAuth(request);
-  if (authError) return authError;
+  // Require authentication
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.error;
 
   const { componentId } = await params;
 

@@ -6,15 +6,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { render8130Pdf, render337Pdf, render8010Pdf, renderEASAForm1Pdf, render81301Pdf, render81306Pdf } from "@/lib/pdf-renderers";
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { requireAuth } from "@/lib/rbac";
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // Require dashboard authentication
-  const authError = requireDashboardAuth(request);
-  if (authError) return authError;
+  // Require authentication
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.error;
 
   const { id } = await params;
 

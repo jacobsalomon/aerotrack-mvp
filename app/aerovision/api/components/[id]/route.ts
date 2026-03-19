@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { requireAuth } from "@/lib/rbac";
 import { NextResponse } from "next/server";
 
 // GET /api/components/[id] — get single component with full lifecycle
@@ -7,8 +7,8 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = requireDashboardAuth(request);
-  if (authError) return authError;
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.error;
 
   const { id } = await params;
 

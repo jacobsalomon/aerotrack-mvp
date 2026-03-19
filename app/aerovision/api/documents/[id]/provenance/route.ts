@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { requireAuth } from "@/lib/rbac";
 import { getDocumentProvenance } from "@/lib/document-provenance";
 
 // GET /api/documents/[id]/provenance
@@ -8,8 +8,8 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = requireDashboardAuth(request);
-  if (authError) return authError;
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.error;
 
   const { id } = await params;
   const provenance = await getDocumentProvenance(id);

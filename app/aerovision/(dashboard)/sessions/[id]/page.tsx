@@ -36,6 +36,7 @@ import { shouldPollSessionProgress } from "@/lib/session-progress";
 import { apiUrl } from "@/lib/api-url";
 import { useSmartPoll } from "@/lib/use-smart-poll";
 import { PollStatusBadge } from "@/components/poll-status-badge";
+import { LiveSessionPanel } from "@/components/live-session-panel";
 import {
   ArrowLeft,
   Camera,
@@ -420,9 +421,8 @@ export default function SessionDetailPage() {
       const res = await fetch(apiUrl(`/api/sessions/${sessionId}`));
       const payload = await res.json().catch(() => null);
 
-      // Session cookie expired — clear gate flag and reload to show passcode entry
+      // Session expired — reload to trigger login redirect
       if (res.status === 401) {
-        sessionStorage.removeItem("demo-unlocked");
         window.location.reload();
         return;
       }
@@ -981,14 +981,45 @@ export default function SessionDetailPage() {
               </p>
             )}
             {session.processingProgress.failed && (
-              <p className="mt-2 text-sm" style={{ color: "rgb(190, 24, 93)" }}>
-                Failed during {session.processingProgress.failedStage || "processing"}:{" "}
-                {session.processingProgress.lastError || "Unknown error"}
-              </p>
+              <div className="mt-2 flex items-start gap-3">
+                <p className="text-sm flex-1" style={{ color: "rgb(190, 24, 93)" }}>
+                  Failed during {session.processingProgress.failedStage || "processing"}:{" "}
+                  {session.processingProgress.lastError || "Unknown error"}
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    await fetch(apiUrl(`/api/sessions/${sessionId}`), {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ status: "retry_processing" }),
+                    });
+                    await fetchSession();
+                  }}
+                  className="shrink-0"
+                >
+                  <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                  Retry
+                </Button>
+              </div>
             )}
           </div>
         )}
       </div>
+
+      {/* ═══ LIVE CAPTURE PANEL — shown when session is actively capturing ═══ */}
+      {session.status === "capturing" && (
+        <LiveSessionPanel
+          sessionId={sessionId}
+          evidenceCount={session.evidence.length}
+          startedAt={session.startedAt}
+          hasGlassesStream={session.evidence.some(
+            (e) => e.type === "PHOTO" || e.type === "VIDEO"
+          )}
+          onSessionEnded={() => void fetchSession()}
+        />
+      )}
 
       {/* ═══ REVIEWER COCKPIT ═══ */}
       <Card className="border-0 shadow-sm mb-6" data-demo-focus="reviewer-cockpit">

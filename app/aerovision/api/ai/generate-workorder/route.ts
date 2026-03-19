@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { requireAuth } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
 
 // This API route generates a structured repair work order from captured
@@ -8,9 +8,9 @@ import { prisma } from "@/lib/db";
 // Optionally accepts a sessionId to pull in full evidence pipeline data.
 
 export async function POST(req: NextRequest) {
-  // Require dashboard authentication
-  const authError = requireDashboardAuth(req);
-  if (authError) return authError;
+  // Require authentication
+  const authResult = await requireAuth(req);
+  if (authResult.error) return authResult.error;
 
   let body;
   try {

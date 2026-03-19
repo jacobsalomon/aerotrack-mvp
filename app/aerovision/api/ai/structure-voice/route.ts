@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { requireAuth } from "@/lib/rbac";
 
 // This API route takes raw voice transcriptions from a mechanic and structures
 // them into maintenance findings. This powers the "live findings summary"
@@ -7,9 +7,9 @@ import { requireDashboardAuth } from "@/lib/dashboard-auth";
 // otherwise returns realistic mock structured findings.
 
 export async function POST(req: NextRequest) {
-  // Require dashboard authentication
-  const authError = requireDashboardAuth(req);
-  if (authError) return authError;
+  // Require authentication
+  const authResult = await requireAuth(req);
+  if (authResult.error) return authResult.error;
 
   let body;
   try {

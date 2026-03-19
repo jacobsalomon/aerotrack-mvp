@@ -1,21 +1,63 @@
-// Auth.js (NextAuth v5) configuration for AeroVision.
-// Supports Google and Microsoft Entra ID (Azure AD) OAuth login.
-// Falls back to passcode-only mode when no OAuth providers are configured.
+// Auth.js (NextAuth v5) full configuration for AeroVision.
+// Extends the edge-compatible base config (auth.config.ts) with:
+// - PrismaAdapter for user/account persistence
+// - Credentials provider for email/password login
+// - Google and Microsoft OAuth providers (optional)
 //
-// After OAuth login, the user's role is synced from the Technician table
-// (matched by email). If no Technician record exists, defaults to TECHNICIAN role.
+// This file uses Node.js APIs (Prisma, bcrypt) so it can only run server-side,
+// NOT in middleware. Middleware uses auth.config.ts instead.
 
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
+import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/db";
+import bcrypt from "bcryptjs";
+import { authConfig } from "@/lib/auth.config";
 
-// Only include providers that have credentials configured.
-// This lets the app run in demo mode (passcode-only) when no OAuth env vars are set.
+// Only include OAuth providers that have credentials configured.
 function getProviders() {
   const providers = [];
 
+  // Email/password login — always available
+  providers.push(
+    Credentials({
+      name: "credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        const email = credentials?.email as string | undefined;
+        const password = credentials?.password as string | undefined;
+
+        if (!email || !password) return null;
+
+        // Look up user by email
+        const user = await prisma.user.findUnique({
+          where: { email: email.toLowerCase().trim() },
+        });
+
+        // No user found, or user has no password (OAuth-only account)
+        if (!user?.passwordHash) return null;
+
+        // Verify password
+        const isValid = await bcrypt.compare(password, user.passwordHash);
+        if (!isValid) return null;
+
+        // Return user object — this gets stored in the JWT
+        return {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+        };
+      },
+    })
+  );
+
+  // Google OAuth (optional — only if env vars are set)
   if (process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) {
     providers.push(
       Google({
@@ -25,6 +67,7 @@ function getProviders() {
     );
   }
 
+  // Microsoft Entra ID OAuth (optional — only if env vars are set)
   if (
     process.env.AUTH_MICROSOFT_ENTRA_ID_ID &&
     process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET
@@ -42,34 +85,33 @@ function getProviders() {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  ...authConfig,
   adapter: PrismaAdapter(prisma),
   providers: getProviders(),
-  pages: {
-    signIn: "/login",
-  },
   callbacks: {
-    // After sign-in, sync role from Technician table (matched by email)
-    async session({ session, user }) {
+    ...authConfig.callbacks,
+
+    // Override the session callback to add technicianId lookup (needs Prisma)
+    async session({ session, token }) {
       if (session.user) {
-        session.user.id = user.id;
-        // Look up the Technician record to get their role
-        const technician = await prisma.technician.findUnique({
-          where: { email: user.email! },
-          select: { role: true, id: true },
-        });
-        // Use the Technician role if found, otherwise use the User model role
-        session.user.role = technician?.role ?? (user as { role?: string }).role ?? "TECHNICIAN";
-        session.user.technicianId = technician?.id ?? null;
+        session.user.id = token.id as string;
+        session.user.role = (token.role as string) ?? "USER";
+
+        // Look up Technician record by email (for mobile API integration)
+        if (session.user.email) {
+          const technician = await prisma.technician.findUnique({
+            where: { email: session.user.email },
+            select: { id: true },
+          });
+          session.user.technicianId = technician?.id ?? null;
+        } else {
+          session.user.technicianId = null;
+        }
       }
       return session;
     },
   },
 });
-
-// Check if any OAuth providers are configured
-export function hasOAuthProviders(): boolean {
-  return getProviders().length > 0;
-}
 
 // TypeScript augmentation so session.user has our custom fields
 declare module "next-auth" {

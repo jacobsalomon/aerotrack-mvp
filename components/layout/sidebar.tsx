@@ -4,20 +4,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ComponentType } from "react";
 import {
-  BarChart3,
   FileCheck,
   FileText,
-  Gauge,
   Glasses,
   LayoutDashboard,
+  LogOut,
   Menu,
   Plane,
   Play,
-  ScanLine,
-  Settings,
   ShieldCheck,
   Users,
 } from "lucide-react";
+import { signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -236,14 +234,19 @@ function SidebarBody({
       </nav>
 
       <div
-        className="border-t px-5 py-4 text-xs"
-        style={{
-          borderColor: "rgba(255, 255, 255, 0.08)",
-          color: "rgba(255, 255, 255, 0.34)",
-        }}
+        className="border-t px-5 py-4"
+        style={{ borderColor: "rgba(255, 255, 255, 0.08)" }}
       >
-        <p>AeroVision MVP</p>
-        <p className="mt-1">The Mechanical Vision Corporation</p>
+        <button
+          onClick={() => signOut({ callbackUrl: "/aerovision/login" })}
+          className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-white/50 transition-colors hover:bg-white/6 hover:text-white/80"
+        >
+          <LogOut className="h-4 w-4" />
+          Sign out
+        </button>
+        <p className="mt-3 px-3 text-xs" style={{ color: "rgba(255, 255, 255, 0.34)" }}>
+          The Mechanical Vision Corporation
+        </p>
       </div>
     </div>
   );

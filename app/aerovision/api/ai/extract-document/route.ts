@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { requireAuth } from "@/lib/rbac";
 
 // This API route extracts structured data from a photo of an aviation
 // maintenance document (8130-3, data plate, work order, etc.) using
@@ -7,9 +7,9 @@ import { requireDashboardAuth } from "@/lib/dashboard-auth";
 // realistic mock data that matches the demo component (Component 9).
 
 export async function POST(req: NextRequest) {
-  // Require dashboard authentication
-  const authError = requireDashboardAuth(req);
-  if (authError) return authError;
+  // Require authentication
+  const authResult = await requireAuth(req);
+  if (authResult.error) return authResult.error;
 
   let body;
   try {

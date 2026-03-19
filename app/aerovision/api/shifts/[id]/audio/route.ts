@@ -4,7 +4,7 @@
 // Accepts either mobile Bearer auth or the dashboard passcode session.
 
 import { authenticateRequest } from "@/lib/mobile-auth";
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { requireAuth } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
 import { transcribeAudio } from "@/lib/ai/openai";
 import { extractMeasurementsFromTranscript } from "@/lib/ai/measurement-extraction";
@@ -26,8 +26,8 @@ export async function POST(request: Request, { params }: RouteParams) {
       if ("error" in auth) return auth.error;
       authenticatedTechnicianId = auth.technician.id;
     } else {
-      const authError = requireDashboardAuth(request);
-      if (authError) return authError;
+      const authResult = await requireAuth(request);
+      if (authResult.error) return authResult.error;
     }
 
     // Verify shift exists, is still within a state that can accept buffered chunks,

@@ -23,9 +23,24 @@ model User {
   email         String?   @unique
   emailVerified DateTime?
   image         String?
-  role          String    @default("TECHNICIAN") // TECHNICIAN, SUPERVISOR, ADMIN
+  passwordHash  String?                          // bcrypt hash — set when user registers with email/password
+  role          String    @default("USER")       // USER (single role — everyone has same access)
   accounts      Account[]
   sessions      Session[]
+}
+
+// ──────────────────────────────────────────────────────
+// Password reset tokens — used for the "forgot password" flow.
+// Each token is single-use and expires after 1 hour.
+// ──────────────────────────────────────────────────────
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  email     String                              // Email address the reset was requested for
+  token     String   @unique                    // Random token sent in the reset link
+  expiresAt DateTime                            // Token expires after 1 hour
+  createdAt DateTime @default(now())
+
+  @@index([email])
 }
 
 model Account {

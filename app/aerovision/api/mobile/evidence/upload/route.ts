@@ -54,6 +54,7 @@ export async function POST(request: Request) {
             "audio/mp4",
             "audio/mpeg",
             "audio/x-m4a",
+            "audio/webm",
           ],
       maximumSizeInBytes: 50 * 1024 * 1024, // 50MB
     });

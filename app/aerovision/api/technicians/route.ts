@@ -4,11 +4,11 @@
 
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { requireAuth } from "@/lib/rbac";
 
 export async function GET(request: Request) {
-  const authError = requireDashboardAuth(request);
-  if (authError) return authError;
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.error;
 
   const technicians = await prisma.technician.findMany({
     select: {

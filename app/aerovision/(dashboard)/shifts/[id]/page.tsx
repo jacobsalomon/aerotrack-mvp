@@ -156,7 +156,6 @@ export default function ShiftDetailPage({ params }: { params: Promise<{ id: stri
 
   const handleExpiredDashboardSession = useCallback((response: Response) => {
     if (response.status !== 401) return false;
-    sessionStorage.removeItem("demo-unlocked");
     window.location.reload();
     return true;
   }, []);

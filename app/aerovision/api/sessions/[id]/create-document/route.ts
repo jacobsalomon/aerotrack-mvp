@@ -6,7 +6,7 @@ export const maxDuration = 60;
 
 import { prisma } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { requireAuth } from "@/lib/rbac";
 import { clampConfidence } from "@/lib/ai/utils";
 import { generateDocuments } from "@/lib/ai/openai";
 import { NextResponse } from "next/server";
@@ -28,8 +28,8 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = requireDashboardAuth(request);
-  if (authError) return authError;
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.error;
 
   const { id: sessionId } = await params;
 

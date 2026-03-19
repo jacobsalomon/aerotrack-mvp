@@ -6,13 +6,13 @@
 // If the tab crashes, at most 30 seconds of transcript is lost.
 // Protected by dashboard auth (passcode cookie).
 
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { requireAuth } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
-  const authError = requireDashboardAuth(request);
-  if (authError) return authError;
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.error;
 
   try {
     const body = await request.json();

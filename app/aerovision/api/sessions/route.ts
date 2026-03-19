@@ -4,14 +4,14 @@
 
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { requireAuth } from "@/lib/rbac";
 import { decorateSessionWithProgress } from "@/lib/session-progress";
 import { scheduleSessionProcessingIfNeeded } from "@/lib/session-processing-jobs";
 import { buildSessionApiErrorResponse } from "@/lib/session-api-error";
 
 export async function GET(request: Request) {
-  const authError = requireDashboardAuth(request);
-  if (authError) return authError;
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.error;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -78,5 +78,70 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("List sessions error:", error);
     return buildSessionApiErrorResponse(error, "queue");
+  }
+}
+
+// Start a new capture session from the web dashboard (no glasses required).
+// The technician picks the logged-in user's technician record.
+export async function POST(request: Request) {
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.error;
+
+  try {
+    const body = await request.json();
+    const { description } = body;
+
+    // Use the first technician in the demo org as the session owner.
+    // In production this would use the logged-in user's technician record.
+    const technician = await prisma.technician.findFirst({
+      select: { id: true, organizationId: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    if (!technician) {
+      return NextResponse.json(
+        { error: "No technician found" },
+        { status: 404 }
+      );
+    }
+
+    // Find the active shift for this technician (if any)
+    const activeShift = await prisma.shiftSession.findFirst({
+      where: {
+        technicianId: technician.id,
+        status: { in: ["active", "paused"] },
+      },
+      select: { id: true },
+      orderBy: { startedAt: "desc" },
+    });
+
+    const session = await prisma.captureSession.create({
+      data: {
+        technicianId: technician.id,
+        organizationId: technician.organizationId,
+        shiftSessionId: activeShift?.id ?? null,
+        description: description || "Web capture session",
+        status: "capturing",
+      },
+    });
+
+    await prisma.auditLogEntry.create({
+      data: {
+        organizationId: technician.organizationId,
+        technicianId: technician.id,
+        action: "session_started",
+        entityType: "CaptureSession",
+        entityId: session.id,
+        metadata: JSON.stringify({ source: "web_dashboard" }),
+      },
+    });
+
+    return NextResponse.json(session, { status: 201 });
+  } catch (error) {
+    console.error("Create web session error:", error);
+    return NextResponse.json(
+      { error: "Failed to create session" },
+      { status: 500 }
+    );
   }
 }

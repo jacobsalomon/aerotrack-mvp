@@ -1,10 +1,10 @@
 import { prisma } from "@/lib/db";
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { requireAuth } from "@/lib/rbac";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
-  const authError = requireDashboardAuth(request);
-  if (authError) return authError;
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.error;
 
   const alerts = await prisma.alert.findMany({
     include: {

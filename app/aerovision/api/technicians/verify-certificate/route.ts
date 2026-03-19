@@ -3,11 +3,11 @@
 // Requires ADMIN role.
 
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/rbac";
+import { requireAuth } from "@/lib/rbac";
 import { verifyTechnicianCertificate } from "@/lib/faa-certificate-lookup";
 
 export async function POST(request: Request) {
-  const authResult = await requireAdmin(request);
+  const authResult = await requireAuth(request);
   if (authResult.error) return authResult.error;
 
   let body;

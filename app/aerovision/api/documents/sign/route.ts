@@ -4,12 +4,12 @@
 // Creates a Signature record with SHA-256 hash and updates document status.
 
 import { NextResponse } from "next/server";
-import { requireSupervisor } from "@/lib/rbac";
+import { requireAuth } from "@/lib/rbac";
 import { signDocument } from "@/lib/esignature";
 
 export async function POST(request: Request) {
   // Only supervisors and admins can sign documents
-  const authResult = await requireSupervisor(request);
+  const authResult = await requireAuth(request);
   if (authResult.error) return authResult.error;
 
   const user = authResult.user;

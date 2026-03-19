@@ -5,12 +5,12 @@
 //        /api/admin/debug?table=CaptureSession&id=xxx
 
 import { prisma } from "@/lib/db";
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { requireAuth } from "@/lib/rbac";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
-  const authError = requireDashboardAuth(request);
-  if (authError) return authError;
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.error;
 
   const { searchParams } = new URL(request.url);
   const table = searchParams.get("table");
