@@ -2,11 +2,11 @@
 // Tests the 4-phase demo that's the primary sales tool.
 
 import { test, expect } from "@playwright/test";
-import { url, bypassPasscode } from "./helpers";
+import { url, loginAsTestUser } from "./helpers";
 
 test.describe("Glasses Demo", () => {
   test.beforeEach(async ({ page }) => {
-    await bypassPasscode(page);
+    await loginAsTestUser(page);
   });
 
   test("pre-start phase shows START button", async ({ page }) => {

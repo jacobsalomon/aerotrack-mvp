@@ -2,11 +2,11 @@
 // Tests the core fleet management views in a real browser.
 
 import { test, expect } from "@playwright/test";
-import { url, bypassPasscode } from "./helpers";
+import { url, loginAsTestUser } from "./helpers";
 
 test.describe("Dashboard Page", () => {
   test.beforeEach(async ({ page }) => {
-    await bypassPasscode(page);
+    await loginAsTestUser(page);
   });
 
   test("loads and shows stats cards", async ({ page }) => {
@@ -58,7 +58,7 @@ test.describe("Dashboard Page", () => {
 
 test.describe("Parts Detail Page", () => {
   test.beforeEach(async ({ page }) => {
-    await bypassPasscode(page);
+    await loginAsTestUser(page);
   });
 
   test("shows component details for demo part", async ({ page }) => {

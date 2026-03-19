@@ -49,6 +49,8 @@ const nextConfig: NextConfig = {
     "prisma",
     "pdf-lib",
     "@anthropic-ai/sdk",
+    "bcryptjs",
+    "resend",
   ],
 
   // Security headers for all routes

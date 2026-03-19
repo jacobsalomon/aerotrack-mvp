@@ -1,11 +1,11 @@
 // E2E Tests — Other Pages (US-010, US-011)
 
 import { test, expect } from "@playwright/test";
-import { url, bypassPasscode } from "./helpers";
+import { url, loginAsTestUser } from "./helpers";
 
 test.describe("Integrity Page", () => {
   test("loads without errors", async ({ page }) => {
-    await bypassPasscode(page);
+    await loginAsTestUser(page);
     await page.goto(url("/integrity"));
     await page.waitForLoadState("networkidle");
 
@@ -17,7 +17,7 @@ test.describe("Integrity Page", () => {
 
 test.describe("Analytics Page", () => {
   test("loads and renders charts", async ({ page }) => {
-    await bypassPasscode(page);
+    await loginAsTestUser(page);
     await page.goto(url("/analytics"));
     await page.waitForLoadState("networkidle");
 
@@ -32,7 +32,7 @@ test.describe("Analytics Page", () => {
 
 test.describe("Capture Page", () => {
   test("loads without errors", async ({ page }) => {
-    await bypassPasscode(page);
+    await loginAsTestUser(page);
     await page.goto(url("/capture"));
     await page.waitForLoadState("networkidle");
 
@@ -43,7 +43,7 @@ test.describe("Capture Page", () => {
 
 test.describe("Landing Page", () => {
   test("loads without errors", async ({ page }) => {
-    await bypassPasscode(page);
+    await loginAsTestUser(page);
     await page.goto(url("/"));
     await page.waitForLoadState("networkidle");
 
@@ -54,7 +54,7 @@ test.describe("Landing Page", () => {
 
 test.describe("Sidebar Navigation", () => {
   test("dashboard has navigation links", async ({ page }) => {
-    await bypassPasscode(page);
+    await loginAsTestUser(page);
     await page.goto(url("/dashboard"));
     await page.waitForLoadState("networkidle");
 

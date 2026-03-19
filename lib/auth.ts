@@ -1,21 +1,67 @@
-// Auth.js (NextAuth v5) configuration for AeroVision.
-// Supports Google and Microsoft Entra ID (Azure AD) OAuth login.
-// Falls back to passcode-only mode when no OAuth providers are configured.
+// Auth.js (NextAuth v5) full configuration for AeroVision.
+// Extends the edge-compatible base config (auth.config.ts) with:
+// - PrismaAdapter for user/account persistence
+// - Credentials provider for email/password login
+// - Google and Microsoft OAuth providers (optional)
 //
-// After OAuth login, the user's role is synced from the Technician table
-// (matched by email). If no Technician record exists, defaults to TECHNICIAN role.
+// This file uses Node.js APIs (Prisma, bcrypt) so it can only run server-side,
+// NOT in middleware. Middleware uses auth.config.ts instead.
 
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
+import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/db";
+import bcrypt from "bcryptjs";
+import { authConfig } from "@/lib/auth.config";
 
-// Only include providers that have credentials configured.
-// This lets the app run in demo mode (passcode-only) when no OAuth env vars are set.
+// Only include OAuth providers that have credentials configured.
 function getProviders() {
   const providers = [];
 
+  // Email/password login — always available
+  providers.push(
+    Credentials({
+      name: "credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        const email = credentials?.email as string | undefined;
+        const password = credentials?.password as string | undefined;
+
+        if (!email || !password) return null;
+
+        // Look up user by email
+        const user = await prisma.user.findUnique({
+          where: { email: email.toLowerCase().trim() },
+        });
+
+        // No user found, or user has no password (OAuth-only account)
+        if (!user?.passwordHash) return null;
+
+        // Verify password
+        const isValid = await bcrypt.compare(password, user.passwordHash);
+        if (!isValid) return null;
+
+        // Return user object — this gets stored in the JWT
+        return {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          organizationId: user.organizationId,
+          badgeNumber: user.badgeNumber,
+          firstName: user.firstName,
+          lastName: user.lastName,
+        };
+      },
+    })
+  );
+
+  // Google OAuth (optional — only if env vars are set)
   if (process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) {
     providers.push(
       Google({
@@ -25,6 +71,7 @@ function getProviders() {
     );
   }
 
+  // Microsoft Entra ID OAuth (optional — only if env vars are set)
   if (
     process.env.AUTH_MICROSOFT_ENTRA_ID_ID &&
     process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET
@@ -42,34 +89,45 @@ function getProviders() {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  ...authConfig,
   adapter: PrismaAdapter(prisma),
   providers: getProviders(),
-  pages: {
-    signIn: "/login",
-  },
   callbacks: {
-    // After sign-in, sync role from Technician table (matched by email)
-    async session({ session, user }) {
-      if (session.user) {
-        session.user.id = user.id;
-        // Look up the Technician record to get their role
-        const technician = await prisma.technician.findUnique({
-          where: { email: user.email! },
-          select: { role: true, id: true },
-        });
-        // Use the Technician role if found, otherwise use the User model role
-        session.user.role = technician?.role ?? (user as { role?: string }).role ?? "TECHNICIAN";
-        session.user.technicianId = technician?.id ?? null;
+    ...authConfig.callbacks,
+
+    // Override jwt to support refresh after joining an org.
+    // When client calls update(), we re-fetch the user's organizationId from the DB
+    // so the JWT reflects the new org assignment without requiring re-login.
+    async jwt({ token, user, trigger }) {
+      // Initial login — store all user fields in the token
+      if (user) {
+        token.id = user.id;
+        token.role = (user as { role?: string }).role ?? "USER";
+        token.organizationId = (user as { organizationId?: string | null }).organizationId ?? null;
+        token.badgeNumber = (user as { badgeNumber?: string | null }).badgeNumber ?? null;
+        token.firstName = (user as { firstName?: string | null }).firstName ?? null;
+        token.lastName = (user as { lastName?: string | null }).lastName ?? null;
       }
-      return session;
+
+      // Session refresh — re-read org assignment from DB (e.g., after joining an org)
+      if (trigger === "update" && token.id) {
+        const freshUser = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { organizationId: true, role: true, badgeNumber: true, firstName: true, lastName: true },
+        });
+        if (freshUser) {
+          token.organizationId = freshUser.organizationId;
+          token.role = freshUser.role;
+          token.badgeNumber = freshUser.badgeNumber;
+          token.firstName = freshUser.firstName;
+          token.lastName = freshUser.lastName;
+        }
+      }
+
+      return token;
     },
   },
 });
-
-// Check if any OAuth providers are configured
-export function hasOAuthProviders(): boolean {
-  return getProviders().length > 0;
-}
 
 // TypeScript augmentation so session.user has our custom fields
 declare module "next-auth" {
@@ -80,7 +138,10 @@ declare module "next-auth" {
       email?: string | null;
       image?: string | null;
       role: string;
-      technicianId: string | null;
+      organizationId: string | null;
+      badgeNumber: string | null;
+      firstName: string | null;
+      lastName: string | null;
     };
   }
 }

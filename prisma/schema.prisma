@@ -14,7 +14,7 @@ datasource db {
 // ══════════════════════════════════════════════════════
 // AUTH.JS (NextAuth v5) MODELS
 // These power OAuth login with Google and Microsoft Entra ID.
-// The User model is Auth.js's identity; it links to Technician via email match.
+// The User model is Auth.js's identity and also holds technician profile data.
 // ══════════════════════════════════════════════════════
 
 model User {
@@ -23,9 +23,45 @@ model User {
   email         String?   @unique
   emailVerified DateTime?
   image         String?
-  role          String    @default("TECHNICIAN") // TECHNICIAN, SUPERVISOR, ADMIN
+  passwordHash  String?                          // bcrypt hash — set when user registers with email/password
+  role          String    @default("USER")       // USER (single role — everyone has same access)
+
+  // Fields consolidated from former Technician model
+  organizationId       String?
+  organization         Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  firstName            String?
+  lastName             String?
+  badgeNumber          String?   @unique
+  status               String    @default("ACTIVE")
+  apiKey               String?   @unique
+  faaLicenseNumber     String?
+  faaLicenseType       String?
+  faaLicenseVerifiedAt DateTime?
+
   accounts      Account[]
   sessions      Session[]
+
+  // Relationships (moved from Technician)
+  captureSessions     CaptureSession[]
+  shiftSessions       ShiftSession[]
+  reviewedDocuments   DocumentGeneration2[]  @relation("reviewer")
+  auditLog            AuditLogEntry[]
+
+  @@index([organizationId])
+}
+
+// ──────────────────────────────────────────────────────
+// Password reset tokens — used for the "forgot password" flow.
+// Each token is single-use and expires after 1 hour.
+// ──────────────────────────────────────────────────────
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  email     String                              // Email address the reset was requested for
+  token     String   @unique                    // Random token sent in the reset link
+  expiresAt DateTime                            // Token expires after 1 hour
+  createdAt DateTime @default(now())
+
+  @@index([email])
 }
 
 model Account {
@@ -71,7 +107,7 @@ model VerificationToken {
 model Signature {
   id             String   @id @default(cuid())
   documentId     String            // References GeneratedDocument.id
-  signerId       String            // User or Technician who signed
+  signerId       String            // User who signed
   signerName     String            // Display name of signer
   signerEmail    String?           // Email of signer
   signerRole     String            // "TECHNICIAN", "SUPERVISOR", "ADMIN"
@@ -171,8 +207,8 @@ model Evidence {
   filePath        String
   mimeType        String
   capturedAt      DateTime
-  capturedBy      String         // Technician name
-  capturedByBadge String?        // Technician ID/badge number
+  capturedBy      String         // User name
+  capturedByBadge String?        // Badge number
   location        String?        // Facility name
   transcription   String?        // AI transcription of voice note
   structuredData  String?        // AI-structured version (JSON string)
@@ -306,6 +342,7 @@ model Organization {
   id                    String   @id @default(cuid())
   name                  String                          // e.g., "Precision Aerospace MRO"
   faaRepairStationCert  String?                         // FAA Part 145 certificate number
+  emailDomain           String?                         // e.g., "silverwingsaviation.com" — auto-join users with matching email
   address               String?
   city                  String?
   state                 String?
@@ -316,39 +353,29 @@ model Organization {
   updatedAt             DateTime @updatedAt
 
   // Relationships
-  technicians     Technician[]
+  users           User[]
   captureSessions CaptureSession[]
   shiftSessions   ShiftSession[]
   measurementSpecs MeasurementSpec[]
   auditLog        AuditLogEntry[]
+  inviteCodes     InviteCode[]
 }
 
 // ──────────────────────────────────────────────────────
-// Technician — a person who uses the mobile capture app
-// Each technician gets their own API key for PoC authentication
+// InviteCode — lets admins generate codes that new users enter to join an org.
+// Codes look like "SLVR-8K2M". Can be limited by usage count or expiration date.
 // ──────────────────────────────────────────────────────
-model Technician {
-  id              String   @id @default(cuid())
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  firstName       String
-  lastName        String
-  email           String   @unique
-  badgeNumber     String   @unique                      // Used for mobile app login
-  role            String   @default("TECHNICIAN")       // TECHNICIAN, SUPERVISOR, ADMIN
-  status          String   @default("ACTIVE")           // ACTIVE, INACTIVE
-  apiKey          String?  @unique                      // Generated API key for mobile auth
-  faaLicenseNumber    String?                          // FAA airmen certificate number
-  faaLicenseType      String?                          // "A&P", "IA", "Repairman", etc.
-  faaLicenseVerifiedAt DateTime?                       // When last verified against FAA DB
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  // Relationships
-  captureSessions     CaptureSession[]
-  shiftSessions       ShiftSession[]
-  reviewedDocuments   DocumentGeneration2[]  @relation("reviewer")
-  auditLog            AuditLogEntry[]
+model InviteCode {
+  id             String    @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code           String    @unique                      // 8-char code like "SLVR-8K2M"
+  createdBy      String?                                // userId who generated it
+  maxUses        Int?                                   // null = unlimited
+  useCount       Int       @default(0)
+  expiresAt      DateTime?                              // null = never expires
+  status         String    @default("active")           // active, revoked
+  createdAt      DateTime  @default(now())
 
   @@index([organizationId])
 }
@@ -359,8 +386,8 @@ model Technician {
 // ──────────────────────────────────────────────────────
 model CaptureSession {
   id              String    @id @default(cuid())
-  technicianId    String
-  technician      Technician @relation(fields: [technicianId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
   organizationId  String
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   shiftSessionId  String?                               // Optional — links this session to a shift
@@ -368,6 +395,7 @@ model CaptureSession {
   componentId     String?                               // Linked after AI identifies the part
   status          String    @default("capturing")       // capturing, processing, documents_generated, submitted, approved, rejected
   description     String?
+  targetFormType  String?                               // Which FAA form to auto-populate: "8130-3", "337", or "8010-4"
   expectedSteps   String?                               // Free-text SOP — expected maintenance steps for this session
   startedAt       DateTime  @default(now())
   completedAt     DateTime?
@@ -382,11 +410,11 @@ model CaptureSession {
   packages        SessionPackage[]
   measurements    Measurement[]
 
-  @@index([technicianId])
+  @@index([userId])
   @@index([organizationId])
   @@index([shiftSessionId])
   @@index([status, startedAt])
-  @@index([technicianId, status, startedAt])
+  @@index([userId, status, startedAt])
   @@index([organizationId, status, startedAt])
 }
 
@@ -510,7 +538,7 @@ model DocumentGeneration2 {
   lowConfidenceFields String    @default("[]")          // JSON array of field names AI was uncertain about
   generatedAt         DateTime  @default(now())
   reviewedById        String?
-  reviewedBy          Technician? @relation("reviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedBy          User? @relation("reviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   reviewedAt          DateTime?
   reviewNotes         String?
   evidenceLineage     String?                           // JSON — maps each field to its evidence source, detail, and confidence (legacy single-source)
@@ -614,8 +642,8 @@ model MeasurementSpec {
 // ──────────────────────────────────────────────────────
 model ShiftSession {
   id                String    @id @default(cuid())
-  technicianId      String
-  technician        Technician @relation(fields: [technicianId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User @relation(fields: [userId], references: [id], onDelete: Cascade)
   organizationId    String
   organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   measurementSpecId String?                           // Optional — links to a predefined measurement checklist
@@ -640,20 +668,22 @@ model ShiftSession {
   transcriptChunks  ShiftTranscriptChunk[]
   measurements      Measurement[]
 
-  @@index([technicianId])
+  @@index([userId])
   @@index([organizationId])
   @@index([status, startedAt])
 }
 
 model ShiftTranscriptChunk {
-  id             String   @id @default(cuid())
-  shiftSessionId String
-  shiftSession   ShiftSession @relation(fields: [shiftSessionId], references: [id], onDelete: Cascade)
-  transcript     String
-  source         String   @default("desk_mic")
-  startedAt      DateTime?
-  durationSeconds Float?
-  createdAt      DateTime @default(now())
+  id                  String   @id @default(cuid())
+  shiftSessionId      String
+  shiftSession        ShiftSession @relation(fields: [shiftSessionId], references: [id], onDelete: Cascade)
+  transcript          String
+  correctedTranscript String?
+  correctionStatus    String   @default("raw") // raw | correcting | corrected | failed
+  source              String   @default("desk_mic")
+  startedAt           DateTime?
+  durationSeconds     Float?
+  createdAt           DateTime @default(now())
 
   @@index([shiftSessionId, startedAt])
 }
@@ -751,8 +781,8 @@ model AuditLogEntry {
   id              String    @id @default(cuid())
   organizationId  String?
   organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  technicianId    String?
-  technician      Technician? @relation(fields: [technicianId], references: [id], onDelete: SetNull)
+  userId          String?
+  user            User? @relation(fields: [userId], references: [id], onDelete: SetNull)
   action          String                                // "session_started", "evidence_captured", "document_generated",
                                                         // "document_approved", "document_rejected", "technician_created", etc.
   entityType      String?                               // "CaptureSession", "CaptureEvidence", "DocumentGeneration2", etc.
@@ -761,7 +791,7 @@ model AuditLogEntry {
   timestamp       DateTime  @default(now())
 
   @@index([organizationId])
-  @@index([technicianId])
+  @@index([userId])
 }
 
 // ──────────────────────────────────────────────────────

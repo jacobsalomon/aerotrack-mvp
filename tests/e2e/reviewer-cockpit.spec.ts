@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { authHeaders, bypassPasscode, url } from "./helpers";
+import { authHeaders, loginAsTestUser, url } from "./helpers";
 
 interface SessionDetailDoc {
   id: string;
@@ -44,7 +44,7 @@ test.describe("Reviewer cockpit", () => {
     };
     const rationale = `E2E rationale ${Date.now()}`;
 
-    await bypassPasscode(page);
+    await loginAsTestUser(page);
     await page.goto(url(`/sessions/${target.sessionId}`));
     await page.waitForLoadState("networkidle");
 

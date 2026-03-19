@@ -4,7 +4,7 @@
 import { test, expect } from "@playwright/test";
 import { url } from "./helpers";
 
-// Seeded technician credentials (from prisma/seed.ts)
+// Seeded user credentials (from prisma/seed.ts)
 const BADGE = "PAM-1001";
 const API_KEY = "av_demo_mike_chen_2026";
 const SECONDARY_API_KEY = "av_demo_juan_ramirez_2026";
@@ -34,7 +34,7 @@ test.describe("POST /api/mobile/auth", () => {
     expect(res.status()).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);
-    expect(body.data.technician.badgeNumber).toBe(BADGE);
+    expect(body.data.user.badgeNumber).toBe(BADGE);
     expect(body.data.token).toBe(API_KEY);
   });
 });
@@ -198,7 +198,7 @@ test.describe("Mobile capture pipeline — happy path", () => {
     expect(body.data.status).toBe("analysis_complete");
   });
 
-  test("rejects document verification for another technician's session", async ({ request }) => {
+  test("rejects document verification for another user's session", async ({ request }) => {
     const res = await request.post(url("/api/mobile/verify-documents"), {
       headers: { Authorization: `Bearer ${SECONDARY_API_KEY}` },
       data: { sessionId },

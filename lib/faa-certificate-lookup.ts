@@ -88,10 +88,10 @@ export async function lookupFaaCertificate(
   return { found: false };
 }
 
-// Verify a technician's FAA certificate and update their record in the database.
-// Returns the lookup result and whether the technician record was updated.
-export async function verifyTechnicianCertificate(
-  technicianId: string,
+// Verify a user's FAA certificate and update their record in the database.
+// Returns the lookup result and whether the user record was updated.
+export async function verifyUserCertificate(
+  userId: string,
   certificateNumber: string
 ): Promise<{
   result: FaaLookupResult;
@@ -100,9 +100,9 @@ export async function verifyTechnicianCertificate(
   const lookupResult = await lookupFaaCertificate(certificateNumber);
 
   if (lookupResult.found && lookupResult.isValid) {
-    // Update the technician record with verified certificate info
-    await prisma.technician.update({
-      where: { id: technicianId },
+    // Update the user record with verified certificate info
+    await prisma.user.update({
+      where: { id: userId },
       data: {
         faaLicenseNumber: certificateNumber,
         faaLicenseType: lookupResult.certificateType || "Unknown",

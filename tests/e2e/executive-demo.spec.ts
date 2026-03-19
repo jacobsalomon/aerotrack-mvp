@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { bypassPasscode, url } from "./helpers";
+import { loginAsTestUser, url } from "./helpers";
 
 test.describe("Executive Demo", () => {
   test.beforeEach(async ({ page }) => {
-    await bypassPasscode(page);
+    await loginAsTestUser(page);
   });
 
   test("starts from the demo landing page and advances into the sessions flow", async ({

@@ -4,20 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ComponentType } from "react";
 import {
-  BarChart3,
   FileCheck,
   FileText,
-  Gauge,
-  Glasses,
-  LayoutDashboard,
+  LogOut,
   Menu,
   Plane,
-  Play,
-  ScanLine,
-  Settings,
-  ShieldCheck,
   Users,
 } from "lucide-react";
+import { signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -36,47 +30,12 @@ type NavItem = {
 
 const primaryNavItems: NavItem[] = [
   {
-    href: "/demo",
-    label: "Demo",
-    icon: Play,
-    description: "Guided buyer story",
-  },
-  {
     href: "/sessions",
-    label: "Review Queue",
+    label: "Sessions",
     icon: FileCheck,
-    description: "Reviewer proof path",
-  },
-  {
-    href: "/dashboard",
-    label: "Parts Fleet",
-    icon: LayoutDashboard,
-    description: "Component status and risk",
-  },
-  {
-    href: "/integrity",
-    label: "Integrity",
-    icon: ShieldCheck,
-    description: "Exceptions and audit gaps",
+    description: "Capture and review work",
   },
 ];
-
-// HIDDEN — features exist but not shown in nav
-// const secondaryNavItems: NavItem[] = [
-//   {
-//     href: "/shifts",
-//     label: "Shifts",
-//     icon: Gauge,
-//     description: "Live measurement feed",
-//   },
-//   {
-//     href: "/capture",
-//     label: "Capture",
-//     icon: ScanLine,
-//     description: "Upstream evidence capture",
-//   },
-// ];
-const secondaryNavItems: NavItem[] = [];
 
 const supportNavItems: NavItem[] = [
   {
@@ -86,32 +45,18 @@ const supportNavItems: NavItem[] = [
   },
   {
     href: "/technicians",
-    label: "Technicians",
+    label: "Team",
     icon: Users,
   },
-  // {
-  //   href: "/analytics",
-  //   label: "Analytics",
-  //   icon: BarChart3,
-  // },
-  {
-    href: "/glasses-demo",
-    label: "Glasses Preview",
-    icon: Glasses,
-  },
-  // HIDDEN — feature exists but not shown in nav
-  // {
-  //   href: "/admin/cmm",
-  //   label: "CMM Library",
-  //   icon: Settings,
-  //   description: "Manage maintenance manuals",
-  // },
 ];
+
+// Demo pages kept in codebase but hidden from production nav
+const onboardingNavItems: NavItem[] = [];
 
 const allNavItems = [
   ...primaryNavItems,
-  ...secondaryNavItems,
   ...supportNavItems,
+  ...onboardingNavItems,
 ];
 
 function isActivePath(pathname: string, href: string) {
@@ -206,7 +151,7 @@ function SidebarBody({
             >
               AeroVision
             </p>
-            <p className="text-xs text-white/40">Reviewer-first release proof</p>
+            <p className="text-xs text-white/40">AI-powered maintenance docs</p>
           </div>
         </div>
       </Link>
@@ -214,36 +159,40 @@ function SidebarBody({
       <nav className="flex-1 space-y-8 overflow-y-auto px-3 py-5">
         <NavSection
           pathname={pathname}
-          title="Primary Workflow"
+          title="Workflow"
           items={primaryNavItems}
           onNavigate={onNavigate}
         />
-        {/* HIDDEN — Supporting section hidden while features are cut */}
-        {secondaryNavItems.length > 0 && (
-          <NavSection
-            pathname={pathname}
-            title="Supporting"
-            items={secondaryNavItems}
-            onNavigate={onNavigate}
-          />
-        )}
         <NavSection
           pathname={pathname}
           title="Operations"
           items={supportNavItems}
           onNavigate={onNavigate}
         />
+        {onboardingNavItems.length > 0 && (
+          <NavSection
+            pathname={pathname}
+            title="Intro & Onboarding"
+            items={onboardingNavItems}
+            onNavigate={onNavigate}
+          />
+        )}
       </nav>
 
       <div
-        className="border-t px-5 py-4 text-xs"
-        style={{
-          borderColor: "rgba(255, 255, 255, 0.08)",
-          color: "rgba(255, 255, 255, 0.34)",
-        }}
+        className="border-t px-5 py-4"
+        style={{ borderColor: "rgba(255, 255, 255, 0.08)" }}
       >
-        <p>AeroVision MVP</p>
-        <p className="mt-1">The Mechanical Vision Corporation</p>
+        <button
+          onClick={() => signOut({ callbackUrl: "/aerovision/login" })}
+          className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-white/50 transition-colors hover:bg-white/6 hover:text-white/80"
+        >
+          <LogOut className="h-4 w-4" />
+          Sign out
+        </button>
+        <p className="mt-3 px-3 text-xs" style={{ color: "rgba(255, 255, 255, 0.34)" }}>
+          The Mechanical Vision Corporation
+        </p>
       </div>
     </div>
   );
@@ -279,7 +228,7 @@ export function Sidebar() {
                   {activeItem?.label || "AeroVision"}
                 </p>
                 <p className="truncate text-xs text-white/40">
-                  {activeItem?.description || "Reviewer-first demo"}
+                  {activeItem?.description || "AI-powered maintenance docs"}
                 </p>
               </div>
             </div>

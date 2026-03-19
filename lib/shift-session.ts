@@ -8,25 +8,25 @@ import {
   canExportShiftToQuantum,
 } from "@/lib/shift-transcript";
 
-// Start a new shift for a technician
+// Start a new shift for a user
 export async function startShift({
-  technicianId,
+  userId,
   organizationId,
   measurementSpecId,
   notes,
 }: {
-  technicianId: string;
+  userId: string;
   organizationId: string;
   measurementSpecId?: string;
   notes?: string;
 }) {
-  // Check for an already-active shift for this technician
+  // Check for an already-active shift for this user
   const activeShift = await prisma.shiftSession.findFirst({
-    where: { technicianId, status: { in: ["active", "paused"] } },
+    where: { userId, status: { in: ["active", "paused"] } },
   });
 
   if (activeShift) {
-    throw new Error(`Technician already has an active shift (${activeShift.id}). End it first.`);
+    throw new Error(`User already has an active shift (${activeShift.id}). End it first.`);
   }
 
   // If a spec was chosen, verify it exists and belongs to the same org
@@ -44,7 +44,7 @@ export async function startShift({
 
   return prisma.shiftSession.create({
     data: {
-      technicianId,
+      userId,
       organizationId,
       measurementSpecId: measurementSpecId || null,
       notes: notes || null,
@@ -52,14 +52,14 @@ export async function startShift({
     },
     include: {
       measurementSpec: true,
-      technician: { select: { firstName: true, lastName: true, badgeNumber: true } },
+      user: { select: { firstName: true, lastName: true, badgeNumber: true } },
     },
   });
 }
 
 // Pause an active shift (e.g., lunch break)
-export async function pauseShift(shiftId: string, technicianId: string) {
-  const shift = await getOwnedShift(shiftId, technicianId);
+export async function pauseShift(shiftId: string, userId: string) {
+  const shift = await getOwnedShift(shiftId, userId);
   if (shift.status !== "active") {
     throw new Error(`Cannot pause a shift that is ${shift.status}`);
   }
@@ -71,8 +71,8 @@ export async function pauseShift(shiftId: string, technicianId: string) {
 }
 
 // Resume a paused shift
-export async function resumeShift(shiftId: string, technicianId: string) {
-  const shift = await getOwnedShift(shiftId, technicianId);
+export async function resumeShift(shiftId: string, userId: string) {
+  const shift = await getOwnedShift(shiftId, userId);
   if (shift.status !== "paused") {
     throw new Error(`Cannot resume a shift that is ${shift.status}`);
   }
@@ -84,8 +84,8 @@ export async function resumeShift(shiftId: string, technicianId: string) {
 }
 
 // End a shift — computes total duration
-export async function endShift(shiftId: string, technicianId: string) {
-  const shift = await getOwnedShift(shiftId, technicianId);
+export async function endShift(shiftId: string, userId: string) {
+  const shift = await getOwnedShift(shiftId, userId);
   if (shift.status === "completed") {
     throw new Error("Shift is already completed");
   }
@@ -111,7 +111,7 @@ export async function getShiftDetail(shiftId: string, organizationId?: string) {
   const shift = await prisma.shiftSession.findUnique({
     where: { id: shiftId },
     include: {
-      technician: { select: { firstName: true, lastName: true, badgeNumber: true } },
+      user: { select: { firstName: true, lastName: true, badgeNumber: true } },
       measurementSpec: true,
       transcriptChunks: {
         select: {
@@ -150,8 +150,8 @@ export async function getShiftDetail(shiftId: string, organizationId?: string) {
 
   const shiftData = {
     id: shift.id,
-    technicianId: shift.technicianId,
-    technician: shift.technician,
+    userId: shift.userId,
+    user: shift.user,
     organizationId: shift.organizationId,
     measurementSpecId: shift.measurementSpecId,
     measurementSpec: shift.measurementSpec,
@@ -190,8 +190,8 @@ export async function getShiftDetail(shiftId: string, organizationId?: string) {
   };
 }
 
-// Helper — fetch a shift and verify the technician owns it
-async function getOwnedShift(shiftId: string, technicianId: string) {
+// Helper — fetch a shift and verify the user owns it
+async function getOwnedShift(shiftId: string, userId: string) {
   const shift = await prisma.shiftSession.findUnique({
     where: { id: shiftId },
   });
@@ -199,7 +199,7 @@ async function getOwnedShift(shiftId: string, technicianId: string) {
   if (!shift) {
     throw new Error("Shift not found");
   }
-  if (shift.technicianId !== technicianId) {
+  if (shift.userId !== userId) {
     throw new Error("Not authorized for this shift");
   }
 

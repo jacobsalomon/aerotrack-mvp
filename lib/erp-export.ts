@@ -9,8 +9,8 @@ export interface ErpExportPayload {
   exportedAt: string;
   shift: {
     id: string;
-    technicianBadge: string;
-    technicianName: string;
+    userBadge: string;
+    userName: string;
     startedAt: string;
     endedAt: string | null;
     durationMinutes: number | null;
@@ -60,7 +60,7 @@ export async function generateErpExport(shiftId: string): Promise<ErpExportPaylo
   const shift = await prisma.shiftSession.findUnique({
     where: { id: shiftId },
     include: {
-      technician: { select: { firstName: true, lastName: true, badgeNumber: true } },
+      user: { select: { firstName: true, lastName: true, badgeNumber: true } },
       measurementSpec: { select: { name: true } },
       transcriptChunks: {
         select: {
@@ -117,8 +117,8 @@ export async function generateErpExport(shiftId: string): Promise<ErpExportPaylo
     exportedAt: new Date().toISOString(),
     shift: {
       id: shift.id,
-      technicianBadge: shift.technician.badgeNumber,
-      technicianName: `${shift.technician.firstName} ${shift.technician.lastName}`,
+      userBadge: shift.user.badgeNumber ?? "",
+      userName: `${shift.user.firstName ?? ""} ${shift.user.lastName ?? ""}`.trim(),
       startedAt: shift.startedAt.toISOString(),
       endedAt: shift.endedAt?.toISOString() || null,
       durationMinutes: shift.totalDurationMin,

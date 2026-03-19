@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import { apiUrl } from "@/lib/api-url";
 
-const DESK_MIC_CHUNK_MS = 6000;
+const DESK_MIC_CHUNK_MS = 15000;
 const DESK_MIC_DEFAULT_DEVICE_ID = "__default__";
 const DESK_MIC_MIME_TYPES = [
   "audio/webm;codecs=opus",
@@ -38,6 +38,7 @@ interface DeskMicDeviceOption {
 
 export interface ShiftDeskMicRecorderHandle {
   isRecording: () => boolean;
+  startRecording: () => Promise<void>;
   stopAndFlush: () => Promise<void>;
 }
 
@@ -46,6 +47,10 @@ interface ShiftDeskMicRecorderProps {
   enabled: boolean;
   onUnauthorized: (response: Response) => boolean;
   onStopComplete?: () => void | Promise<void>;
+  // When true, start recording immediately on mount (no manual click needed)
+  autoStart?: boolean;
+  // When true, render a minimal inline bar instead of the full Card UI
+  compact?: boolean;
 }
 
 function getSupportedDeskMicMimeType(): string {
@@ -75,7 +80,7 @@ export const ShiftDeskMicRecorder = forwardRef<
   ShiftDeskMicRecorderHandle,
   ShiftDeskMicRecorderProps
 >(function ShiftDeskMicRecorder(
-  { shiftId, enabled, onUnauthorized, onStopComplete },
+  { shiftId, enabled, onUnauthorized, onStopComplete, autoStart, compact },
   ref
 ) {
   const [devices, setDevices] = useState<DeskMicDeviceOption[]>([]);
@@ -141,32 +146,54 @@ export const ShiftDeskMicRecorder = forwardRef<
           const mimeType = blob.type || getSupportedDeskMicMimeType() || "audio/webm";
           const extension = getDeskMicFileExtension(mimeType);
           const chunkTimestamp = new Date(chunkStartedAtMs).toISOString();
-          const formData = new FormData();
 
-          formData.append(
-            "audio",
-            blob,
-            `desk-mic-${chunkTimestamp.replace(/[:.]/g, "-")}.${extension}`
-          );
-          formData.append("chunkTimestamp", chunkTimestamp);
+          // Retry up to 2 times on transient failures
+          const MAX_RETRIES = 2;
+          for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            const formData = new FormData();
+            formData.append(
+              "audio",
+              blob,
+              `desk-mic-${chunkTimestamp.replace(/[:.]/g, "-")}.${extension}`
+            );
+            formData.append("chunkTimestamp", chunkTimestamp);
 
-          const response = await fetch(apiUrl(`/api/shifts/${shiftId}/audio`), {
-            method: "POST",
-            body: formData,
-          });
+            const response = await fetch(apiUrl(`/api/shifts/${shiftId}/audio`), {
+              method: "POST",
+              body: formData,
+            });
 
-          if (onUnauthorized(response)) return;
+            if (onUnauthorized(response)) return;
 
-          const payload = await response.json().catch(() => null);
-          if (!response.ok || !payload?.success) {
-            throw new Error(payload?.error || "Failed to upload desk mic chunk");
-          }
+            // Detect if we got redirected to a login page (HTML instead of JSON)
+            const contentType = response.headers.get("content-type") || "";
+            if (!contentType.includes("application/json")) {
+              console.error(`[DeskMic] Got non-JSON response (${contentType}), likely auth redirect`);
+              throw new Error("Session expired — please refresh the page and try again");
+            }
 
-          setUploadedChunks((current) => current + 1);
-          setLastUploadedAt(new Date().toISOString());
-          if (lastErrorRef.current) {
-            lastErrorRef.current = null;
-            setError(null);
+            const payload = await response.json().catch(() => null);
+            if (response.ok && payload?.success) {
+              // Success — break out of retry loop
+              setUploadedChunks((current) => current + 1);
+              setLastUploadedAt(new Date().toISOString());
+              if (lastErrorRef.current) {
+                lastErrorRef.current = null;
+                setError(null);
+              }
+              return;
+            }
+
+            const detail = payload?.error || `HTTP ${response.status}`;
+            // Don't retry client errors (4xx) — only server errors (5xx)
+            if (response.status < 500 || attempt === MAX_RETRIES) {
+              console.error(`[DeskMic] Chunk upload failed (attempt ${attempt + 1}):`, detail);
+              throw new Error(detail);
+            }
+
+            // Wait before retrying (1s, then 2s)
+            console.warn(`[DeskMic] Retrying chunk upload (attempt ${attempt + 2}/${MAX_RETRIES + 1})...`);
+            await new Promise((r) => setTimeout(r, (attempt + 1) * 1000));
           }
         })
         .catch((uploadError) => {
@@ -308,9 +335,10 @@ export const ShiftDeskMicRecorder = forwardRef<
     ref,
     () => ({
       isRecording: () => state === "recording" || state === "requesting" || state === "stopping",
+      startRecording,
       stopAndFlush,
     }),
-    [state, stopAndFlush]
+    [state, startRecording, stopAndFlush]
   );
 
   useEffect(() => {
@@ -324,6 +352,15 @@ export const ShiftDeskMicRecorder = forwardRef<
     mediaDevices.addEventListener("devicechange", refreshDevices);
     return () => mediaDevices.removeEventListener("devicechange", refreshDevices);
   }, [refreshDevices]);
+
+  // Auto-start recording on mount when autoStart is true
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (autoStart && enabled && !autoStartedRef.current && state === "idle") {
+      autoStartedRef.current = true;
+      void startRecording();
+    }
+  }, [autoStart, enabled, state, startRecording]);
 
   useEffect(() => {
     if (!enabled && mediaRecorderRef.current?.state === "recording") {
@@ -356,6 +393,66 @@ export const ShiftDeskMicRecorder = forwardRef<
         : state === "requesting"
           ? "Requesting microphone access"
           : "Ready to record";
+
+  // Compact mode: minimal inline bar for embedding in other views
+  if (compact) {
+    return (
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm" style={{ color: isRecording ? "rgb(22, 163, 74)" : "rgb(107, 114, 128)" }}>
+          {isRecording ? (
+            <>
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+              </span>
+              <span className="font-medium">Recording</span>
+              <span className="text-xs" style={{ color: "rgb(156, 163, 175)" }}>
+                {uploadedChunks} chunk{uploadedChunks === 1 ? "" : "s"} uploaded
+                {pendingChunks > 0 ? ` · ${pendingChunks} sending` : ""}
+              </span>
+            </>
+          ) : state === "requesting" ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Requesting microphone...</span>
+            </>
+          ) : (
+            <>
+              <Mic className="h-4 w-4" />
+              <span>Mic idle</span>
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {error && (
+            <span className="text-xs" style={{ color: "rgb(220, 38, 38)" }}>
+              {error.length > 120 ? error.slice(0, 120) + "..." : error}
+            </span>
+          )}
+          {isRecording ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void stopAndFlush()}
+              disabled={isBusy}
+            >
+              {state === "stopping" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Square className="h-3.5 w-3.5" />}
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              onClick={() => void startRecording()}
+              disabled={!enabled || isBusy}
+              className="gap-1.5"
+            >
+              <Mic className="h-3.5 w-3.5" />
+              Record
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Card>

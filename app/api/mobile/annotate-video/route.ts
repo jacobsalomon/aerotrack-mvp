@@ -1,0 +1,180 @@
+// POST /api/mobile/annotate-video — Real-time video annotation (Pass 1)
+// Takes a 2-minute video chunk, uploads to Gemini File API, runs Gemini 2.0 Flash
+// Returns timestamped searchable tags (part numbers, actions, tools, text)
+// Called automatically after each video chunk upload during capture
+// Protected by API key authentication
+
+// Allow up to 60 seconds for Gemini video annotation
+export const maxDuration = 60;
+
+import { prisma } from "@/lib/db";
+import { authenticateRequest } from "@/lib/mobile-auth";
+import { clampConfidence } from "@/lib/ai/utils";
+import { isAllowedEvidenceUrl } from "@/lib/evidence-url";
+import {
+  uploadFileToGemini,
+  waitForFileProcessing,
+  annotateVideoChunk,
+  deleteGeminiFile,
+} from "@/lib/ai/gemini";
+import { NextResponse } from "next/server";
+
+export async function POST(request: Request) {
+  const auth = await authenticateRequest(request);
+  if ("error" in auth) return auth.error;
+
+  // Mobile users must belong to an organization
+  if (!auth.user.organizationId) {
+    return NextResponse.json(
+      { success: false, error: "Organization required" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const body = await request.json();
+    const { evidenceId } = body;
+
+    if (!evidenceId) {
+      return NextResponse.json(
+        { success: false, error: "evidenceId is required" },
+        { status: 400 }
+      );
+    }
+
+    // Look up the evidence record to get the video file
+    const evidence = await prisma.captureEvidence.findUnique({
+      where: { id: evidenceId },
+      include: { session: true },
+    });
+
+    if (!evidence) {
+      return NextResponse.json(
+        { success: false, error: "Evidence not found" },
+        { status: 404 }
+      );
+    }
+
+    if (evidence.session.userId !== auth.user.id) {
+      return NextResponse.json(
+        { success: false, error: "Not authorized for this evidence" },
+        { status: 403 }
+      );
+    }
+
+    if (evidence.type !== "VIDEO") {
+      return NextResponse.json(
+        { success: false, error: "Evidence must be a video" },
+        { status: 400 }
+      );
+    }
+
+    // Check for existing annotations to prevent duplicates on retry
+    const existingAnnotations = await prisma.videoAnnotation.findMany({
+      where: { evidenceId },
+    });
+    if (existingAnnotations.length > 0) {
+      return NextResponse.json({
+        success: true,
+        cached: true,
+        data: {
+          annotations: existingAnnotations,
+          annotationCount: existingAnnotations.length,
+          message: "Annotations already exist for this evidence",
+        },
+      });
+    }
+
+    if (!isAllowedEvidenceUrl(evidence.fileUrl)) {
+      return NextResponse.json(
+        { success: false, error: "Evidence URL host is not allowed" },
+        { status: 400 }
+      );
+    }
+
+    // Download the video file from Vercel Blob
+    const fileResponse = await fetch(evidence.fileUrl);
+    if (!fileResponse.ok) {
+      return NextResponse.json(
+        { success: false, error: "Could not retrieve video file" },
+        { status: 500 }
+      );
+    }
+    const fileBuffer = Buffer.from(await fileResponse.arrayBuffer());
+
+    const startTime = Date.now();
+
+    // Step 1: Upload video to Gemini File API
+    const uploadedFile = await uploadFileToGemini(
+      fileBuffer,
+      evidence.mimeType,
+      `video-chunk-${evidenceId}`
+    );
+
+    // Step 2: Wait for Gemini to process the video
+    const processedFile = await waitForFileProcessing(uploadedFile.name);
+
+    // Step 3: Run annotation with Gemini 2.0 Flash
+    const annotations = await annotateVideoChunk(
+      processedFile.uri,
+      evidence.mimeType
+    );
+
+    const latencyMs = Date.now() - startTime;
+
+    // Step 4: Save annotations to database
+    const savedAnnotations = [];
+    for (const annotation of annotations) {
+      const saved = await prisma.videoAnnotation.create({
+        data: {
+          evidenceId,
+          timestamp: annotation.timestamp,
+          tag: annotation.tag,
+          description: annotation.description,
+          confidence: clampConfidence(annotation.confidence),
+        },
+      });
+      savedAnnotations.push(saved);
+    }
+
+    // Step 5: Clean up the file from Gemini (don't leave files hanging around)
+    deleteGeminiFile(uploadedFile.name).catch((err) =>
+      console.warn("Failed to delete Gemini file:", err)
+    );
+
+    // Audit log
+    await prisma.auditLogEntry.create({
+      data: {
+        organizationId: auth.user.organizationId,
+        userId: auth.user.id,
+        action: "video_annotated",
+        entityType: "CaptureEvidence",
+        entityId: evidenceId,
+        metadata: JSON.stringify({
+          model: process.env.VIDEO_ANNOTATION_MODEL || "gemini-2.0-flash",
+          annotationCount: savedAnnotations.length,
+          latencyMs,
+          tags: savedAnnotations.map((a) => a.tag),
+        }),
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        annotations: savedAnnotations,
+        annotationCount: savedAnnotations.length,
+        latencyMs,
+      },
+    });
+  } catch (error) {
+    console.error("Annotate video error:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "Video annotation failed",
+      },
+      { status: 500 }
+    );
+  }
+}
