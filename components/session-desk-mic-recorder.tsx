@@ -23,8 +23,11 @@ import {
 } from "@/components/ui/select";
 import { apiUrl } from "@/lib/api-url";
 
-// How often to chop the recording and upload a chunk (milliseconds)
-const CHUNK_INTERVAL_MS = 6000;
+// How often to stop/restart the recorder and upload a chunk (milliseconds).
+// We stop and restart (instead of using MediaRecorder's timeslice param) because
+// timeslice produces chunks without WebM headers — only the first chunk is a valid
+// standalone file. Transcription APIs reject headerless chunks as "corrupted audio".
+const CHUNK_INTERVAL_MS = 15_000;
 const DEFAULT_DEVICE_ID = "__default__";
 
 // Browser support varies — Chrome uses webm/opus, Safari uses mp4/aac
@@ -88,11 +91,12 @@ export const SessionDeskMicRecorder = forwardRef<
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const uploadChainRef = useRef<Promise<void>>(Promise.resolve());
   const currentChunkStartRef = useRef<number | null>(null);
-  const stopPromiseRef = useRef<Promise<void> | null>(null);
-  const stopResolveRef = useRef<(() => void) | null>(null);
   const stopInFlightRef = useRef<Promise<void> | null>(null);
   const startTimeRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const chunkCycleRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isFinalStopRef = useRef(false);
+  const mimeTypeRef = useRef<string>("");
 
   // Elapsed time timer
   useEffect(() => {
@@ -115,12 +119,15 @@ export const SessionDeskMicRecorder = forwardRef<
   }, [state]);
 
   const cleanupMedia = useCallback(() => {
+    if (chunkCycleRef.current) {
+      clearInterval(chunkCycleRef.current);
+      chunkCycleRef.current = null;
+    }
     mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     mediaStreamRef.current = null;
     mediaRecorderRef.current = null;
     currentChunkStartRef.current = null;
-    stopPromiseRef.current = null;
-    stopResolveRef.current = null;
+    isFinalStopRef.current = false;
   }, []);
 
   const refreshDevices = useCallback(async () => {
@@ -150,7 +157,7 @@ export const SessionDeskMicRecorder = forwardRef<
   // Upload one audio chunk to the session audio endpoint
   const queueChunkUpload = useCallback(
     (blob: Blob, chunkStartMs: number) => {
-      if (!blob.size) return;
+      if (!blob.size || blob.size < 100) return;
       setPendingChunks((c) => c + 1);
 
       uploadChainRef.current = uploadChainRef.current
@@ -197,6 +204,43 @@ export const SessionDeskMicRecorder = forwardRef<
     [sessionId, onTranscript, onChunkUploaded, onError]
   );
 
+  // Stop the current recorder, collect the complete blob, upload it,
+  // then restart on the same stream. Each blob gets a fresh container header.
+  const cycleRecorder = useCallback(() => {
+    const recorder = mediaRecorderRef.current;
+    const stream = mediaStreamRef.current;
+    if (!recorder || !stream || recorder.state === "inactive") return;
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 100) {
+        const chunkStart = currentChunkStartRef.current ?? Date.now();
+        queueChunkUpload(event.data, chunkStart);
+      }
+    };
+
+    recorder.onstop = () => {
+      if (isFinalStopRef.current) return;
+      currentChunkStartRef.current = Date.now();
+      const mime = mimeTypeRef.current;
+      const newRecorder = mime
+        ? new MediaRecorder(stream, { mimeType: mime })
+        : new MediaRecorder(stream);
+      newRecorder.ondataavailable = (ev) => {
+        if (ev.data.size > 100) {
+          const start = currentChunkStartRef.current ?? Date.now();
+          queueChunkUpload(ev.data, start);
+        }
+      };
+      newRecorder.onerror = () => {
+        setError("Browser stopped capturing the mic unexpectedly.");
+      };
+      mediaRecorderRef.current = newRecorder;
+      newRecorder.start();
+    };
+
+    recorder.stop();
+  }, [queueChunkUpload]);
+
   const stopAndFlush = useCallback(async () => {
     if (stopInFlightRef.current) {
       await stopInFlightRef.current;
@@ -211,31 +255,35 @@ export const SessionDeskMicRecorder = forwardRef<
     }
 
     setState("stopping");
+    isFinalStopRef.current = true;
 
-    const stopPromise =
-      stopPromiseRef.current ||
-      new Promise<void>((resolve) => {
-        stopResolveRef.current = resolve;
-      });
-    stopPromiseRef.current = stopPromise;
-
-    stopInFlightRef.current = (async () => {
+    stopInFlightRef.current = new Promise<void>((resolve) => {
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 100) {
+          const chunkStart = currentChunkStartRef.current ?? Date.now();
+          queueChunkUpload(event.data, chunkStart);
+        }
+      };
+      recorder.onstop = () => resolve();
       recorder.stop();
-      await stopPromise;
-      await uploadChainRef.current;
-      cleanupMedia();
-      setState("idle");
-    })()
+    })
+      .then(() => uploadChainRef.current)
+      .then(() => {
+        cleanupMedia();
+        setState("idle");
+      })
       .catch((err) => {
         const msg = err instanceof Error ? err.message : "Could not stop recording cleanly.";
         setError(msg);
+        cleanupMedia();
+        setState("idle");
       })
       .finally(() => {
         stopInFlightRef.current = null;
       });
 
     await stopInFlightRef.current;
-  }, [cleanupMedia]);
+  }, [cleanupMedia, queueChunkUpload]);
 
   // Mute/unmute — pauses/resumes the MediaRecorder without stopping the session
   const toggleMute = useCallback(() => {
@@ -258,6 +306,7 @@ export const SessionDeskMicRecorder = forwardRef<
     setError(null);
     setUploadedChunks(0);
     setPendingChunks(0);
+    isFinalStopRef.current = false;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -277,34 +326,31 @@ export const SessionDeskMicRecorder = forwardRef<
       await refreshDevices();
 
       const mime = getSupportedMimeType();
+      mimeTypeRef.current = mime;
       const recorder = mime
         ? new MediaRecorder(stream, { mimeType: mime })
         : new MediaRecorder(stream);
 
       recorder.ondataavailable = (event) => {
-        if (!event.data.size) return;
-        const chunkStart = currentChunkStartRef.current ?? Date.now();
-        currentChunkStartRef.current = Date.now();
-        queueChunkUpload(event.data, chunkStart);
+        if (event.data.size > 100) {
+          const chunkStart = currentChunkStartRef.current ?? Date.now();
+          queueChunkUpload(event.data, chunkStart);
+        }
       };
 
       recorder.onerror = () => {
         setError("Browser stopped capturing the mic unexpectedly.");
       };
 
-      recorder.onstop = () => {
-        stopResolveRef.current?.();
-        stopResolveRef.current = null;
-      };
-
-      stopPromiseRef.current = new Promise<void>((resolve) => {
-        stopResolveRef.current = resolve;
-      });
-
       currentChunkStartRef.current = Date.now();
       mediaRecorderRef.current = recorder;
-      recorder.start(CHUNK_INTERVAL_MS);
+      recorder.start(); // No timeslice — we cycle manually
       setState("recording");
+
+      // Every CHUNK_INTERVAL_MS: stop recorder, collect complete blob, restart
+      chunkCycleRef.current = setInterval(() => {
+        cycleRecorder();
+      }, CHUNK_INTERVAL_MS);
     } catch (err) {
       cleanupMedia();
       setState("idle");
@@ -315,7 +361,7 @@ export const SessionDeskMicRecorder = forwardRef<
         setError(msg);
       }
     }
-  }, [cleanupMedia, queueChunkUpload, refreshDevices, selectedDeviceId]);
+  }, [cleanupMedia, cycleRecorder, queueChunkUpload, refreshDevices, selectedDeviceId]);
 
   // Expose handle for parent to check/stop recording
   useImperativeHandle(
@@ -354,6 +400,7 @@ export const SessionDeskMicRecorder = forwardRef<
   // Stop recording on unmount (user navigated away from session page)
   useEffect(() => {
     return () => {
+      isFinalStopRef.current = true;
       if (
         mediaRecorderRef.current?.state &&
         mediaRecorderRef.current.state !== "inactive"
@@ -371,10 +418,8 @@ export const SessionDeskMicRecorder = forwardRef<
         mediaRecorderRef.current?.state === "recording" ||
         mediaRecorderRef.current?.state === "paused"
       ) {
-        // Trigger final chunk
+        isFinalStopRef.current = true;
         mediaRecorderRef.current.stop();
-        // Can't reliably await async work in beforeunload,
-        // but stopping the recorder fires ondataavailable which queues the upload
         e.preventDefault();
       }
     };

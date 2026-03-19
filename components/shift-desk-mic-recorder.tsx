@@ -20,7 +20,11 @@ import {
 } from "@/components/ui/select";
 import { apiUrl } from "@/lib/api-url";
 
-const DESK_MIC_CHUNK_MS = 15000;
+// How often to stop/restart the recorder and upload a chunk (milliseconds).
+// We stop and restart (instead of using MediaRecorder's timeslice param) because
+// timeslice produces chunks without WebM headers — only the first chunk is a valid
+// standalone file. Transcription APIs reject headerless chunks as "corrupted audio".
+const DESK_MIC_CHUNK_MS = 15_000;
 const DESK_MIC_DEFAULT_DEVICE_ID = "__default__";
 const DESK_MIC_MIME_TYPES = [
   "audio/webm;codecs=opus",
@@ -95,18 +99,22 @@ export const ShiftDeskMicRecorder = forwardRef<
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const uploadChainRef = useRef<Promise<void>>(Promise.resolve());
   const currentChunkStartedAtRef = useRef<number | null>(null);
-  const stopPromiseRef = useRef<Promise<void> | null>(null);
-  const stopPromiseResolveRef = useRef<(() => void) | null>(null);
   const stopInFlightRef = useRef<Promise<void> | null>(null);
   const lastErrorRef = useRef<string | null>(null);
+  const chunkCycleRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isFinalStopRef = useRef(false);
+  const mimeTypeRef = useRef<string>("");
 
   const cleanupMedia = useCallback(() => {
+    if (chunkCycleRef.current) {
+      clearInterval(chunkCycleRef.current);
+      chunkCycleRef.current = null;
+    }
+    isFinalStopRef.current = false;
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     mediaStreamRef.current = null;
     mediaRecorderRef.current = null;
     currentChunkStartedAtRef.current = null;
-    stopPromiseRef.current = null;
-    stopPromiseResolveRef.current = null;
   }, []);
 
   const refreshDevices = useCallback(async () => {
@@ -212,6 +220,41 @@ export const ShiftDeskMicRecorder = forwardRef<
     [onUnauthorized, shiftId]
   );
 
+  // Stop the current recorder, collect the complete blob, upload it,
+  // then restart on the same stream. Each blob gets a fresh container header.
+  const cycleRecorder = useCallback(() => {
+    const recorder = mediaRecorderRef.current;
+    const stream = mediaStreamRef.current;
+    if (!recorder || !stream || recorder.state === "inactive") return;
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 100) {
+        const chunkStart = currentChunkStartedAtRef.current ?? Date.now();
+        queueChunkUpload(event.data, chunkStart);
+      }
+    };
+    recorder.onstop = () => {
+      if (isFinalStopRef.current) return;
+      currentChunkStartedAtRef.current = Date.now();
+      const mime = mimeTypeRef.current;
+      const newRecorder = mime
+        ? new MediaRecorder(stream, { mimeType: mime })
+        : new MediaRecorder(stream);
+      newRecorder.ondataavailable = (ev) => {
+        if (ev.data.size > 100) {
+          const start = currentChunkStartedAtRef.current ?? Date.now();
+          queueChunkUpload(ev.data, start);
+        }
+      };
+      newRecorder.onerror = () => {
+        setError("The browser stopped capturing the desk mic unexpectedly.");
+      };
+      mediaRecorderRef.current = newRecorder;
+      newRecorder.start();
+    };
+    recorder.stop();
+  }, [queueChunkUpload]);
+
   const stopAndFlush = useCallback(async () => {
     if (stopInFlightRef.current) {
       await stopInFlightRef.current;
@@ -226,35 +269,39 @@ export const ShiftDeskMicRecorder = forwardRef<
     }
 
     setState("stopping");
+    isFinalStopRef.current = true;
 
-    const stopPromise =
-      stopPromiseRef.current ||
-      new Promise<void>((resolve) => {
-        stopPromiseResolveRef.current = resolve;
-      });
-
-    stopPromiseRef.current = stopPromise;
-    stopInFlightRef.current = (async () => {
+    stopInFlightRef.current = new Promise<void>((resolve) => {
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 100) {
+          const chunkStart = currentChunkStartedAtRef.current ?? Date.now();
+          queueChunkUpload(event.data, chunkStart);
+        }
+      };
+      recorder.onstop = () => resolve();
       recorder.stop();
-      await stopPromise;
-      await uploadChainRef.current;
-      cleanupMedia();
-      setState("idle");
-      await onStopComplete?.();
-    })()
+    })
+      .then(() => uploadChainRef.current)
+      .then(() => {
+        cleanupMedia();
+        setState("idle");
+        return onStopComplete?.();
+      })
       .catch((stopError) => {
         const message =
           stopError instanceof Error
             ? stopError.message
             : "AeroVision could not finish the desk-mic recording cleanly.";
         setError(message);
+        cleanupMedia();
+        setState("idle");
       })
       .finally(() => {
         stopInFlightRef.current = null;
       });
 
     await stopInFlightRef.current;
-  }, [cleanupMedia, onStopComplete]);
+  }, [cleanupMedia, onStopComplete, queueChunkUpload]);
 
   const startRecording = useCallback(async () => {
     if (!enabled || typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
@@ -267,6 +314,7 @@ export const ShiftDeskMicRecorder = forwardRef<
     setPendingChunks(0);
     setLastUploadedAt(null);
     lastErrorRef.current = null;
+    isFinalStopRef.current = false;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -286,35 +334,31 @@ export const ShiftDeskMicRecorder = forwardRef<
       await refreshDevices();
 
       const supportedMimeType = getSupportedDeskMicMimeType();
+      mimeTypeRef.current = supportedMimeType;
       const recorder = supportedMimeType
         ? new MediaRecorder(stream, { mimeType: supportedMimeType })
         : new MediaRecorder(stream);
 
       recorder.ondataavailable = (event) => {
-        if (!event.data.size) return;
-
-        const chunkStartedAtMs = currentChunkStartedAtRef.current ?? Date.now();
-        currentChunkStartedAtRef.current = Date.now();
-        queueChunkUpload(event.data, chunkStartedAtMs);
+        if (event.data.size > 100) {
+          const chunkStart = currentChunkStartedAtRef.current ?? Date.now();
+          queueChunkUpload(event.data, chunkStart);
+        }
       };
 
       recorder.onerror = () => {
         setError("The browser stopped capturing the desk mic unexpectedly.");
       };
 
-      recorder.onstop = () => {
-        stopPromiseResolveRef.current?.();
-        stopPromiseResolveRef.current = null;
-      };
-
-      stopPromiseRef.current = new Promise<void>((resolve) => {
-        stopPromiseResolveRef.current = resolve;
-      });
-
       currentChunkStartedAtRef.current = Date.now();
       mediaRecorderRef.current = recorder;
-      recorder.start(DESK_MIC_CHUNK_MS);
+      recorder.start(); // No timeslice — we cycle manually
       setState("recording");
+
+      // Every DESK_MIC_CHUNK_MS: stop recorder, collect complete blob, restart
+      chunkCycleRef.current = setInterval(() => {
+        cycleRecorder();
+      }, DESK_MIC_CHUNK_MS);
     } catch (startError) {
       cleanupMedia();
       setState("idle");
@@ -329,7 +373,7 @@ export const ShiftDeskMicRecorder = forwardRef<
         setError(message);
       }
     }
-  }, [cleanupMedia, enabled, queueChunkUpload, refreshDevices, selectedDeviceId]);
+  }, [cleanupMedia, cycleRecorder, enabled, queueChunkUpload, refreshDevices, selectedDeviceId]);
 
   useImperativeHandle(
     ref,
