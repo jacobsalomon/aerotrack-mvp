@@ -4,7 +4,7 @@
 // Shows: header, evidence gallery (photos/video/audio with playback),
 // AI analysis + transcript, generated documents with approve/reject, audit trail
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { LiveCaptureView } from "@/components/live-capture-view";
@@ -381,6 +381,8 @@ export default function SessionDetailPage() {
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<SessionDetailLoadError | null>(null);
+  // Track whether initial data has loaded so background polls don't flash a spinner
+  const hasLoadedOnce = useRef(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [expandedDoc, setExpandedDoc] = useState<string | null>(null);
   const [hasAutoExpanded, setHasAutoExpanded] = useState(false);
@@ -417,7 +419,10 @@ export default function SessionDetailPage() {
   const [expectedStepsSaved, setExpectedStepsSaved] = useState(false);
 
   const fetchSession = useCallback(async () => {
-    setLoading(true);
+    // Only show the full-page loading spinner on the very first load.
+    // Background polls silently update data so the live capture view doesn't blink.
+    const isFirstLoad = !hasLoadedOnce.current;
+    if (isFirstLoad) setLoading(true);
     setError(null);
     try {
       const res = await fetch(apiUrl(`/api/sessions/${sessionId}`));
@@ -434,11 +439,13 @@ export default function SessionDetailPage() {
       }
       const data = payload;
       setSession(data);
+      hasLoadedOnce.current = true;
     } catch (err) {
-      setSession(null);
+      // Only blank the session on initial load failures, not background poll hiccups
+      if (isFirstLoad) setSession(null);
       setError(buildSessionDetailLoadError(err, sessionId));
     } finally {
-      setLoading(false);
+      if (isFirstLoad) setLoading(false);
     }
   }, [sessionId]);
 

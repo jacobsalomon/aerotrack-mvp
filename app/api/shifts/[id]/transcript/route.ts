@@ -19,13 +19,27 @@ export async function GET(request: Request, { params }: RouteParams) {
   try {
     const chunks = await prisma.shiftTranscriptChunk.findMany({
       where: { shiftSessionId: shiftId },
-      select: { id: true, transcript: true, startedAt: true, createdAt: true },
+      select: {
+        id: true,
+        transcript: true,
+        correctedTranscript: true,
+        correctionStatus: true,
+        startedAt: true,
+        createdAt: true,
+      },
       orderBy: [{ startedAt: "asc" }, { createdAt: "asc" }],
     });
 
+    // Return the best available text: corrected if available, otherwise raw
     return NextResponse.json({
       success: true,
-      chunks: chunks.map((c) => ({ id: c.id, text: c.transcript, at: c.startedAt || c.createdAt })),
+      chunks: chunks.map((c) => ({
+        id: c.id,
+        text: c.correctedTranscript || c.transcript,
+        rawText: c.transcript,
+        correctionStatus: c.correctionStatus,
+        at: c.startedAt || c.createdAt,
+      })),
     });
   } catch (error) {
     console.error("Get transcript chunks error:", error);

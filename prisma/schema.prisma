@@ -661,14 +661,16 @@ model ShiftSession {
 }
 
 model ShiftTranscriptChunk {
-  id             String   @id @default(cuid())
-  shiftSessionId String
-  shiftSession   ShiftSession @relation(fields: [shiftSessionId], references: [id], onDelete: Cascade)
-  transcript     String
-  source         String   @default("desk_mic")
-  startedAt      DateTime?
-  durationSeconds Float?
-  createdAt      DateTime @default(now())
+  id                  String   @id @default(cuid())
+  shiftSessionId      String
+  shiftSession        ShiftSession @relation(fields: [shiftSessionId], references: [id], onDelete: Cascade)
+  transcript          String
+  correctedTranscript String?
+  correctionStatus    String   @default("raw") // raw | correcting | corrected | failed
+  source              String   @default("desk_mic")
+  startedAt           DateTime?
+  durationSeconds     Float?
+  createdAt           DateTime @default(now())
 
   @@index([shiftSessionId, startedAt])
 }

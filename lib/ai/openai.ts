@@ -85,7 +85,7 @@ export interface ImageOcrResult {
 
 // ──────────────────────────────────────────────────────
 // Transcribe audio with automatic fallback chain
-// Chain: gpt-4o-transcribe → gpt-4o-mini-transcribe
+// Chain: gpt-4o-transcribe → ElevenLabs Scribe v2 → gpt-4o-mini-transcribe
 // Falls back through TRANSCRIPTION_MODELS automatically
 // ──────────────────────────────────────────────────────
 export async function transcribeAudio(
@@ -97,41 +97,123 @@ export async function transcribeAudio(
     timeoutMs: 25000,
     taskName: "audio_transcription",
     execute: async (model) => {
-      const apiKey = process.env.OPENAI_API_KEY;
-      if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
-
-      const formData = new FormData();
-      formData.append("file", audioFile, fileName);
-      formData.append("model", model.id);
-      formData.append("language", "en");
-      formData.append("response_format", "verbose_json");
-      formData.append("timestamp_granularities[]", "word");
-      formData.append("prompt", AEROSPACE_VOCABULARY_PROMPT);
-
-      const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${apiKey}` },
-        body: formData,
-        signal: AbortSignal.timeout(25000),
-      });
-
-      if (!response.ok) {
-        const err = await response.text();
-        throw new Error(`Transcription failed (${response.status}): ${err.slice(0, 200)}`);
+      if (model.provider === "elevenlabs") {
+        return transcribeWithElevenLabs(audioFile, fileName, model.id);
       }
-
-      const data = await response.json();
-      return {
-        text: data.text || "",
-        duration: data.duration || 0,
-        words: data.words || [],
-        language: data.language || "en",
-        model: model.id,
-      } as TranscriptionResult;
+      return transcribeWithOpenAI(audioFile, fileName, model.id);
     },
   });
 
   return result.data;
+}
+
+// OpenAI transcription (gpt-4o-transcribe, gpt-4o-mini-transcribe)
+async function transcribeWithOpenAI(
+  audioFile: File | Blob,
+  fileName: string,
+  modelId: string
+): Promise<TranscriptionResult> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
+
+  const formData = new FormData();
+  formData.append("file", audioFile, fileName);
+  formData.append("model", modelId);
+  formData.append("language", "en");
+  formData.append("response_format", "verbose_json");
+  formData.append("timestamp_granularities[]", "word");
+  formData.append("prompt", AEROSPACE_VOCABULARY_PROMPT);
+
+  const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: formData,
+    signal: AbortSignal.timeout(25000),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`OpenAI transcription failed (${response.status}): ${err.slice(0, 200)}`);
+  }
+
+  const data = await response.json();
+  return {
+    text: data.text || "",
+    duration: data.duration || 0,
+    words: data.words || [],
+    language: data.language || "en",
+    model: modelId,
+  };
+}
+
+// ElevenLabs Scribe v2 transcription
+async function transcribeWithElevenLabs(
+  audioFile: File | Blob,
+  fileName: string,
+  modelId: string
+): Promise<TranscriptionResult> {
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) throw new Error("ELEVENLABS_API_KEY is not set");
+
+  // Build aerospace keyterms for ElevenLabs (max 100 terms)
+  const keyterms = [
+    "P/N", "S/N", "NDT", "CMM", "FAR", "8130-3", "MRO", "AOG", "IPC",
+    "881700-1089", "5052-A123", "ft-lbs", "in-lbs", "N-m", "psi", "psig",
+    "torque", "torqued", "borescope", "run-out", "backlash", "end-play",
+    "Honeywell", "Pratt Whitney", "Collins Aerospace", "Safran", "Parker Hannifin",
+    "Hamilton Sundstrand", "Rolls-Royce", "Eaton", "Moog", "Dukes", "Crane",
+    "hydraulic pump", "fuel control unit", "actuator", "servo valve",
+    "accumulator", "heat exchanger", "turbine blade", "compressor rotor",
+    "bearing", "seal", "gasket", "O-ring", "bushing", "shim", "spacer",
+    "serviceable", "unserviceable", "BER", "beyond economical repair",
+    "safety wire", "safety wired", "cotter pin", "locknut", "overhaul",
+    "thousandths", "mils", "microinches", "axial play", "radial play",
+  ];
+
+  const formData = new FormData();
+  formData.append("file", audioFile, fileName);
+  formData.append("model_id", modelId);
+  formData.append("language_code", "eng");
+  formData.append("timestamps_granularity", "word");
+  formData.append("tag_audio_events", "false");
+  // Add keyterms so ElevenLabs recognizes aerospace vocabulary
+  for (const term of keyterms) {
+    formData.append("keyterms[]", term);
+  }
+
+  const response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+    method: "POST",
+    headers: { "xi-api-key": apiKey },
+    body: formData,
+    signal: AbortSignal.timeout(25000),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`ElevenLabs transcription failed (${response.status}): ${err.slice(0, 200)}`);
+  }
+
+  const data = await response.json();
+
+  // Map ElevenLabs word format to our TranscriptionWord format
+  const words: TranscriptionWord[] = (data.words || [])
+    .filter((w: { type?: string }) => w.type === "word")
+    .map((w: { text: string; start: number; end: number }) => ({
+      word: w.text,
+      start: w.start,
+      end: w.end,
+    }));
+
+  // Estimate duration from the last word's end time
+  const duration = words.length > 0 ? words[words.length - 1].end : 0;
+
+  return {
+    text: data.text || "",
+    duration,
+    words,
+    language: data.language_code || "en",
+    model: modelId,
+  };
 }
 
 export async function transcribeWithFallback(

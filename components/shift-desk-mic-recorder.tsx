@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import { apiUrl } from "@/lib/api-url";
 
-const DESK_MIC_CHUNK_MS = 6000;
+const DESK_MIC_CHUNK_MS = 15000;
 const DESK_MIC_DEFAULT_DEVICE_ID = "__default__";
 const DESK_MIC_MIME_TYPES = [
   "audio/webm;codecs=opus",
@@ -146,32 +146,54 @@ export const ShiftDeskMicRecorder = forwardRef<
           const mimeType = blob.type || getSupportedDeskMicMimeType() || "audio/webm";
           const extension = getDeskMicFileExtension(mimeType);
           const chunkTimestamp = new Date(chunkStartedAtMs).toISOString();
-          const formData = new FormData();
 
-          formData.append(
-            "audio",
-            blob,
-            `desk-mic-${chunkTimestamp.replace(/[:.]/g, "-")}.${extension}`
-          );
-          formData.append("chunkTimestamp", chunkTimestamp);
+          // Retry up to 2 times on transient failures
+          const MAX_RETRIES = 2;
+          for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            const formData = new FormData();
+            formData.append(
+              "audio",
+              blob,
+              `desk-mic-${chunkTimestamp.replace(/[:.]/g, "-")}.${extension}`
+            );
+            formData.append("chunkTimestamp", chunkTimestamp);
 
-          const response = await fetch(apiUrl(`/api/shifts/${shiftId}/audio`), {
-            method: "POST",
-            body: formData,
-          });
+            const response = await fetch(apiUrl(`/api/shifts/${shiftId}/audio`), {
+              method: "POST",
+              body: formData,
+            });
 
-          if (onUnauthorized(response)) return;
+            if (onUnauthorized(response)) return;
 
-          const payload = await response.json().catch(() => null);
-          if (!response.ok || !payload?.success) {
-            throw new Error(payload?.error || "Failed to upload desk mic chunk");
-          }
+            // Detect if we got redirected to a login page (HTML instead of JSON)
+            const contentType = response.headers.get("content-type") || "";
+            if (!contentType.includes("application/json")) {
+              console.error(`[DeskMic] Got non-JSON response (${contentType}), likely auth redirect`);
+              throw new Error("Session expired — please refresh the page and try again");
+            }
 
-          setUploadedChunks((current) => current + 1);
-          setLastUploadedAt(new Date().toISOString());
-          if (lastErrorRef.current) {
-            lastErrorRef.current = null;
-            setError(null);
+            const payload = await response.json().catch(() => null);
+            if (response.ok && payload?.success) {
+              // Success — break out of retry loop
+              setUploadedChunks((current) => current + 1);
+              setLastUploadedAt(new Date().toISOString());
+              if (lastErrorRef.current) {
+                lastErrorRef.current = null;
+                setError(null);
+              }
+              return;
+            }
+
+            const detail = payload?.error || `HTTP ${response.status}`;
+            // Don't retry client errors (4xx) — only server errors (5xx)
+            if (response.status < 500 || attempt === MAX_RETRIES) {
+              console.error(`[DeskMic] Chunk upload failed (attempt ${attempt + 1}):`, detail);
+              throw new Error(detail);
+            }
+
+            // Wait before retrying (1s, then 2s)
+            console.warn(`[DeskMic] Retrying chunk upload (attempt ${attempt + 2}/${MAX_RETRIES + 1})...`);
+            await new Promise((r) => setTimeout(r, (attempt + 1) * 1000));
           }
         })
         .catch((uploadError) => {
@@ -404,7 +426,7 @@ export const ShiftDeskMicRecorder = forwardRef<
         <div className="flex items-center gap-2">
           {error && (
             <span className="text-xs" style={{ color: "rgb(220, 38, 38)" }}>
-              {error.length > 50 ? error.slice(0, 50) + "..." : error}
+              {error.length > 120 ? error.slice(0, 120) + "..." : error}
             </span>
           )}
           {isRecording ? (

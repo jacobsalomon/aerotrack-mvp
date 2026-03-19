@@ -1,9 +1,11 @@
 "use client";
 
 // Live Capture View — shown when a session is actively capturing (status === "capturing").
+// Three-layer transcript architecture:
+//   1. Web Speech API — instant draft text (local only, italic)
+//   2. ElevenLabs Scribe v2 — server-transcribed 15s chunks (normal weight)
+//   3. LLM correction — cleaned up text with formatted measurements/part numbers (checkmark)
 // Two-panel layout: measurements on the left, live transcript on the right.
-// Recording starts immediately on mount. Uses ShiftDeskMicRecorder (compact mode)
-// for audio recording/transcription and MeasurementFeed for real-time measurements.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -18,12 +20,21 @@ import { apiUrl } from "@/lib/api-url";
 import { useSmartPoll } from "@/lib/use-smart-poll";
 import {
   ArrowLeft,
+  Check,
   Clock,
   Loader2,
   Mic,
   Square,
   Wrench,
 } from "lucide-react";
+
+// ── Types for the multi-layer transcript ────────────────────────────
+
+interface TranscriptSegment {
+  id: string;
+  text: string;
+  correctionStatus: "raw" | "correcting" | "corrected" | "failed";
+}
 
 interface LiveCaptureViewProps {
   sessionId: string;
@@ -32,6 +43,97 @@ interface LiveCaptureViewProps {
   startedAt: string;
   onSessionEnded: () => void;
 }
+
+// ── Web Speech API hook ─────────────────────────────────────────────
+// Uses the browser's built-in speech recognition for instant text display.
+// This is LOCAL ONLY — not saved to the database. It shows the mechanic
+// their words instantly, then gets replaced by the server transcription.
+
+function useWebSpeechRecognition(enabled: boolean) {
+  const [draftText, setDraftText] = useState("");
+  const [isListening, setIsListening] = useState(false);
+  const [supported, setSupported] = useState(true);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
+
+  useEffect(() => {
+    // Check if Web Speech API is available (Chrome is the main target)
+    const SpeechRecognitionClass =
+      typeof window !== "undefined"
+        ? window.SpeechRecognition || window.webkitSpeechRecognition
+        : null;
+
+    if (!SpeechRecognitionClass) {
+      setSupported(false);
+      return;
+    }
+
+    if (!enabled) {
+      recognitionRef.current?.stop();
+      recognitionRef.current = null;
+      setIsListening(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognitionClass();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    recognitionRef.current = recognition;
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      // Build the current interim text from all results not yet finalized
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (!result.isFinal) {
+          interim += result[0].transcript;
+        }
+      }
+      setDraftText(interim);
+    };
+
+    recognition.onstart = () => setIsListening(true);
+
+    recognition.onend = () => {
+      setIsListening(false);
+      // Auto-restart if still enabled (Web Speech API stops after silence)
+      if (enabledRef.current) {
+        try {
+          recognition.start();
+        } catch {
+          // Ignore — might already be starting
+        }
+      }
+    };
+
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      // "no-speech" and "aborted" are normal — just means silence or page nav
+      if (event.error !== "no-speech" && event.error !== "aborted") {
+        console.warn("[WebSpeech] Error:", event.error);
+      }
+    };
+
+    try {
+      recognition.start();
+    } catch {
+      // Ignore — already started
+    }
+
+    return () => {
+      recognition.stop();
+      recognitionRef.current = null;
+    };
+  }, [enabled]);
+
+  // Clear the draft text (called when server transcript arrives)
+  const clearDraft = useCallback(() => setDraftText(""), []);
+
+  return { draftText, isListening, supported, clearDraft };
+}
+
+// ── Main component ──────────────────────────────────────────────────
 
 export function LiveCaptureView({
   sessionId,
@@ -43,8 +145,16 @@ export function LiveCaptureView({
   const micRef = useRef<ShiftDeskMicRecorderHandle>(null);
   const [ending, setEnding] = useState(false);
   const [elapsed, setElapsed] = useState("");
-  const [transcriptChunks, setTranscriptChunks] = useState<string[]>([]);
+  const [segments, setSegments] = useState<TranscriptSegment[]>([]);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Web Speech API for instant draft text
+  const { draftText, isListening, supported: webSpeechSupported } =
+    useWebSpeechRecognition(!ending);
+
+  // Track whether user is scrolled to bottom (for auto-scroll behavior)
+  const isAtBottomRef = useRef(true);
 
   // Update elapsed timer every second
   useEffect(() => {
@@ -66,22 +176,41 @@ export function LiveCaptureView({
     return () => clearInterval(interval);
   }, [startedAt]);
 
-  // Auto-scroll transcript when new chunks arrive
+  // Track scroll position — only auto-scroll if user is already at bottom
   useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [transcriptChunks]);
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    function handleScroll() {
+      if (!container) return;
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      isAtBottomRef.current = scrollHeight - scrollTop - clientHeight < 40;
+    }
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
 
-  // Poll for transcript chunks from the shift
+  // Auto-scroll when new content arrives (only if already at bottom)
+  useEffect(() => {
+    if (isAtBottomRef.current) {
+      transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [segments, draftText]);
+
+  // Poll for transcript chunks from the server
   const pollTranscript = useCallback(async () => {
     try {
       const res = await fetch(apiUrl(`/api/shifts/${shiftSessionId}/transcript`));
       if (!res.ok) return;
       const data = await res.json();
       if (data.success && Array.isArray(data.chunks)) {
-        setTranscriptChunks(
+        setSegments(
           data.chunks
             .filter((c: { text: string | null }) => c.text)
-            .map((c: { text: string }) => c.text)
+            .map((c: { id: string; text: string; correctionStatus: string }) => ({
+              id: c.id,
+              text: c.text,
+              correctionStatus: c.correctionStatus as TranscriptSegment["correctionStatus"],
+            }))
         );
       }
     } catch {
@@ -99,8 +228,12 @@ export function LiveCaptureView({
     initialIntervalMs: 3000,
     maxIntervalMs: 10000,
     backoffFactor: 1.3,
-    resetKey: transcriptChunks.length,
+    resetKey: segments.length,
   });
+
+  // Count corrected vs total segments for the status indicator
+  const correctedCount = segments.filter((s) => s.correctionStatus === "corrected").length;
+  const correctingCount = segments.filter((s) => s.correctionStatus === "correcting").length;
 
   // End the capture session: stop mic, PATCH session to capture_complete
   async function handleEndSession() {
@@ -212,30 +345,82 @@ export function LiveCaptureView({
                 <h2 className="text-sm font-semibold" style={{ fontFamily: "var(--font-space-grotesk)", color: "rgb(17, 24, 39)" }}>
                   Live Transcript
                 </h2>
+                {/* Web Speech API status indicator */}
+                {webSpeechSupported && isListening && (
+                  <span
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
+                    style={{ backgroundColor: "rgba(34, 197, 94, 0.1)", color: "rgb(22, 163, 74)" }}
+                  >
+                    LIVE
+                  </span>
+                )}
               </div>
-              {transcriptChunks.length > 0 && (
-                <span className="text-xs" style={{ color: "rgb(156, 163, 175)" }}>
-                  {transcriptChunks.length} segment{transcriptChunks.length === 1 ? "" : "s"}
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {/* Correction progress indicator */}
+                {segments.length > 0 && (
+                  <span className="text-xs" style={{ color: "rgb(156, 163, 175)" }}>
+                    {correctedCount}/{segments.length} verified
+                    {correctingCount > 0 && (
+                      <span style={{ color: "rgb(59, 130, 246)" }}> · {correctingCount} processing</span>
+                    )}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
-          <CardContent className="flex-1 overflow-y-auto p-4">
-            {transcriptChunks.length === 0 ? (
+          <CardContent ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4">
+            {segments.length === 0 && !draftText ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <Mic className="h-8 w-8 mb-3" style={{ color: "rgb(209, 213, 219)" }} />
                 <p className="text-sm" style={{ color: "rgb(107, 114, 128)" }}>
                   Listening...
                 </p>
                 <p className="text-xs mt-1" style={{ color: "rgb(156, 163, 175)" }}>
-                  Speak normally — transcription appears here every few seconds
+                  {webSpeechSupported
+                    ? "Speak normally — words appear instantly, then get refined"
+                    : "Speak normally — transcription appears here every 15 seconds"}
                 </p>
               </div>
             ) : (
-              <div className="space-y-3 text-sm leading-relaxed" style={{ color: "rgb(55, 65, 81)" }}>
-                {transcriptChunks.map((chunk, i) => (
-                  <p key={i}>{chunk}</p>
+              <div className="space-y-3 text-sm leading-relaxed">
+                {/* Server-transcribed segments (from polling) */}
+                {segments.map((segment) => (
+                  <div key={segment.id} className="flex items-start gap-1.5">
+                    <p
+                      style={{
+                        color: segment.correctionStatus === "corrected"
+                          ? "rgb(17, 24, 39)"
+                          : "rgb(55, 65, 81)",
+                      }}
+                    >
+                      {segment.text}
+                    </p>
+                    {/* Show a small checkmark for verified/corrected segments */}
+                    {segment.correctionStatus === "corrected" && (
+                      <Check
+                        className="h-3.5 w-3.5 mt-0.5 shrink-0"
+                        style={{ color: "rgb(34, 197, 94)" }}
+                      />
+                    )}
+                    {segment.correctionStatus === "correcting" && (
+                      <Loader2
+                        className="h-3.5 w-3.5 mt-0.5 shrink-0 animate-spin"
+                        style={{ color: "rgb(59, 130, 246)" }}
+                      />
+                    )}
+                  </div>
                 ))}
+
+                {/* Live draft from Web Speech API (italic, lighter — local only) */}
+                {draftText && (
+                  <p
+                    className="italic"
+                    style={{ color: "rgb(156, 163, 175)" }}
+                  >
+                    {draftText}
+                  </p>
+                )}
+
                 <div ref={transcriptEndRef} />
               </div>
             )}

@@ -1,7 +1,7 @@
 // Centralized model registry — update model IDs here when new versions release
 // Last updated: March 2026
 
-export type AIProvider = "google" | "openai" | "anthropic" | "openrouter" | "groq";
+export type AIProvider = "google" | "openai" | "anthropic" | "openrouter" | "groq" | "elevenlabs";
 
 export interface ModelConfig {
   id: string;           // Model ID as the API expects it
@@ -55,14 +55,24 @@ export const ANNOTATION_MODELS: ModelConfig[] = [
 ];
 
 // ── Audio Transcription Models ──────────────────────────────────────
+// ElevenLabs Scribe v2 is primary — best accuracy with keyterm prompting
 export const TRANSCRIPTION_MODELS: ModelConfig[] = [
+  {
+    id: "scribe_v2",
+    provider: "elevenlabs",
+    displayName: "ElevenLabs Scribe v2",
+    inputCostPer1M: 3.0, // ~$0.003/min
+    outputCostPer1M: 0,
+    contextWindow: 0,
+    supportsAudio: true,
+  },
   {
     id: "gpt-4o-transcribe",
     provider: "openai",
     displayName: "GPT-4o Transcribe (~2.5% WER)",
-    inputCostPer1M: 6.0, // $0.006/min ≈ $6/M tokens
+    inputCostPer1M: 6.0,
     outputCostPer1M: 0,
-    contextWindow: 0, // Audio, not token-based
+    contextWindow: 0,
     supportsAudio: true,
   },
   {
@@ -73,6 +83,28 @@ export const TRANSCRIPTION_MODELS: ModelConfig[] = [
     outputCostPer1M: 0,
     contextWindow: 0,
     supportsAudio: true,
+  },
+];
+
+// ── Transcript Correction Models (lightweight LLMs for post-processing) ──
+export const CORRECTION_MODELS: ModelConfig[] = [
+  {
+    id: "gpt-4o-mini",
+    provider: "openai",
+    displayName: "GPT-4o Mini (correction)",
+    inputCostPer1M: 0.15,
+    outputCostPer1M: 0.60,
+    contextWindow: 128_000,
+    supportsJsonOutput: true,
+  },
+  {
+    id: "claude-sonnet-4-6-20250514",
+    provider: "anthropic",
+    displayName: "Claude Sonnet 4.6 (fallback correction)",
+    inputCostPer1M: 3.0,
+    outputCostPer1M: 15.0,
+    contextWindow: 200_000,
+    supportsJsonOutput: true,
   },
 ];
 
@@ -161,6 +193,7 @@ export function getApiKey(provider: AIProvider): string {
     anthropic: "ANTHROPIC_API_KEY",
     openrouter: "OPENROUTER_API_KEY",
     groq: "GROQ_API_KEY",
+    elevenlabs: "ELEVENLABS_API_KEY",
   };
 
   const envVar = keyMap[provider];
@@ -177,6 +210,7 @@ export function getApiBase(provider: AIProvider): string {
     anthropic: "https://api.anthropic.com/v1",
     openrouter: "https://openrouter.ai/api/v1",
     groq: "https://api.groq.com/openai/v1",
+    elevenlabs: "https://api.elevenlabs.io/v1",
   };
   return bases[provider];
 }

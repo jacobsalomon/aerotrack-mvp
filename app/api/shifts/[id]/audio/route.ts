@@ -7,9 +7,13 @@ import { authenticateRequest } from "@/lib/mobile-auth";
 import { requireAuth } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
 import { transcribeAudio } from "@/lib/ai/openai";
+import { correctTranscriptSegment } from "@/lib/ai/transcript-correction";
 import { extractMeasurementsFromTranscript } from "@/lib/ai/measurement-extraction";
 import { recordMeasurement } from "@/lib/measurement-ledger";
 import { NextResponse } from "next/server";
+
+// Allow up to 60 seconds — transcription + measurement extraction can take 15-25s
+export const maxDuration = 60;
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -58,48 +62,100 @@ export async function POST(request: Request, { params }: RouteParams) {
       );
     }
 
+    console.log(
+      `[Audio] Received chunk: size=${audioFile.size}, type=${audioFile.type}, name=${audioFile.name}, shift=${shiftId}`
+    );
+
+    // Reject empty or suspiciously tiny audio files (< 1KB is likely silence or corrupt)
+    if (audioFile.size < 100) {
+      console.warn(`[Audio] Chunk too small (${audioFile.size} bytes) — skipping`);
+      return NextResponse.json({
+        success: true,
+        data: { transcription: { text: "", duration: 0, model: "skipped" }, measurementsExtracted: 0, measurements: [] },
+      });
+    }
+
     // Parse chunk timestamp as a Date (ISO string like "2026-03-15T14:30:00Z")
     const chunkStartTime = chunkTimestamp ? new Date(chunkTimestamp).getTime() : Date.now();
 
     // Step 1: Transcribe the audio
+    console.log("[Audio] Step 1: Starting transcription...");
+    const t1 = Date.now();
     const transcription = await transcribeAudio(audioFile, audioFile.name || "chunk.webm");
     const transcriptText = transcription.text.trim();
-
-    if (transcriptText) {
-      await prisma.$transaction([
-        prisma.shiftTranscriptChunk.create({
-          data: {
-            shiftSessionId: shiftId,
-            transcript: transcriptText,
-            source: "desk_mic",
-            startedAt: chunkTimestamp ? new Date(chunkTimestamp) : null,
-            durationSeconds: transcription.duration ?? null,
-          },
-        }),
-        prisma.shiftSession.update({
-          where: { id: shiftId },
-          data: {
-            transcriptDraft: null,
-            transcriptUpdatedAt: new Date(),
-            transcriptReviewStatus:
-              shift.status === "completed" || shift.status === "reconciling"
-                ? "review_required"
-                : "capturing",
-            transcriptApprovedAt: null,
-            transcriptApprovedBy: null,
-            quantumExportedAt: null,
-          },
-        }),
-      ]);
-    }
-
-    // Step 2: Extract measurements from the transcript
-    const extracted = await extractMeasurementsFromTranscript(
-      transcriptText,
-      transcription.words
+    console.log(
+      `[Audio] Step 1 done in ${Date.now() - t1}ms: "${transcriptText.slice(0, 100)}" (model=${transcription.model})`
     );
 
-    // Step 3: Record each measurement in the ledger (with cross-referencing)
+    // Step 1b: Save raw transcript immediately so the UI shows it right away
+    let chunkId: string | null = null;
+    if (transcriptText) {
+      console.log("[Audio] Step 1b: Saving raw transcript chunk to DB...");
+      const chunk = await prisma.shiftTranscriptChunk.create({
+        data: {
+          shiftSessionId: shiftId,
+          transcript: transcriptText,
+          correctionStatus: "raw",
+          source: "desk_mic",
+          startedAt: chunkTimestamp ? new Date(chunkTimestamp) : null,
+          durationSeconds: transcription.duration ?? null,
+        },
+      });
+      chunkId = chunk.id;
+      await prisma.shiftSession.update({
+        where: { id: shiftId },
+        data: {
+          transcriptDraft: null,
+          transcriptUpdatedAt: new Date(),
+          transcriptReviewStatus:
+            shift.status === "completed" || shift.status === "reconciling"
+              ? "review_required"
+              : "capturing",
+          transcriptApprovedAt: null,
+          transcriptApprovedBy: null,
+          quantumExportedAt: null,
+        },
+      });
+    }
+
+    // Step 2: LLM correction pass — clean up filler words, format measurements, fix part numbers
+    let correctedText = transcriptText;
+    if (transcriptText && chunkId) {
+      console.log("[Audio] Step 2: Running LLM correction...");
+      const t2 = Date.now();
+      try {
+        await prisma.shiftTranscriptChunk.update({
+          where: { id: chunkId },
+          data: { correctionStatus: "correcting" },
+        });
+        correctedText = await correctTranscriptSegment(transcriptText);
+        await prisma.shiftTranscriptChunk.update({
+          where: { id: chunkId },
+          data: {
+            correctedTranscript: correctedText,
+            correctionStatus: "corrected",
+          },
+        });
+        console.log(`[Audio] Step 2 done in ${Date.now() - t2}ms: "${correctedText.slice(0, 100)}"`);
+      } catch (correctionError) {
+        console.error("[Audio] LLM correction failed, using raw transcript:", correctionError);
+        await prisma.shiftTranscriptChunk.update({
+          where: { id: chunkId },
+          data: { correctionStatus: "failed" },
+        }).catch(() => {}); // Don't fail the whole request if status update fails
+      }
+    }
+
+    // Step 3: Extract measurements from the CORRECTED transcript (not raw)
+    console.log("[Audio] Step 3: Extracting measurements from corrected text...");
+    const t3 = Date.now();
+    const extracted = await extractMeasurementsFromTranscript(
+      correctedText,
+      transcription.words
+    );
+    console.log(`[Audio] Step 3 done in ${Date.now() - t3}ms: ${extracted.length} measurements`);
+
+    // Step 4: Record each measurement in the ledger (with cross-referencing)
     const recorded = [];
     for (const m of extracted) {
       const measurement = await recordMeasurement({
@@ -113,7 +169,6 @@ export async function POST(request: Request, { params }: RouteParams) {
           sourceType: "audio_callout",
           confidence: m.confidence,
           rawExcerpt: m.rawExcerpt,
-          // Offset from chunk start in seconds, converted to epoch seconds
           timestamp:
             m.timestampInChunk !== undefined && m.timestampInChunk !== null
               ? (chunkStartTime / 1000 + m.timestampInChunk)
@@ -123,6 +178,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       recorded.push(measurement);
     }
 
+    console.log(`[Audio] All steps complete for shift=${shiftId}`);
     return NextResponse.json({
       success: true,
       data: {
@@ -136,9 +192,13 @@ export async function POST(request: Request, { params }: RouteParams) {
       },
     });
   } catch (error) {
-    console.error("Audio processing error:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("Audio processing error:", errorMessage, error);
     return NextResponse.json(
-      { success: false, error: "Failed to process audio chunk" },
+      {
+        success: false,
+        error: `Failed to process audio chunk: ${errorMessage.slice(0, 200)}`,
+      },
       { status: 500 }
     );
   }
