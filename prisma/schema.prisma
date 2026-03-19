@@ -43,7 +43,6 @@ model User {
 
   // Relationships (moved from Technician)
   captureSessions     CaptureSession[]
-  shiftSessions       ShiftSession[]
   reviewedDocuments   DocumentGeneration2[]  @relation("reviewer")
   auditLog            AuditLogEntry[]
 
@@ -355,7 +354,6 @@ model Organization {
   // Relationships
   users           User[]
   captureSessions CaptureSession[]
-  shiftSessions   ShiftSession[]
   measurementSpecs MeasurementSpec[]
   auditLog        AuditLogEntry[]
   inviteCodes     InviteCode[]
@@ -408,8 +406,6 @@ model CaptureSession {
   user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
   organizationId  String
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  shiftSessionId  String?                               // Optional — links this session to a shift
-  shiftSession    ShiftSession? @relation(fields: [shiftSessionId], references: [id], onDelete: SetNull)
   componentId     String?                               // Linked after AI identifies the part
   status          String    @default("capturing")       // capturing, processing, documents_generated, submitted, approved, rejected
   description     String?
@@ -430,7 +426,6 @@ model CaptureSession {
 
   @@index([userId])
   @@index([organizationId])
-  @@index([shiftSessionId])
   @@index([status, startedAt])
   @@index([userId, status, startedAt])
   @@index([organizationId, status, startedAt])
@@ -646,64 +641,8 @@ model MeasurementSpec {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  // Relationships
-  shiftSessions       ShiftSession[]
-
   @@index([organizationId])
   @@index([componentPartNumber])
-}
-
-// ──────────────────────────────────────────────────────
-// ShiftSession — a full work shift (8-12 hours)
-// Contains multiple capture sessions and a continuous audio/video stream.
-// Measurements are extracted incrementally and cross-referenced automatically.
-// ──────────────────────────────────────────────────────
-model ShiftSession {
-  id                String    @id @default(cuid())
-  userId            String
-  user              User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organizationId    String
-  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  measurementSpecId String?                           // Optional — links to a predefined measurement checklist
-  measurementSpec   MeasurementSpec? @relation(fields: [measurementSpecId], references: [id], onDelete: SetNull)
-  status            String    @default("active")      // active, paused, reconciling, completed
-  startedAt         DateTime  @default(now())
-  endedAt           DateTime?
-  totalDurationMin  Int?                              // Computed when shift ends
-  notes             String?                           // Shift-level notes
-  transcriptDraft   String?                           // Technician-reviewed transcript snapshot used for export
-  transcriptUpdatedAt DateTime?
-  transcriptReviewStatus String @default("capturing") // capturing, review_required, approved
-  transcriptApprovedAt DateTime?
-  transcriptApprovedBy String?
-  quantumExportedAt DateTime?
-  reconciliationJson String?                          // JSON — end-of-shift cross-check results
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-
-  // Relationships
-  captureSessions   CaptureSession[]
-  transcriptChunks  ShiftTranscriptChunk[]
-  measurements      Measurement[]
-
-  @@index([userId])
-  @@index([organizationId])
-  @@index([status, startedAt])
-}
-
-model ShiftTranscriptChunk {
-  id                  String   @id @default(cuid())
-  shiftSessionId      String
-  shiftSession        ShiftSession @relation(fields: [shiftSessionId], references: [id], onDelete: Cascade)
-  transcript          String
-  correctedTranscript String?
-  correctionStatus    String   @default("raw") // raw | correcting | corrected | failed
-  source              String   @default("desk_mic")
-  startedAt           DateTime?
-  durationSeconds     Float?
-  createdAt           DateTime @default(now())
-
-  @@index([shiftSessionId, startedAt])
 }
 
 // ──────────────────────────────────────────────────────
@@ -714,10 +653,8 @@ model ShiftTranscriptChunk {
 // ──────────────────────────────────────────────────────
 model Measurement {
   id                  String    @id @default(cuid())
-  shiftSessionId      String
-  shiftSession        ShiftSession @relation(fields: [shiftSessionId], references: [id], onDelete: Cascade)
-  captureSessionId    String?                         // Optional link to a specific capture session
-  captureSession      CaptureSession? @relation(fields: [captureSessionId], references: [id], onDelete: SetNull)
+  captureSessionId    String                          // The session this measurement belongs to
+  captureSession      CaptureSession @relation(fields: [captureSessionId], references: [id], onDelete: Cascade)
   componentId         String?                         // Which part this measurement is for
   component           Component? @relation(fields: [componentId], references: [id], onDelete: SetNull)
   specItemIndex       Int?                            // Which spec item this fulfills (index into specItemsJson)
@@ -757,7 +694,6 @@ model Measurement {
   // Relationships
   sources             MeasurementSource[]
 
-  @@index([shiftSessionId])
   @@index([captureSessionId])
   @@index([componentId])
   @@index([measurementType])

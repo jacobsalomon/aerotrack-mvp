@@ -12,15 +12,13 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  ShiftDeskMicRecorder,
-  type ShiftDeskMicRecorderHandle,
-} from "@/components/shift-desk-mic-recorder";
+  SessionDeskMicRecorder,
+  type SessionDeskMicRecorderHandle,
+} from "@/components/session-desk-mic-recorder";
 import { MeasurementFeed } from "@/components/measurement-feed";
 import { apiUrl } from "@/lib/api-url";
-import { useSmartPoll } from "@/lib/use-smart-poll";
 import {
   ArrowLeft,
-  Check,
   Clock,
   Loader2,
   Mic,
@@ -28,17 +26,16 @@ import {
   Wrench,
 } from "lucide-react";
 
-// ── Types for the multi-layer transcript ────────────────────────────
+// ── Types for the transcript display ────────────────────────────
 
-interface TranscriptSegment {
+interface TranscriptEntry {
   id: string;
   text: string;
-  correctionStatus: "raw" | "correcting" | "corrected" | "failed";
+  correctedText: string | null;
 }
 
 interface LiveCaptureViewProps {
   sessionId: string;
-  shiftSessionId: string;
   description: string | null;
   startedAt: string;
   onSessionEnded: () => void;
@@ -49,7 +46,7 @@ interface LiveCaptureViewProps {
 // This is LOCAL ONLY — not saved to the database. It shows the mechanic
 // their words instantly, then gets replaced by the server transcription.
 
-function useWebSpeechRecognition(enabled: boolean, serverSegmentCount: number) {
+function useWebSpeechRecognition(enabled: boolean, serverEntryCount: number) {
   const [draftText, setDraftText] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [supported, setSupported] = useState(true);
@@ -59,16 +56,16 @@ function useWebSpeechRecognition(enabled: boolean, serverSegmentCount: number) {
   // Accumulate finalized results so text stays visible until server replaces it
   const finalizedRef = useRef("");
 
-  // When new server segments arrive, clear the finalized buffer since the
+  // When new server entries arrive, clear the finalized buffer since the
   // server transcript now covers what the user said
-  const prevSegmentCountRef = useRef(serverSegmentCount);
+  const prevEntryCountRef = useRef(serverEntryCount);
   useEffect(() => {
-    if (serverSegmentCount > prevSegmentCountRef.current) {
+    if (serverEntryCount > prevEntryCountRef.current) {
       finalizedRef.current = "";
       setDraftText("");
     }
-    prevSegmentCountRef.current = serverSegmentCount;
-  }, [serverSegmentCount]);
+    prevEntryCountRef.current = serverEntryCount;
+  }, [serverEntryCount]);
 
   useEffect(() => {
     // Check if Web Speech API is available (Chrome is the main target)
@@ -96,18 +93,15 @@ function useWebSpeechRecognition(enabled: boolean, serverSegmentCount: number) {
     recognitionRef.current = recognition;
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
-      // Build text from finalized + current interim results
       let interim = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
         if (result.isFinal) {
-          // Accumulate finalized text so it stays visible
           finalizedRef.current += result[0].transcript + " ";
         } else {
           interim += result[0].transcript;
         }
       }
-      // Show: all finalized text we've accumulated + the current interim words
       setDraftText((finalizedRef.current + interim).trim());
     };
 
@@ -115,7 +109,6 @@ function useWebSpeechRecognition(enabled: boolean, serverSegmentCount: number) {
 
     recognition.onend = () => {
       setIsListening(false);
-      // Auto-restart if still enabled (Web Speech API stops after silence)
       if (enabledRef.current) {
         try {
           recognition.start();
@@ -126,7 +119,6 @@ function useWebSpeechRecognition(enabled: boolean, serverSegmentCount: number) {
     };
 
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      // "no-speech" and "aborted" are normal — just means silence or page nav
       if (event.error !== "no-speech" && event.error !== "aborted") {
         console.warn("[WebSpeech] Error:", event.error);
       }
@@ -151,21 +143,20 @@ function useWebSpeechRecognition(enabled: boolean, serverSegmentCount: number) {
 
 export function LiveCaptureView({
   sessionId,
-  shiftSessionId,
   description,
   startedAt,
   onSessionEnded,
 }: LiveCaptureViewProps) {
-  const micRef = useRef<ShiftDeskMicRecorderHandle>(null);
+  const micRef = useRef<SessionDeskMicRecorderHandle>(null);
   const [ending, setEnding] = useState(false);
   const [elapsed, setElapsed] = useState("");
-  const [segments, setSegments] = useState<TranscriptSegment[]>([]);
+  const [entries, setEntries] = useState<TranscriptEntry[]>([]);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Web Speech API for instant draft text
   const { draftText, isListening, supported: webSpeechSupported } =
-    useWebSpeechRecognition(!ending, segments.length);
+    useWebSpeechRecognition(!ending, entries.length);
 
   // Track whether user is scrolled to bottom (for auto-scroll behavior)
   const isAtBottomRef = useRef(true);
@@ -190,7 +181,7 @@ export function LiveCaptureView({
     return () => clearInterval(interval);
   }, [startedAt]);
 
-  // Track scroll position — only auto-scroll if user is already at bottom
+  // Track scroll position
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
@@ -208,46 +199,16 @@ export function LiveCaptureView({
     if (isAtBottomRef.current) {
       transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [segments, draftText]);
+  }, [entries, draftText]);
 
-  // Poll for transcript chunks from the server
-  const pollTranscript = useCallback(async () => {
-    try {
-      const res = await fetch(apiUrl(`/api/shifts/${shiftSessionId}/transcript`));
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.success && Array.isArray(data.chunks)) {
-        setSegments(
-          data.chunks
-            .filter((c: { text: string | null }) => c.text)
-            .map((c: { id: string; text: string; correctionStatus: string }) => ({
-              id: c.id,
-              text: c.text,
-              correctionStatus: c.correctionStatus as TranscriptSegment["correctionStatus"],
-            }))
-        );
-      }
-    } catch {
-      // Silently ignore — transcript polling is best-effort
-    }
-  }, [shiftSessionId]);
-
-  useEffect(() => {
-    void pollTranscript();
-  }, [pollTranscript]);
-
-  useSmartPoll({
-    pollFn: pollTranscript,
-    enabled: !ending,
-    initialIntervalMs: 3000,
-    maxIntervalMs: 10000,
-    backoffFactor: 1.3,
-    resetKey: segments.length,
-  });
-
-  // Count corrected vs total segments for the status indicator
-  const correctedCount = segments.filter((s) => s.correctionStatus === "corrected").length;
-  const correctingCount = segments.filter((s) => s.correctionStatus === "correcting").length;
+  // When a new chunk comes back from the mic recorder, add it to the transcript
+  const handleTranscript = useCallback((text: string) => {
+    if (!text.trim()) return;
+    setEntries((prev) => [
+      ...prev,
+      { id: `entry-${Date.now()}`, text, correctedText: null },
+    ]);
+  }, []);
 
   // End the capture session: stop mic, PATCH session to capture_complete
   async function handleEndSession() {
@@ -269,14 +230,6 @@ export function LiveCaptureView({
       console.error("Failed to end session:", err);
       setEnding(false);
     }
-  }
-
-  function handleUnauthorized(response: Response): boolean {
-    if (response.status === 401 || response.status === 403) {
-      window.location.reload();
-      return true;
-    }
-    return false;
   }
 
   return (
@@ -346,7 +299,7 @@ export function LiveCaptureView({
             </div>
           </div>
           <CardContent className="flex-1 overflow-y-auto p-4">
-            <MeasurementFeed shiftId={shiftSessionId} isActive={true} />
+            <MeasurementFeed sessionId={sessionId} isActive={true} />
           </CardContent>
         </Card>
 
@@ -359,7 +312,6 @@ export function LiveCaptureView({
                 <h2 className="text-sm font-semibold" style={{ fontFamily: "var(--font-space-grotesk)", color: "rgb(17, 24, 39)" }}>
                   Live Transcript
                 </h2>
-                {/* Web Speech API status indicator */}
                 {webSpeechSupported && isListening && (
                   <span
                     className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
@@ -369,21 +321,15 @@ export function LiveCaptureView({
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2">
-                {/* Correction progress indicator */}
-                {segments.length > 0 && (
-                  <span className="text-xs" style={{ color: "rgb(156, 163, 175)" }}>
-                    {correctedCount}/{segments.length} verified
-                    {correctingCount > 0 && (
-                      <span style={{ color: "rgb(59, 130, 246)" }}> · {correctingCount} processing</span>
-                    )}
-                  </span>
-                )}
-              </div>
+              {entries.length > 0 && (
+                <span className="text-xs" style={{ color: "rgb(156, 163, 175)" }}>
+                  {entries.length} chunk{entries.length !== 1 ? "s" : ""} transcribed
+                </span>
+              )}
             </div>
           </div>
           <CardContent ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4">
-            {segments.length === 0 && !draftText ? (
+            {entries.length === 0 && !draftText ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <Mic className="h-8 w-8 mb-3" style={{ color: "rgb(209, 213, 219)" }} />
                 <p className="text-sm" style={{ color: "rgb(107, 114, 128)" }}>
@@ -397,32 +343,11 @@ export function LiveCaptureView({
               </div>
             ) : (
               <div className="space-y-3 text-sm leading-relaxed">
-                {/* Server-transcribed segments (from polling) */}
-                {segments.map((segment) => (
-                  <div key={segment.id} className="flex items-start gap-1.5">
-                    <p
-                      style={{
-                        color: segment.correctionStatus === "corrected"
-                          ? "rgb(17, 24, 39)"
-                          : "rgb(55, 65, 81)",
-                      }}
-                    >
-                      {segment.text}
-                    </p>
-                    {/* Show a small checkmark for verified/corrected segments */}
-                    {segment.correctionStatus === "corrected" && (
-                      <Check
-                        className="h-3.5 w-3.5 mt-0.5 shrink-0"
-                        style={{ color: "rgb(34, 197, 94)" }}
-                      />
-                    )}
-                    {segment.correctionStatus === "correcting" && (
-                      <Loader2
-                        className="h-3.5 w-3.5 mt-0.5 shrink-0 animate-spin"
-                        style={{ color: "rgb(59, 130, 246)" }}
-                      />
-                    )}
-                  </div>
+                {/* Server-transcribed entries */}
+                {entries.map((entry) => (
+                  <p key={entry.id} style={{ color: "rgb(17, 24, 39)" }}>
+                    {entry.correctedText || entry.text}
+                  </p>
                 ))}
 
                 {/* Live draft from Web Speech API (italic, lighter — local only) */}
@@ -442,13 +367,11 @@ export function LiveCaptureView({
 
           {/* Compact mic controls pinned at the bottom */}
           <div className="px-4 py-3 border-t" style={{ borderColor: "rgb(243, 244, 246)" }}>
-            <ShiftDeskMicRecorder
+            <SessionDeskMicRecorder
               ref={micRef}
-              shiftId={shiftSessionId}
-              enabled={true}
+              sessionId={sessionId}
               autoStart={true}
-              compact={true}
-              onUnauthorized={handleUnauthorized}
+              onTranscript={handleTranscript}
             />
           </div>
         </Card>

@@ -83,7 +83,7 @@ interface SessionDetail {
   id: string;
   status: string;
   description: string | null;
-  shiftSessionId: string | null;
+  // shiftSessionId removed — sessions are the single workflow path
   componentId: string | null;
   expectedSteps: string | null;
   startedAt: string;
@@ -462,11 +462,10 @@ export default function SessionDetailPage() {
 
   // ─── Live capture view ──────────────────────────────────────────────
 
-  if (session.status === "capturing" && session.shiftSessionId) {
+  if (session.status === "capturing") {
     return (
       <LiveCaptureView
         sessionId={session.id}
-        shiftSessionId={session.shiftSessionId}
         description={session.description}
         startedAt={session.startedAt}
         onSessionEnded={() => void fetchSession()}

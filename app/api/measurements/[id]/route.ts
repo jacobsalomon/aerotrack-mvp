@@ -48,10 +48,10 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   try {
     const existing = await prisma.measurement.findUnique({
       where: { id },
-      include: { shiftSession: { select: { organizationId: true } } },
+      include: { captureSession: { select: { organizationId: true } } },
     });
 
-    if (!existing || existing.shiftSession.organizationId !== auth.user.organizationId) {
+    if (!existing || existing.captureSession?.organizationId !== auth.user.organizationId) {
       return NextResponse.json(
         { success: false, error: "Measurement not found" },
         { status: 404 }

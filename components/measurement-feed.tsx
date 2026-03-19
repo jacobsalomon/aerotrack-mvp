@@ -67,7 +67,7 @@ const STATUS_ICONS: Record<string, typeof CheckCircle2> = {
   overridden: PenLine,
 };
 
-export function MeasurementFeed({ shiftId, isActive }: { shiftId: string; isActive: boolean }) {
+export function MeasurementFeed({ sessionId, isActive }: { sessionId: string; isActive: boolean }) {
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const lastPoll = useRef<string | null>(null);
@@ -75,7 +75,7 @@ export function MeasurementFeed({ shiftId, isActive }: { shiftId: string; isActi
   const pollMeasurements = useCallback(async () => {
     const params = lastPoll.current ? `?since=${encodeURIComponent(lastPoll.current)}` : "";
     try {
-      const res = await fetch(apiUrl(`/api/shifts/${shiftId}/measurements${params}`));
+      const res = await fetch(apiUrl(`/api/sessions/${sessionId}/measurements${params}`));
       const data = await res.json();
       if (data.success) {
         if (lastPoll.current && data.data.length > 0) {
@@ -95,7 +95,7 @@ export function MeasurementFeed({ shiftId, isActive }: { shiftId: string; isActi
     } catch (e) {
       console.error("Poll error:", e);
     }
-  }, [shiftId]);
+  }, [sessionId]);
 
   // Initial load
   useEffect(() => {

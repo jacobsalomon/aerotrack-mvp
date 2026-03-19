@@ -63,52 +63,12 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { description, shiftSessionId } = body;
-
-    let linkedShiftId: string | null = null;
-
-    if (typeof shiftSessionId === "string" && shiftSessionId.trim().length > 0) {
-      const shift = await prisma.shiftSession.findUnique({
-        where: { id: shiftSessionId },
-        select: { id: true, userId: true, organizationId: true },
-      });
-
-      if (!shift) {
-        return NextResponse.json(
-          { success: false, error: "Shift not found" },
-          { status: 404 }
-        );
-      }
-
-      if (
-        shift.userId !== auth.user.id ||
-        shift.organizationId !== auth.user.organizationId
-      ) {
-        return NextResponse.json(
-          { success: false, error: "Not authorized to link this shift" },
-          { status: 403 }
-        );
-      }
-
-      linkedShiftId = shift.id;
-    } else {
-      const activeShift = await prisma.shiftSession.findFirst({
-        where: {
-          userId: auth.user.id,
-          organizationId: auth.user.organizationId,
-          status: { in: ["active", "paused"] },
-        },
-        select: { id: true },
-        orderBy: { startedAt: "desc" },
-      });
-      linkedShiftId = activeShift?.id ?? null;
-    }
+    const { description } = body;
 
     const session = await prisma.captureSession.create({
       data: {
         userId: auth.user.id,
         organizationId: auth.user.organizationId,
-        shiftSessionId: linkedShiftId,
         description: description || null,
         status: "capturing",
       },
