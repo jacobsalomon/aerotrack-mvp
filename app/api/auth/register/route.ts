@@ -68,27 +68,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // Also check for an optional invite code — if provided and valid, use it
-    const { inviteCode } = body;
-    if (!organizationId && inviteCode) {
-      const code = await prisma.inviteCode.findUnique({
-        where: { code: inviteCode.toUpperCase().trim() },
-      });
-      if (
-        code &&
-        code.status === "active" &&
-        (!code.expiresAt || code.expiresAt > new Date()) &&
-        (!code.maxUses || code.useCount < code.maxUses)
-      ) {
-        organizationId = code.organizationId;
-        // Increment the use count
-        await prisma.inviteCode.update({
-          where: { id: code.id },
-          data: { useCount: { increment: 1 } },
-        });
-      }
-    }
-
     // Create the user (with org if matched, otherwise null — they'll see join-org page)
     await prisma.user.create({
       data: {
