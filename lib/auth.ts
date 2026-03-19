@@ -52,6 +52,10 @@ function getProviders() {
           name: user.name,
           email: user.email,
           role: user.role,
+          organizationId: user.organizationId,
+          badgeNumber: user.badgeNumber,
+          firstName: user.firstName,
+          lastName: user.lastName,
         };
       },
     })
@@ -91,22 +95,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     ...authConfig.callbacks,
 
-    // Override the session callback to add technicianId lookup (needs Prisma)
+    // Override the session callback to add user profile fields from the JWT
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
         session.user.role = (token.role as string) ?? "USER";
-
-        // Look up Technician record by email (for mobile API integration)
-        if (session.user.email) {
-          const technician = await prisma.technician.findUnique({
-            where: { email: session.user.email },
-            select: { id: true },
-          });
-          session.user.technicianId = technician?.id ?? null;
-        } else {
-          session.user.technicianId = null;
-        }
+        session.user.organizationId = (token.organizationId as string) ?? null;
+        session.user.badgeNumber = (token.badgeNumber as string) ?? null;
+        session.user.firstName = (token.firstName as string) ?? null;
+        session.user.lastName = (token.lastName as string) ?? null;
       }
       return session;
     },
@@ -122,7 +119,10 @@ declare module "next-auth" {
       email?: string | null;
       image?: string | null;
       role: string;
-      technicianId: string | null;
+      organizationId: string | null;
+      badgeNumber: string | null;
+      firstName: string | null;
+      lastName: string | null;
     };
   }
 }

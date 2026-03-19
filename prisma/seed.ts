@@ -47,7 +47,7 @@ async function main() {
   await prisma.documentGeneration2.deleteMany();
   await prisma.captureEvidence.deleteMany();
   await prisma.captureSession.deleteMany();
-  await prisma.technician.deleteMany();
+  await prisma.user.deleteMany();
   await prisma.organization.deleteMany();
   await prisma.componentManual.deleteMany();
   await prisma.referenceData.deleteMany();
@@ -2685,7 +2685,7 @@ async function main() {
   // ════════════════════════════════════════════════════
 
   // ════════════════════════════════════════════════════
-  // MOBILE CAPTURE SYSTEM — Demo Organization + Technicians
+  // MOBILE CAPTURE SYSTEM — Demo Organization + Users
   // These support the AeroVision Capture iPhone app
   // ════════════════════════════════════════════════════
 
@@ -2703,8 +2703,8 @@ async function main() {
     },
   });
 
-  // Demo technicians — each gets a deterministic API key for easy mobile testing
-  const techMike = await prisma.technician.create({
+  // Demo users — each gets a deterministic API key for easy mobile testing
+  const techMike = await prisma.user.create({
     data: {
       id: "tech-mike-chen",
       organizationId: demoOrg.id,
@@ -2718,7 +2718,7 @@ async function main() {
     },
   });
 
-  const techSarah = await prisma.technician.create({
+  const techSarah = await prisma.user.create({
     data: {
       id: "tech-sarah-okafor",
       organizationId: demoOrg.id,
@@ -2732,7 +2732,7 @@ async function main() {
     },
   });
 
-  const techJuan = await prisma.technician.create({
+  const techJuan = await prisma.user.create({
     data: {
       id: "tech-juan-ramirez",
       organizationId: demoOrg.id,
@@ -2747,12 +2747,12 @@ async function main() {
   });
 
   console.log(`✅ Demo organization created: ${demoOrg.name}`);
-  console.log(`   Technicians: ${techMike.firstName} ${techMike.lastName}, ${techSarah.firstName} ${techSarah.lastName}, ${techJuan.firstName} ${techJuan.lastName}`);
+  console.log(`   Users: ${techMike.firstName} ${techMike.lastName}, ${techSarah.firstName} ${techSarah.lastName}, ${techJuan.firstName} ${techJuan.lastName}`);
 
   await prisma.captureSession.create({
     data: {
       id: "test-session-reviewer-cockpit",
-      technicianId: techMike.id,
+      userId: techMike.id,
       organizationId: demoOrg.id,
       status: "submitted",
       description: "Reviewer cockpit demo session — HPC-7 hydraulic pump overhaul",
@@ -3369,7 +3369,7 @@ SERVICE INTERVALS:
 
   console.log("\n🎉 Seed data complete! 17 components with full lifecycle histories loaded.");
   console.log("   Including evidence, exceptions, parts consumed, and knowledge library.");
-  console.log("   Plus demo organization with 3 technicians for mobile capture.");
+  console.log("   Plus demo organization with 3 users for mobile capture.");
   console.log("   Plus reference data for demo component P/N 881700-1089.");
   console.log("   Ready for AeroVision demo.");
 }

@@ -14,11 +14,11 @@ const adapter = new PrismaLibSql({
 export const testDb = new PrismaClient({ adapter });
 
 /**
- * Create an isolated test organization + technician for mobile API tests.
+ * Create an isolated test organization + user for mobile API tests.
  * Returns the created records so tests can use them directly.
  * Call cleanupTestData() with the returned IDs after the test.
  */
-export async function createTestTechnician() {
+export async function createTestUser() {
   const org = await testDb.organization.create({
     data: {
       name: "Test MRO Facility",
@@ -30,7 +30,7 @@ export async function createTestTechnician() {
     },
   });
 
-  const technician = await testDb.technician.create({
+  const user = await testDb.user.create({
     data: {
       firstName: "Test",
       lastName: "Mechanic",
@@ -43,7 +43,7 @@ export async function createTestTechnician() {
     },
   });
 
-  return { org, technician };
+  return { org, user };
 }
 
 /**
@@ -105,7 +105,7 @@ export async function createTestException(componentId: string) {
  */
 export async function cleanupTestData(ids: {
   componentIds?: string[];
-  technicianIds?: string[];
+  userIds?: string[];
   orgIds?: string[];
   alertIds?: string[];
   exceptionIds?: string[];
@@ -127,9 +127,9 @@ export async function cleanupTestData(ids: {
       where: { id: { in: ids.exceptionIds } },
     });
   }
-  if (ids.technicianIds?.length) {
-    await testDb.technician.deleteMany({
-      where: { id: { in: ids.technicianIds } },
+  if (ids.userIds?.length) {
+    await testDb.user.deleteMany({
+      where: { id: { in: ids.userIds } },
     });
   }
   if (ids.orgIds?.length) {

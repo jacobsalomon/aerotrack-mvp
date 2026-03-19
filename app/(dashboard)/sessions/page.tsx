@@ -55,7 +55,7 @@ interface SessionData {
   description: string | null;
   startedAt: string;
   completedAt: string | null;
-  technician: {
+  user: {
     id: string;
     firstName: string;
     lastName: string;
@@ -478,10 +478,10 @@ export default function SessionsPage() {
                         <TableCell>
                           <div>
                             <p className="font-medium text-sm">
-                              {session.technician.firstName} {session.technician.lastName}
+                              {session.user.firstName} {session.user.lastName}
                             </p>
                             <p className="text-xs text-slate-400">
-                              {session.technician.badgeNumber}
+                              {session.user.badgeNumber}
                             </p>
                           </div>
                         </TableCell>

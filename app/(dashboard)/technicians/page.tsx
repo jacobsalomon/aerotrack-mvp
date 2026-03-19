@@ -18,14 +18,13 @@ import { Users, Shield, Wrench, Loader2 } from "lucide-react";
 
 interface TechnicianData {
   id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  badgeNumber: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  badgeNumber: string | null;
   role: string;
   status: string;
-  createdAt: string;
-  organization: { name: string };
+  organization: { name: string } | null;
   _count: { captureSessions: number; reviewedDocuments: number };
 }
 
@@ -159,7 +158,7 @@ export default function TechniciansPage() {
                       </span>
                     </TableCell>
                     <TableCell className="text-sm text-slate-600">
-                      {tech.organization.name}
+                      {tech.organization?.name ?? "—"}
                     </TableCell>
                     <TableCell className="text-center text-sm font-medium">
                       {tech._count.captureSessions}

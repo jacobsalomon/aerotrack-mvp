@@ -24,24 +24,24 @@ export async function POST(request: Request, { params }: RouteParams) {
 
   try {
     const authHeader = request.headers.get("Authorization");
-    let authenticatedTechnicianId: string | null = null;
+    let authenticatedUserId: string | null = null;
 
     if (authHeader?.startsWith("Bearer ")) {
       const auth = await authenticateRequest(request);
       if ("error" in auth) return auth.error;
-      authenticatedTechnicianId = auth.technician.id;
+      authenticatedUserId = auth.user.id;
     } else {
       const authResult = await requireAuth(request);
       if (authResult.error) return authResult.error;
     }
 
     // Verify shift exists, is still within a state that can accept buffered chunks,
-    // and belongs to this technician when using mobile Bearer auth.
+    // and belongs to this user when using mobile Bearer auth.
     const shift = await prisma.shiftSession.findUnique({ where: { id: shiftId } });
     if (!shift) {
       return NextResponse.json({ success: false, error: "Shift not found" }, { status: 404 });
     }
-    if (authenticatedTechnicianId && shift.technicianId !== authenticatedTechnicianId) {
+    if (authenticatedUserId && shift.userId !== authenticatedUserId) {
       return NextResponse.json({ success: false, error: "Not authorized" }, { status: 403 });
     }
     if (!allowedShiftStatuses.has(shift.status)) {

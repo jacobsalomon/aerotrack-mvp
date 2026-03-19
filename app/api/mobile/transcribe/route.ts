@@ -114,7 +114,7 @@ export async function POST(request: Request) {
         include: {
           session: {
             select: {
-              technicianId: true,
+              userId: true,
               organizationId: true,
               shiftSessionId: true,
               description: true,
@@ -131,9 +131,9 @@ export async function POST(request: Request) {
       }
 
       const isSameOrganization =
-        evidence.session.organizationId === auth.technician.organizationId;
-      const isOwner = evidence.session.technicianId === auth.technician.id;
-      const isPrivileged = PRIVILEGED_ROLES.has(auth.technician.role);
+        evidence.session.organizationId === auth.user.organizationId;
+      const isOwner = evidence.session.userId === auth.user.id;
+      const isPrivileged = PRIVILEGED_ROLES.has(auth.user.role);
 
       if (!isSameOrganization || (!isOwner && !isPrivileged)) {
         return NextResponse.json(
@@ -198,8 +198,8 @@ export async function POST(request: Request) {
     // Audit log
     await prisma.auditLogEntry.create({
       data: {
-        organizationId: auth.technician.organizationId,
-        technicianId: auth.technician.id,
+        organizationId: auth.user.organizationId,
+        userId: auth.user.id,
         action: "audio_transcribed",
         entityType: "CaptureEvidence",
         entityId: evidenceId || null,

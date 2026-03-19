@@ -23,10 +23,10 @@ const shiftSummarySelect = {
   },
 } as const;
 
-async function getActiveShiftSummary(technicianId: string, organizationId: string) {
+async function getActiveShiftSummary(userId: string, organizationId: string) {
   return prisma.shiftSession.findFirst({
     where: {
-      technicianId,
+      userId,
       organizationId,
       status: { in: ["active", "paused"] },
     },
@@ -36,12 +36,12 @@ async function getActiveShiftSummary(technicianId: string, organizationId: strin
 }
 
 async function getPendingTranscriptShiftSummary(
-  technicianId: string,
+  userId: string,
   organizationId: string
 ) {
   return prisma.shiftSession.findFirst({
     where: {
-      technicianId,
+      userId,
       organizationId,
       status: "completed",
       transcriptReviewStatus: "review_required",
@@ -57,8 +57,8 @@ export async function GET(request: Request) {
 
   try {
     const [activeShift, pendingTranscriptShift] = await Promise.all([
-      getActiveShiftSummary(auth.technician.id, auth.technician.organizationId),
-      getPendingTranscriptShiftSummary(auth.technician.id, auth.technician.organizationId),
+      getActiveShiftSummary(auth.user.id, auth.user.organizationId),
+      getPendingTranscriptShiftSummary(auth.user.id, auth.user.organizationId),
     ]);
 
     return NextResponse.json({
@@ -94,8 +94,8 @@ export async function POST(request: Request) {
 
     const current = await prisma.shiftSession.findFirst({
       where: {
-        technicianId: auth.technician.id,
-        organizationId: auth.technician.organizationId,
+        userId: auth.user.id,
+        organizationId: auth.user.organizationId,
         status: { in: ["active", "paused"] },
       },
       select: { id: true, status: true },
@@ -106,14 +106,14 @@ export async function POST(request: Request) {
 
     if (!current) {
       const created = await startShift({
-        technicianId: auth.technician.id,
-        organizationId: auth.technician.organizationId,
+        userId: auth.user.id,
+        organizationId: auth.user.organizationId,
         measurementSpecId,
         notes,
       });
       shiftId = created.id;
     } else if (current.status === "paused") {
-      await resumeShift(current.id, auth.technician.id);
+      await resumeShift(current.id, auth.user.id);
       shiftId = current.id;
     }
 

@@ -47,7 +47,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (evidence.session.technicianId !== auth.technician.id) {
+    if (evidence.session.userId !== auth.user.id) {
       return NextResponse.json(
         { success: false, error: "Not authorized for this evidence" },
         { status: 403 }
@@ -137,8 +137,8 @@ export async function POST(request: Request) {
     // Audit log
     await prisma.auditLogEntry.create({
       data: {
-        organizationId: auth.technician.organizationId,
-        technicianId: auth.technician.id,
+        organizationId: auth.user.organizationId,
+        userId: auth.user.id,
         action: "video_annotated",
         entityType: "CaptureEvidence",
         entityId: evidenceId,

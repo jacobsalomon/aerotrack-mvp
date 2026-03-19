@@ -28,6 +28,10 @@ export const authConfig: NextAuthConfig = {
       if (user) {
         token.id = user.id;
         token.role = (user as { role?: string }).role ?? "USER";
+        token.organizationId = (user as { organizationId?: string | null }).organizationId ?? null;
+        token.badgeNumber = (user as { badgeNumber?: string | null }).badgeNumber ?? null;
+        token.firstName = (user as { firstName?: string | null }).firstName ?? null;
+        token.lastName = (user as { lastName?: string | null }).lastName ?? null;
       }
       return token;
     },
@@ -37,8 +41,10 @@ export const authConfig: NextAuthConfig = {
       if (session.user) {
         session.user.id = token.id as string;
         session.user.role = (token.role as string) ?? "USER";
-        // technicianId lookup happens in the full auth.ts (needs Prisma)
-        session.user.technicianId = (token.technicianId as string) ?? null;
+        session.user.organizationId = (token.organizationId as string) ?? null;
+        session.user.badgeNumber = (token.badgeNumber as string) ?? null;
+        session.user.firstName = (token.firstName as string) ?? null;
+        session.user.lastName = (token.lastName as string) ?? null;
       }
       return session;
     },

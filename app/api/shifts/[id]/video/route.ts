@@ -23,7 +23,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     if (!shift) {
       return NextResponse.json({ success: false, error: "Shift not found" }, { status: 404 });
     }
-    if (shift.technicianId !== auth.technician.id) {
+    if (shift.userId !== auth.user.id) {
       return NextResponse.json({ success: false, error: "Not authorized" }, { status: 403 });
     }
     if (shift.status !== "active") {

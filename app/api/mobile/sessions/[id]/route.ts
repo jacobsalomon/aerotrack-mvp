@@ -58,9 +58,9 @@ export async function GET(
   }
 
   const isSameOrganization =
-    session.organizationId === auth.technician.organizationId;
-  const isOwner = session.technicianId === auth.technician.id;
-  const isPrivileged = PRIVILEGED_ROLES.has(auth.technician.role);
+    session.organizationId === auth.user.organizationId;
+  const isOwner = session.userId === auth.user.id;
+  const isPrivileged = PRIVILEGED_ROLES.has(auth.user.role);
 
   if (!isSameOrganization || (!isOwner && !isPrivileged)) {
     return NextResponse.json(
@@ -95,7 +95,7 @@ export async function PATCH(
     );
   }
 
-  if (session.technicianId !== auth.technician.id) {
+  if (session.userId !== auth.user.id) {
     return NextResponse.json(
       { success: false, error: "Not authorized to update this session" },
       { status: 403 }
@@ -145,8 +145,8 @@ export async function PATCH(
     if (status) {
       await prisma.auditLogEntry.create({
         data: {
-          organizationId: auth.technician.organizationId,
-          technicianId: auth.technician.id,
+          organizationId: auth.user.organizationId,
+          userId: auth.user.id,
           action: `session_${status}`,
           entityType: "CaptureSession",
           entityId: id,

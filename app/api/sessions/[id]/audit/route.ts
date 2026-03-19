@@ -34,7 +34,7 @@ export async function GET(
       ],
     },
     include: {
-      technician: {
+      user: {
         select: {
           firstName: true,
           lastName: true,

@@ -51,7 +51,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       include: { shiftSession: { select: { organizationId: true } } },
     });
 
-    if (!existing || existing.shiftSession.organizationId !== auth.technician.organizationId) {
+    if (!existing || existing.shiftSession.organizationId !== auth.user.organizationId) {
       return NextResponse.json(
         { success: false, error: "Measurement not found" },
         { status: 404 }
@@ -95,7 +95,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
         updateData.status = "overridden";
         updateData.value = numericValue;
         updateData.overrideReason = reason || "Manual override";
-        updateData.overriddenBy = auth.technician.badgeNumber;
+        updateData.overriddenBy = auth.user.badgeNumber;
         updateData.overriddenAt = new Date();
         // Re-check tolerance with new value
         if (existing.toleranceLow !== null || existing.toleranceHigh !== null) {

@@ -1,5 +1,5 @@
 // POST /api/shifts — Start a new work shift
-// GET  /api/shifts — List shifts for the authenticated technician's org
+// GET  /api/shifts — List shifts for the authenticated user's org
 // Protected by API key authentication
 
 import { authenticateRequest } from "@/lib/mobile-auth";
@@ -17,8 +17,8 @@ export async function POST(request: Request) {
     const { measurementSpecId, notes } = body;
 
     const shift = await startShift({
-      technicianId: auth.technician.id,
-      organizationId: auth.technician.organizationId,
+      userId: auth.user.id,
+      organizationId: auth.user.organizationId,
       measurementSpecId,
       notes,
     });
@@ -46,7 +46,7 @@ export async function GET(request: Request) {
         ...(status && { status }),
       },
       include: {
-        technician: { select: { firstName: true, lastName: true, badgeNumber: true } },
+        user: { select: { firstName: true, lastName: true, badgeNumber: true } },
         measurementSpec: { select: { id: true, name: true } },
         _count: { select: { measurements: true, captureSessions: true } },
       },

@@ -1,5 +1,5 @@
 // POST /api/measurement-specs — Create a new measurement spec (checklist template)
-// GET  /api/measurement-specs — List all specs for the authenticated technician's org
+// GET  /api/measurement-specs — List all specs for the authenticated user's org
 // Protected by API key authentication
 
 import { prisma } from "@/lib/db";
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
 
     const spec = await prisma.measurementSpec.create({
       data: {
-        organizationId: auth.technician.organizationId,
+        organizationId: auth.user.organizationId,
         name,
         componentPartNumber: componentPartNumber || null,
         specItemsJson: JSON.stringify(specItems),
@@ -72,7 +72,7 @@ export async function GET(request: Request) {
 
     const specs = await prisma.measurementSpec.findMany({
       where: {
-        organizationId: auth.technician.organizationId,
+        organizationId: auth.user.organizationId,
         ...(status && { status }),
         ...(partNumber && { componentPartNumber: partNumber }),
       },

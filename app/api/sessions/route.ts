@@ -1,5 +1,5 @@
 // GET /api/sessions — List all capture sessions for the web dashboard
-// Includes technician info, evidence counts, and document counts
+// Includes user info, evidence counts, and document counts
 // Protected by dashboard auth (passcode cookie)
 
 import { prisma } from "@/lib/db";
@@ -23,7 +23,7 @@ export async function GET(request: Request) {
     const sessions = await prisma.captureSession.findMany({
       where,
       include: {
-        technician: {
+        user: {
           select: {
             id: true,
             firstName: true,
@@ -82,7 +82,7 @@ export async function GET(request: Request) {
 }
 
 // Start a new capture session from the web dashboard (no glasses required).
-// Looks up (or auto-creates) a Technician record for the logged-in user,
+// Looks up (or auto-creates) a User profile for the logged-in user,
 // creates a ShiftSession for mic recording / measurements, then creates
 // the CaptureSession linked to both.
 export async function POST(request: Request) {
@@ -94,16 +94,16 @@ export async function POST(request: Request) {
     const { description } = body;
     const user = authResult.user;
 
-    // Look up technician by the logged-in user's email
-    let technician = user.email
-      ? await prisma.technician.findUnique({
+    // Look up user profile by the logged-in user's email
+    let userProfile = user.email
+      ? await prisma.user.findUnique({
           where: { email: user.email },
           select: { id: true, organizationId: true },
         })
       : null;
 
-    // Auto-create a technician record if one doesn't exist yet
-    if (!technician) {
+    // Auto-create a user profile if one doesn't exist yet
+    if (!userProfile) {
       // Use the first organization as the default (production has one org)
       const org = await prisma.organization.findFirst({
         select: { id: true },
@@ -125,7 +125,7 @@ export async function POST(request: Request) {
       // Generate a badge number from the user ID
       const badgeNumber = `WEB-${user.id.slice(-6).toUpperCase()}`;
 
-      technician = await prisma.technician.create({
+      userProfile = await prisma.user.create({
         data: {
           firstName,
           lastName,
@@ -139,11 +139,18 @@ export async function POST(request: Request) {
       });
     }
 
+    if (!userProfile.organizationId) {
+      return NextResponse.json(
+        { error: "User has no organization. Please contact support." },
+        { status: 400 }
+      );
+    }
+
     // Create a ShiftSession so mic recording and measurement extraction work
     const shiftSession = await prisma.shiftSession.create({
       data: {
-        technicianId: technician.id,
-        organizationId: technician.organizationId,
+        userId: userProfile.id,
+        organizationId: userProfile.organizationId,
         status: "active",
         startedAt: new Date(),
       },
@@ -151,8 +158,8 @@ export async function POST(request: Request) {
 
     const session = await prisma.captureSession.create({
       data: {
-        technicianId: technician.id,
-        organizationId: technician.organizationId,
+        userId: userProfile.id,
+        organizationId: userProfile.organizationId,
         shiftSessionId: shiftSession.id,
         description: description || "Web capture session",
         status: "capturing",
@@ -161,8 +168,8 @@ export async function POST(request: Request) {
 
     await prisma.auditLogEntry.create({
       data: {
-        organizationId: technician.organizationId,
-        technicianId: technician.id,
+        organizationId: userProfile.organizationId,
+        userId: userProfile.id,
         action: "session_started",
         entityType: "CaptureSession",
         entityId: session.id,

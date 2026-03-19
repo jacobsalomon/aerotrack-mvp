@@ -21,7 +21,7 @@ export async function GET(request: Request, { params }: RouteParams) {
       include: { _count: { select: { shiftSessions: true } } },
     });
 
-    if (!spec || spec.organizationId !== auth.technician.organizationId) {
+    if (!spec || spec.organizationId !== auth.user.organizationId) {
       return NextResponse.json(
         { success: false, error: "Measurement spec not found" },
         { status: 404 }
@@ -54,7 +54,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   try {
     // Verify ownership
     const existing = await prisma.measurementSpec.findUnique({ where: { id } });
-    if (!existing || existing.organizationId !== auth.technician.organizationId) {
+    if (!existing || existing.organizationId !== auth.user.organizationId) {
       return NextResponse.json(
         { success: false, error: "Measurement spec not found" },
         { status: 404 }
@@ -117,7 +117,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       include: { _count: { select: { shiftSessions: true } } },
     });
 
-    if (!existing || existing.organizationId !== auth.technician.organizationId) {
+    if (!existing || existing.organizationId !== auth.user.organizationId) {
       return NextResponse.json(
         { success: false, error: "Measurement spec not found" },
         { status: 404 }

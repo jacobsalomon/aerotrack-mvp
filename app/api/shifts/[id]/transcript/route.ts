@@ -85,7 +85,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     const shift = await prisma.shiftSession.findUnique({
       where: { id: shiftId },
       include: {
-        technician: { select: { badgeNumber: true } },
+        user: { select: { badgeNumber: true } },
         transcriptChunks: {
           select: {
             transcript: true,
@@ -177,7 +177,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
         transcriptUpdatedAt: new Date(),
         transcriptReviewStatus: action === "approve" ? "approved" : "review_required",
         transcriptApprovedAt: action === "approve" ? new Date() : null,
-        transcriptApprovedBy: action === "approve" ? shift.technician.badgeNumber : null,
+        transcriptApprovedBy: action === "approve" ? shift.user.badgeNumber : null,
         quantumExportedAt: null,
       },
       select: {

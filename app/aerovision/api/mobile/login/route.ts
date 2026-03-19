@@ -1,6 +1,6 @@
 // POST /api/mobile/login — Authenticate with email/password, return a JWT.
 // Uses the same User table and bcrypt hashing as the NextAuth web login.
-// The JWT contains the technician's ID and org so the mobile app can make
+// The JWT contains the user's ID and org so the mobile app can make
 // authenticated API calls as the correct user.
 
 import { prisma } from "@/lib/db";
@@ -44,32 +44,19 @@ export async function POST(request: Request) {
       );
     }
 
-    // Find the linked Technician record by email
-    const technician = await prisma.technician.findUnique({
-      where: { email: email.toLowerCase().trim() },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        badgeNumber: true,
-        role: true,
-        organizationId: true,
-      },
-    });
-
-    if (!technician) {
+    // Ensure user has required profile fields for mobile use
+    if (!user.organizationId || !user.badgeNumber) {
       return NextResponse.json(
         { error: "No technician profile linked to this account" },
         { status: 403 }
       );
     }
 
-    // Sign a JWT with technician claims
+    // Sign a JWT with user claims
     const token = await new SignJWT({
       sub: user.id,
-      technicianId: technician.id,
-      organizationId: technician.organizationId,
+      userId: user.id,
+      organizationId: user.organizationId,
     })
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
@@ -78,14 +65,14 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       token,
-      technician: {
-        id: technician.id,
-        firstName: technician.firstName,
-        lastName: technician.lastName,
-        email: technician.email,
-        badgeNumber: technician.badgeNumber,
-        role: technician.role,
-        organizationId: technician.organizationId,
+      user: {
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        badgeNumber: user.badgeNumber,
+        role: user.role,
+        organizationId: user.organizationId,
       },
     });
   } catch (error) {

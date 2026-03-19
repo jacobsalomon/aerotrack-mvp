@@ -2,10 +2,10 @@
 // Used by all /api/mobile/* endpoints
 //
 // Supports two auth methods:
-// 1. JWT Bearer token (from /api/mobile/login) — resolves to the real technician
-// 2. Legacy fallback — returns demo technician when no auth header is present
+// 1. JWT Bearer token (from /api/mobile/login) — resolves to the real user
+// 2. Legacy fallback — returns demo user when no auth header is present
 //
-// JWT is tried first. If no Authorization header, falls back to demo technician
+// JWT is tried first. If no Authorization header, falls back to demo user
 // so existing mobile flows don't break during migration.
 
 import { jwtVerify } from "jose";
@@ -13,7 +13,7 @@ import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { getMobileSigningKey } from "@/lib/mobile-jwt";
 
-export interface AuthenticatedTechnician {
+export interface AuthenticatedUser {
   id: string;
   firstName: string;
   lastName: string;
@@ -23,8 +23,8 @@ export interface AuthenticatedTechnician {
   organizationId: string;
 }
 
-// Demo technician — used as fallback when no auth header is present
-const DEMO_TECHNICIAN: AuthenticatedTechnician = {
+// Demo user — used as fallback when no auth header is present
+const DEMO_USER: AuthenticatedUser = {
   id: "tech-mike-chen",
   firstName: "Mike",
   lastName: "Chen",
@@ -36,12 +36,12 @@ const DEMO_TECHNICIAN: AuthenticatedTechnician = {
 
 export async function authenticateRequest(
   request: Request
-): Promise<{ technician: AuthenticatedTechnician } | { error: NextResponse }> {
+): Promise<{ user: AuthenticatedUser } | { error: NextResponse }> {
   const authHeader = request.headers.get("Authorization");
 
-  // No auth header → fall back to demo technician (backwards compatible)
+  // No auth header → fall back to demo user (backwards compatible)
   if (!authHeader?.startsWith("Bearer ")) {
-    return { technician: DEMO_TECHNICIAN };
+    return { user: DEMO_USER };
   }
 
   const token = authHeader.slice(7);
@@ -50,19 +50,19 @@ export async function authenticateRequest(
   try {
     const { payload } = await jwtVerify(token, getMobileSigningKey());
 
-    const technicianId = payload.technicianId as string | undefined;
-    if (!technicianId) {
+    const userId = payload.userId as string | undefined;
+    if (!userId) {
       return {
         error: NextResponse.json(
-          { error: "Invalid token: missing technicianId" },
+          { error: "Invalid token: missing userId" },
           { status: 401 }
         ),
       };
     }
 
-    // Look up the technician from the database
-    const technician = await prisma.technician.findUnique({
-      where: { id: technicianId },
+    // Look up the user from the database
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
       select: {
         id: true,
         firstName: true,
@@ -74,16 +74,26 @@ export async function authenticateRequest(
       },
     });
 
-    if (!technician) {
+    if (!user || !user.email || !user.badgeNumber || !user.organizationId) {
       return {
         error: NextResponse.json(
-          { error: "Technician not found" },
+          { error: "User not found or missing profile data" },
           { status: 401 }
         ),
       };
     }
 
-    return { technician };
+    return {
+      user: {
+        id: user.id,
+        firstName: user.firstName ?? "",
+        lastName: user.lastName ?? "",
+        email: user.email,
+        badgeNumber: user.badgeNumber,
+        role: user.role,
+        organizationId: user.organizationId,
+      },
+    };
   } catch {
     // JWT verification failed (expired, bad signature, etc.)
     return {

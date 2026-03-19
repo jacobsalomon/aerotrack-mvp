@@ -1,10 +1,10 @@
 // POST /api/technicians/verify-certificate
-// Verifies a technician's FAA certificate against the public database.
+// Verifies a user's FAA certificate against the public database.
 // Requires ADMIN role.
 
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/rbac";
-import { verifyTechnicianCertificate } from "@/lib/faa-certificate-lookup";
+import { verifyUserCertificate } from "@/lib/faa-certificate-lookup";
 
 export async function POST(request: Request) {
   const authResult = await requireAuth(request);
@@ -17,18 +17,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { technicianId, certificateNumber } = body;
+  const { userId, certificateNumber } = body;
 
-  if (!technicianId || !certificateNumber) {
+  if (!userId || !certificateNumber) {
     return NextResponse.json(
-      { error: "technicianId and certificateNumber are required" },
+      { error: "userId and certificateNumber are required" },
       { status: 400 }
     );
   }
 
   try {
-    const { result, updated } = await verifyTechnicianCertificate(
-      technicianId,
+    const { result, updated } = await verifyUserCertificate(
+      userId,
       certificateNumber
     );
 

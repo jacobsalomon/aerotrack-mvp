@@ -82,7 +82,7 @@ interface ShiftDetail {
     conflictingSegments: number;
     singleSourceSegments: number;
   };
-  technician: { firstName: string; lastName: string; badgeNumber: string };
+  user: { firstName: string; lastName: string; badgeNumber: string };
   measurementSpec: { specItemsJson: string; name: string } | null;
   specItems: unknown[] | null;
   measurementStatusCounts: Record<string, number>;
@@ -500,7 +500,7 @@ export default function ShiftDetailPage({ params }: { params: Promise<{ id: stri
           </Link>
           <div>
             <h1 className="text-xl font-semibold text-slate-900">
-              {shift.technician.firstName} {shift.technician.lastName}&apos;s Shift
+              {shift.user.firstName} {shift.user.lastName}&apos;s Shift
             </h1>
             <div className="flex items-center gap-3">
               <p className="text-sm text-slate-500">

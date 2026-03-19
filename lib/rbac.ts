@@ -5,7 +5,7 @@
 // Usage in API routes:
 //   const authResult = await requireAuth(request);
 //   if (authResult.error) return authResult.error;
-//   // authResult.user is available with id, role, email, technicianId
+//   // authResult.user is available with id, role, email, organizationId, badgeNumber
 
 import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
@@ -26,7 +26,10 @@ export interface AuthenticatedUser {
   email: string | null;
   name: string | null;
   role: Role;
-  technicianId: string | null;
+  organizationId: string | null;
+  badgeNumber: string | null;
+  firstName: string | null;
+  lastName: string | null;
 }
 
 type RbacSuccess = { user: AuthenticatedUser; error?: never };
@@ -82,7 +85,10 @@ export async function requireRole(
       email: session.user.email ?? null,
       name: session.user.name ?? null,
       role: userRole,
-      technicianId: session.user.technicianId ?? null,
+      organizationId: session.user.organizationId ?? null,
+      badgeNumber: session.user.badgeNumber ?? null,
+      firstName: session.user.firstName ?? null,
+      lastName: session.user.lastName ?? null,
     },
   };
 }

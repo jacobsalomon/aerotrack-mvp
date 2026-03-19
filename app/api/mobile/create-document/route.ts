@@ -79,7 +79,7 @@ export async function POST(request: Request) {
       where: { id: sessionId },
       include: {
         evidence: { orderBy: { capturedAt: "asc" } },
-        technician: true,
+        user: true,
         organization: true,
         analysis: true,
       },
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (session.technicianId !== auth.technician.id) {
+    if (session.userId !== auth.user.id) {
       return NextResponse.json(
         { success: false, error: "Not authorized for this session" },
         { status: 403 }
@@ -171,8 +171,8 @@ export async function POST(request: Request) {
         session.organization.address, session.organization.city,
         session.organization.state, session.organization.zip,
       ].filter(Boolean).join(", "),
-      technicianName: `${session.technician.firstName} ${session.technician.lastName}`,
-      technicianBadge: session.technician.badgeNumber,
+      userName: `${session.user.firstName ?? ""} ${session.user.lastName ?? ""}`.trim(),
+      userBadge: session.user.badgeNumber ?? "",
       componentInfo,
       photoExtractions,
       videoAnalysis,
@@ -219,8 +219,8 @@ export async function POST(request: Request) {
     // Audit log
     await prisma.auditLogEntry.create({
       data: {
-        organizationId: auth.technician.organizationId,
-        technicianId: auth.technician.id,
+        organizationId: auth.user.organizationId,
+        userId: auth.user.id,
         action: "document_manually_created",
         entityType: "CaptureSession",
         entityId: sessionId,
@@ -275,8 +275,8 @@ async function generateDocumentByType(opts: {
   organizationName: string;
   organizationCert: string | null;
   organizationAddress: string;
-  technicianName: string;
-  technicianBadge: string;
+  userName: string;
+  userBadge: string;
   componentInfo: { partNumber: string; serialNumber: string; description: string; oem: string; totalHours: number; totalCycles: number } | null;
   photoExtractions: Array<Record<string, unknown>>;
   videoAnalysis: Record<string, unknown> | null;
@@ -290,8 +290,8 @@ async function generateDocumentByType(opts: {
     organizationName: opts.organizationName,
     organizationCert: opts.organizationCert,
     organizationAddress: opts.organizationAddress,
-    technicianName: opts.technicianName,
-    technicianBadge: opts.technicianBadge,
+    userName: opts.userName,
+    userBadge: opts.userBadge,
     componentInfo: opts.componentInfo,
     photoExtractions: opts.photoExtractions,
     videoAnalysis: opts.videoAnalysis,

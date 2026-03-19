@@ -65,7 +65,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Verify the session exists and belongs to this technician
+    // Verify the session exists and belongs to this user
     const session = await prisma.captureSession.findUnique({
       where: { id: sessionId },
     });
@@ -77,7 +77,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (session.technicianId !== auth.technician.id) {
+    if (session.userId !== auth.user.id) {
       return NextResponse.json(
         { success: false, error: "Not authorized for this session" },
         { status: 403 }
@@ -105,8 +105,8 @@ export async function POST(request: Request) {
     // Log it
     await prisma.auditLogEntry.create({
       data: {
-        organizationId: auth.technician.organizationId,
-        technicianId: auth.technician.id,
+        organizationId: auth.user.organizationId,
+        userId: auth.user.id,
         action: "evidence_captured",
         entityType: "CaptureEvidence",
         entityId: evidence.id,

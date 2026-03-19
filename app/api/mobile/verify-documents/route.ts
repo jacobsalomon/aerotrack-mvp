@@ -37,7 +37,7 @@ export async function POST(request: Request) {
       where: { id: sessionId },
       select: {
         id: true,
-        technicianId: true,
+        userId: true,
         organizationId: true,
       },
     });
@@ -50,10 +50,10 @@ export async function POST(request: Request) {
     }
 
     const isSameOrganization =
-      session.organizationId === auth.technician.organizationId;
-    const isOwner = session.technicianId === auth.technician.id;
+      session.organizationId === auth.user.organizationId;
+    const isOwner = session.userId === auth.user.id;
     const isPrivileged =
-      auth.technician.role === "SUPERVISOR" || auth.technician.role === "ADMIN";
+      auth.user.role === "SUPERVISOR" || auth.user.role === "ADMIN";
 
     if (!isSameOrganization || (!isOwner && !isPrivileged)) {
       return NextResponse.json(
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
     }
 
     // Delegate to shared verification logic
-    const result = await verifyDocuments(sessionId, auth.technician.id);
+    const result = await verifyDocuments(sessionId, auth.user.id);
 
     return NextResponse.json({
       success: true,

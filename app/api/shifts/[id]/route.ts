@@ -53,13 +53,13 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     let shift;
     switch (action) {
       case "pause":
-        shift = await pauseShift(id, auth.technician.id);
+        shift = await pauseShift(id, auth.user.id);
         break;
       case "resume":
-        shift = await resumeShift(id, auth.technician.id);
+        shift = await resumeShift(id, auth.user.id);
         break;
       case "end":
-        shift = await endShift(id, auth.technician.id);
+        shift = await endShift(id, auth.user.id);
         break;
     }
 

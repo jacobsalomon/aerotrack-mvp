@@ -57,7 +57,7 @@ export async function ensureSessionProcessingJob(
     where: { id: sessionId },
     select: {
       id: true,
-      technicianId: true,
+      userId: true,
       organizationId: true,
       status: true,
       completedAt: true,
@@ -103,7 +103,7 @@ export async function ensureSessionProcessingJob(
       await tx.auditLogEntry.create({
         data: {
           organizationId: session.organizationId,
-          technicianId: session.technicianId,
+          userId: session.userId,
           action: "session_processing_enqueued",
           entityType: "CaptureSession",
           entityId: sessionId,
@@ -159,7 +159,7 @@ export async function ensureSessionProcessingJob(
       await tx.auditLogEntry.create({
         data: {
           organizationId: session.organizationId,
-          technicianId: session.technicianId,
+          userId: session.userId,
           action: "session_processing_retried",
           entityType: "CaptureSession",
           entityId: sessionId,
@@ -251,7 +251,7 @@ async function processSessionProcessingJob(jobId: string) {
             select: {
               id: true,
               status: true,
-              technicianId: true,
+              userId: true,
               organizationId: true,
               completedAt: true,
             },
@@ -338,7 +338,7 @@ async function processSessionProcessingJob(jobId: string) {
         } else if (nextStage === "verifying") {
           const verificationResult = await verifyDocuments(
             job.session.id,
-            job.session.technicianId
+            job.session.userId
           );
 
           await markStageCompleted({
@@ -508,14 +508,14 @@ async function markStageCompleted(args: {
 
     const session = await tx.captureSession.findUnique({
       where: { id: args.sessionId },
-      select: { technicianId: true, organizationId: true },
+      select: { userId: true, organizationId: true },
     });
 
     if (session) {
       await tx.auditLogEntry.create({
         data: {
           organizationId: session.organizationId,
-          technicianId: session.technicianId,
+          userId: session.userId,
           action: `session_stage_${args.stage}_completed`,
           entityType: "CaptureSession",
           entityId: args.sessionId,
@@ -569,14 +569,14 @@ async function markStageFailed(args: {
 
     const session = await tx.captureSession.findUnique({
       where: { id: args.sessionId },
-      select: { technicianId: true, organizationId: true },
+      select: { userId: true, organizationId: true },
     });
 
     if (session) {
       await tx.auditLogEntry.create({
         data: {
           organizationId: session.organizationId,
-          technicianId: session.technicianId,
+          userId: session.userId,
           action: `session_stage_${args.stage}_failed`,
           entityType: "CaptureSession",
           entityId: args.sessionId,

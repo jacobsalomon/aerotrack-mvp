@@ -26,7 +26,7 @@ interface ShiftSummary {
   endedAt: string | null;
   totalDurationMin: number | null;
   notes: string | null;
-  technician: { firstName: string; lastName: string; badgeNumber: string };
+  user: { firstName: string; lastName: string; badgeNumber: string };
   measurementSpec: { id: string; name: string } | null;
   _count: { measurements: number; captureSessions: number };
 }
@@ -144,8 +144,8 @@ function ShiftCard({ shift, active }: { shift: ShiftSummary; active?: boolean })
                 )}
               </div>
               <p className="text-sm font-medium text-slate-800">
-                {shift.technician.firstName} {shift.technician.lastName}
-                <span className="text-slate-400 ml-1">#{shift.technician.badgeNumber}</span>
+                {shift.user.firstName} {shift.user.lastName}
+                <span className="text-slate-400 ml-1">#{shift.user.badgeNumber}</span>
               </p>
               <p className="text-xs text-slate-500">
                 {startDate.toLocaleDateString()} {startDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}

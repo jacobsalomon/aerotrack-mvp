@@ -46,7 +46,7 @@ export async function POST(request: Request) {
           session: {
             select: {
               id: true,
-              technicianId: true,
+              userId: true,
               organizationId: true,
             },
           },
@@ -61,9 +61,9 @@ export async function POST(request: Request) {
       }
 
       const isSameOrganization =
-        evidence.session.organizationId === auth.technician.organizationId;
-      const isOwner = evidence.session.technicianId === auth.technician.id;
-      const isPrivileged = PRIVILEGED_ROLES.has(auth.technician.role);
+        evidence.session.organizationId === auth.user.organizationId;
+      const isOwner = evidence.session.userId === auth.user.id;
+      const isPrivileged = PRIVILEGED_ROLES.has(auth.user.role);
 
       if (!isSameOrganization || (!isOwner && !isPrivileged)) {
         return NextResponse.json(
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
         where: { id: sessionId },
         select: {
           id: true,
-          technicianId: true,
+          userId: true,
           organizationId: true,
         },
       });
@@ -93,9 +93,9 @@ export async function POST(request: Request) {
       }
 
       const isSameOrganization =
-        session.organizationId === auth.technician.organizationId;
-      const isOwner = session.technicianId === auth.technician.id;
-      const isPrivileged = PRIVILEGED_ROLES.has(auth.technician.role);
+        session.organizationId === auth.user.organizationId;
+      const isOwner = session.userId === auth.user.id;
+      const isPrivileged = PRIVILEGED_ROLES.has(auth.user.role);
 
       if (!isSameOrganization || (!isOwner && !isPrivileged)) {
         return NextResponse.json(
@@ -164,8 +164,8 @@ export async function POST(request: Request) {
     // Log the analysis
     await prisma.auditLogEntry.create({
       data: {
-        organizationId: auth.technician.organizationId,
-        technicianId: auth.technician.id,
+        organizationId: auth.user.organizationId,
+        userId: auth.user.id,
         action: "image_analyzed",
         entityType: "CaptureEvidence",
         entityId: evidenceId || null,

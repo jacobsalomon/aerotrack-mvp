@@ -46,7 +46,7 @@ export async function runSessionAnalysisStage(
     where: { id: sessionId },
     include: {
       evidence: { orderBy: { capturedAt: "asc" } },
-      technician: true,
+      user: true,
       organization: true,
     },
   });
@@ -212,7 +212,7 @@ export async function runSessionDraftingStage(
       where: { id: sessionId },
       include: {
         evidence: { orderBy: { capturedAt: "asc" } },
-        technician: true,
+        user: true,
         organization: true,
         analysis: true,
       },
@@ -298,8 +298,8 @@ export async function runSessionDraftingStage(
       ]
         .filter(Boolean)
         .join(", "),
-      technicianName: `${updatedSession.technician.firstName} ${updatedSession.technician.lastName}`,
-      technicianBadge: updatedSession.technician.badgeNumber,
+      userName: `${updatedSession.user.firstName ?? ""} ${updatedSession.user.lastName ?? ""}`.trim(),
+      userBadge: updatedSession.user.badgeNumber ?? "",
       componentInfo,
       photoExtractions,
       videoAnalysis,

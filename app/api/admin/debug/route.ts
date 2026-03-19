@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
         "SessionAnalysis",
         "VideoAnnotation",
         "AuditLogEntry",
-        "Technician",
+        "User (Technicians)",
         "Organization",
       ],
       usage: "?table=CaptureEvidence&sessionId=xxx",
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
           orderBy: { startedAt: "desc" },
           take: limit,
           include: {
-            technician: { select: { firstName: true, lastName: true, badgeNumber: true } },
+            user: { select: { firstName: true, lastName: true, badgeNumber: true } },
             _count: { select: { evidence: true, documents: true } },
           },
         });
@@ -130,8 +130,8 @@ export async function GET(request: NextRequest) {
         break;
       }
 
-      case "Technician": {
-        data = await prisma.technician.findMany({
+      case "User (Technicians)": {
+        data = await prisma.user.findMany({
           take: limit,
           select: {
             id: true,

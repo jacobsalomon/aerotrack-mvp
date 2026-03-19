@@ -1,4 +1,4 @@
-// POST /api/mobile/auth — Always succeeds with demo technician
+// POST /api/mobile/auth — Always succeeds with demo user
 // Auth is bypassed for MVP — the app just needs a success response to proceed.
 
 import { NextResponse } from "next/server";

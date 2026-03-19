@@ -1,6 +1,6 @@
 // GET /api/sessions/[id] — Full session detail for the web dashboard
 // PATCH /api/sessions/[id] — Update session fields (expectedSteps, description)
-// Returns session with all relations: technician, organization, evidence
+// Returns session with all relations: user, organization, evidence
 // (with video annotations), documents (with reviewer), and analysis
 
 import { prisma } from "@/lib/db";
@@ -27,7 +27,7 @@ export async function GET(
     const session = await prisma.captureSession.findUnique({
       where: { id },
       include: {
-        technician: {
+        user: {
           select: {
             id: true,
             firstName: true,

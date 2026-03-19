@@ -1,5 +1,5 @@
-// GET /api/technicians — List all technicians with session counts
-// For the web dashboard technician management page
+// GET /api/technicians — List all users with session counts
+// For the web dashboard user management page
 // Protected by dashboard auth (passcode cookie)
 
 import { prisma } from "@/lib/db";
@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   const authResult = await requireAuth(request);
   if (authResult.error) return authResult.error;
 
-  const technicians = await prisma.technician.findMany({
+  const users = await prisma.user.findMany({
     select: {
       id: true,
       firstName: true,
@@ -19,7 +19,6 @@ export async function GET(request: Request) {
       badgeNumber: true,
       role: true,
       status: true,
-      createdAt: true,
       // apiKey intentionally excluded — never expose secrets to the client
       organization: { select: { name: true } },
       _count: {
@@ -29,8 +28,8 @@ export async function GET(request: Request) {
         },
       },
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: { id: "desc" },
   });
 
-  return NextResponse.json(technicians);
+  return NextResponse.json(users);
 }

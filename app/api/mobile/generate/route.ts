@@ -52,7 +52,7 @@ export async function POST(request: Request) {
 
   try {
 
-    // Load the session with all evidence, analysis, technician, and org info
+    // Load the session with all evidence, analysis, user, and org info
     const session = await prisma.captureSession.findUnique({
       where: { id: sessionId },
       include: {
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
           include: { videoAnnotations: { orderBy: { timestamp: "asc" } } },
           orderBy: { capturedAt: "asc" },
         },
-        technician: true,
+        user: true,
         organization: true,
         analysis: true,
       },
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (session.technicianId !== auth.technician.id) {
+    if (session.userId !== auth.user.id) {
       return NextResponse.json(
         { success: false, error: "Not authorized for this session" },
         { status: 403 }
@@ -220,8 +220,8 @@ export async function POST(request: Request) {
       ]
         .filter(Boolean)
         .join(", "),
-      technicianName: `${session.technician.firstName} ${session.technician.lastName}`,
-      technicianBadge: session.technician.badgeNumber,
+      userName: `${session.user.firstName ?? ""} ${session.user.lastName ?? ""}`.trim(),
+      userBadge: session.user.badgeNumber ?? "",
       componentInfo,
       photoExtractions,
       videoAnalysis,
@@ -312,8 +312,8 @@ export async function POST(request: Request) {
     // Audit log
     await prisma.auditLogEntry.create({
       data: {
-        organizationId: auth.technician.organizationId,
-        technicianId: auth.technician.id,
+        organizationId: auth.user.organizationId,
+        userId: auth.user.id,
         action: "documents_generated",
         entityType: "CaptureSession",
         entityId: sessionId,
@@ -341,7 +341,7 @@ export async function POST(request: Request) {
     let verification = null;
     let verifiedSessionStatus: string | null = null;
     try {
-      const verifyResult = await verifyDocuments(sessionId, auth.technician.id);
+      const verifyResult = await verifyDocuments(sessionId, auth.user.id);
       verification = verifyResult.verification;
       verifiedSessionStatus = verifyResult.sessionStatus;
     } catch (verifyError) {

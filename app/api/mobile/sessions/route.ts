@@ -1,4 +1,4 @@
-// GET /api/mobile/sessions — List technician's capture sessions
+// GET /api/mobile/sessions — List user's capture sessions
 // POST /api/mobile/sessions — Start a new capture session
 // Protected by API key authentication
 
@@ -8,7 +8,7 @@ import { decorateSessionWithProgress } from "@/lib/session-progress";
 import { scheduleSessionProcessingIfNeeded } from "@/lib/session-processing-jobs";
 import { NextResponse } from "next/server";
 
-// List the technician's sessions (most recent first)
+// List the user's sessions (most recent first)
 export async function GET(request: Request) {
   const auth = await authenticateRequest(request);
   if ("error" in auth) return auth.error;
@@ -17,7 +17,7 @@ export async function GET(request: Request) {
   const status = searchParams.get("status");
 
   const where: Record<string, unknown> = {
-    technicianId: auth.technician.id,
+    userId: auth.user.id,
   };
   if (status) where.status = status;
 
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
     if (typeof shiftSessionId === "string" && shiftSessionId.trim().length > 0) {
       const shift = await prisma.shiftSession.findUnique({
         where: { id: shiftSessionId },
-        select: { id: true, technicianId: true, organizationId: true },
+        select: { id: true, userId: true, organizationId: true },
       });
 
       if (!shift) {
@@ -73,8 +73,8 @@ export async function POST(request: Request) {
       }
 
       if (
-        shift.technicianId !== auth.technician.id ||
-        shift.organizationId !== auth.technician.organizationId
+        shift.userId !== auth.user.id ||
+        shift.organizationId !== auth.user.organizationId
       ) {
         return NextResponse.json(
           { success: false, error: "Not authorized to link this shift" },
@@ -86,8 +86,8 @@ export async function POST(request: Request) {
     } else {
       const activeShift = await prisma.shiftSession.findFirst({
         where: {
-          technicianId: auth.technician.id,
-          organizationId: auth.technician.organizationId,
+          userId: auth.user.id,
+          organizationId: auth.user.organizationId,
           status: { in: ["active", "paused"] },
         },
         select: { id: true },
@@ -98,8 +98,8 @@ export async function POST(request: Request) {
 
     const session = await prisma.captureSession.create({
       data: {
-        technicianId: auth.technician.id,
-        organizationId: auth.technician.organizationId,
+        userId: auth.user.id,
+        organizationId: auth.user.organizationId,
         shiftSessionId: linkedShiftId,
         description: description || null,
         status: "capturing",
@@ -109,8 +109,8 @@ export async function POST(request: Request) {
     // Log it
     await prisma.auditLogEntry.create({
       data: {
-        organizationId: auth.technician.organizationId,
-        technicianId: auth.technician.id,
+        organizationId: auth.user.organizationId,
+        userId: auth.user.id,
         action: "session_started",
         entityType: "CaptureSession",
         entityId: session.id,

@@ -234,8 +234,8 @@ export async function generateDocuments(opts: {
   organizationName: string;
   organizationCert: string | null;
   organizationAddress: string;
-  technicianName: string;
-  technicianBadge: string;
+  userName: string;
+  userBadge: string;
   componentInfo: {
     partNumber: string;
     serialNumber: string;
@@ -266,8 +266,8 @@ ORGANIZATION:
 - Address: ${opts.organizationAddress}
 
 TECHNICIAN:
-- Name: ${opts.technicianName}
-- Badge: ${opts.technicianBadge}
+- Name: ${opts.userName}
+- Badge: ${opts.userBadge}
 
 ${opts.componentInfo ? `COMPONENT:
 - Part Number: ${opts.componentInfo.partNumber}

@@ -59,7 +59,7 @@ export async function POST(
           include: { videoAnnotations: { orderBy: { timestamp: "asc" } } },
           orderBy: { capturedAt: "asc" },
         },
-        technician: true,
+        user: true,
         organization: true,
         analysis: true,
       },
@@ -142,8 +142,8 @@ export async function POST(
       organizationName: session.organization.name,
       organizationCert: session.organization.faaRepairStationCert,
       organizationAddress: [session.organization.address, session.organization.city, session.organization.state, session.organization.zip].filter(Boolean).join(", "),
-      technicianName: `${session.technician.firstName} ${session.technician.lastName}`,
-      technicianBadge: session.technician.badgeNumber,
+      userName: `${session.user.firstName ?? ""} ${session.user.lastName ?? ""}`.trim(),
+      userBadge: session.user.badgeNumber ?? "",
       componentInfo,
       photoExtractions,
       videoAnalysis,
@@ -202,7 +202,7 @@ export async function POST(
     await prisma.auditLogEntry.create({
       data: {
         organizationId: session.organization.id,
-        technicianId: session.technicianId,
+        userId: session.userId,
         action: "document_manually_created",
         entityType: "CaptureSession",
         entityId: sessionId,

@@ -89,7 +89,7 @@ export async function PATCH(
     // Load the document
     const doc = await prisma.documentGeneration2.findUnique({
       where: { id: docId },
-      include: { session: { select: { id: true, technicianId: true, organizationId: true } } },
+      include: { session: { select: { id: true, userId: true, organizationId: true } } },
     });
 
     if (!doc) {
@@ -154,7 +154,7 @@ export async function PATCH(
       await prisma.auditLogEntry.create({
         data: {
           organizationId: doc.session.organizationId,
-          technicianId: doc.session.technicianId,
+          userId: doc.session.userId,
           action: "document_fields_edited",
           entityType: "DocumentGeneration2",
           entityId: docId,
@@ -167,7 +167,7 @@ export async function PATCH(
       await prisma.auditLogEntry.create({
         data: {
           organizationId: doc.session.organizationId,
-          technicianId: doc.session.technicianId,
+          userId: doc.session.userId,
           action:
             fieldDisposition.status === null
               ? "document_field_disposition_cleared"
@@ -188,7 +188,7 @@ export async function PATCH(
     let verification = null;
     if (hasFieldEdits) {
       try {
-        const verifyResult = await verifyDocuments(sessionId, doc.session.technicianId);
+        const verifyResult = await verifyDocuments(sessionId, doc.session.userId);
         verification = verifyResult.verification;
       } catch (verifyError) {
         console.warn(
