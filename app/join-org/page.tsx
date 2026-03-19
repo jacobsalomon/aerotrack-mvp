@@ -51,7 +51,9 @@ export default function JoinOrgPage() {
 
       if (res.ok) {
         await update();
-        router.push("/sessions");
+        // Full page reload so middleware picks up the refreshed JWT
+        window.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/sessions`;
+        return;
       } else {
         setError(data.error || "Failed to join organization");
       }
@@ -144,7 +146,10 @@ export default function JoinOrgPage() {
           </button>
 
           <button
-            onClick={() => router.push("/sessions")}
+            onClick={() => {
+              // Full page reload so middleware picks up the refreshed JWT with the new orgId
+              window.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/sessions`;
+            }}
             className="w-full rounded-xl bg-white/10 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-white/15"
           >
             Continue to AeroVision
