@@ -1,16 +1,10 @@
 // Test database helper
-// Uses a separate SQLite file (test.db) so tests never touch dev data.
-// Provides helpers to seed test-specific data and clean up after mutations.
+// Uses DATABASE_URL from environment (same Neon DB, or a test branch if configured).
 
 import { PrismaClient } from "@/generated/prisma/client";
-import { PrismaLibSql } from "@prisma/adapter-libsql";
+import { PrismaPg } from "@prisma/adapter-pg";
 
-// Create a dedicated test database connection
-// Uses TURSO_DATABASE_URL if set (CI/vitest config), falls back to test.db
-const adapter = new PrismaLibSql({
-  url: process.env.TURSO_DATABASE_URL ?? "file:./test.db",
-});
-
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 export const testDb = new PrismaClient({ adapter });
 
 /**

@@ -40,12 +40,8 @@ const nextConfig: NextConfig = {
   // Without this, the bundler tries to process native modules and gets stuck,
   // causing the dev server to take 40+ seconds to start instead of ~5 seconds.
   serverExternalPackages: [
-    "@prisma/adapter-libsql",
+    "@prisma/adapter-pg",
     "@prisma/client",
-    "@libsql/client",
-    "@libsql/hrana-client",
-    "@libsql/isomorphic-ws",
-    "@libsql/isomorphic-fetch",
     "prisma",
     "pdf-lib",
     "@anthropic-ai/sdk",

@@ -9,29 +9,10 @@
 
 import "dotenv/config";
 import { PrismaClient } from "../generated/prisma/client.js";
-import { PrismaLibSql } from "@prisma/adapter-libsql";
+import { PrismaPg } from "@prisma/adapter-pg";
 import crypto from "crypto";
-import path from "path";
-import { fileURLToPath } from "url";
 
-// Resolve absolute path to dev.db so libsql finds the right file
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const localDbPath = `file:${path.resolve(__dirname, "..", "dev.db")}`;
-
-// Use TURSO_DATABASE_URL if set (production or CI), otherwise local dev.db
-// For local file: URLs, resolve to absolute path so libsql finds the right file
-let dbUrl = process.env.TURSO_DATABASE_URL ?? localDbPath;
-if (dbUrl.startsWith("file:") && !dbUrl.startsWith("file:/")) {
-  // Relative file: URL — resolve to absolute path from project root
-  const relativePath = dbUrl.replace("file:", "").replace("./", "");
-  dbUrl = `file:${path.resolve(__dirname, "..", relativePath)}`;
-}
-
-const adapter = new PrismaLibSql({
-  url: dbUrl,
-  authToken: process.env.TURSO_AUTH_TOKEN,
-});
-
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
 // Helper: generate a SHA-256 hash from a string (for tamper evidence)
