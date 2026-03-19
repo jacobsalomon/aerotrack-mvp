@@ -29,7 +29,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     if (authHeader?.startsWith("Bearer ")) {
       const auth = await authenticateRequest(request);
       if ("error" in auth) return auth.error;
-      authenticatedTechnicianId = auth.user.id;
+      authenticatedTechnicianId = auth.technician.id;
     } else {
       const authResult = await requireAuth(request);
       if (authResult.error) return authResult.error;
@@ -41,7 +41,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     if (!shift) {
       return NextResponse.json({ success: false, error: "Shift not found" }, { status: 404 });
     }
-    if (authenticatedTechnicianId && shift.userId !== authenticatedTechnicianId) {
+    if (authenticatedTechnicianId && shift.technicianId !== authenticatedTechnicianId) {
       return NextResponse.json({ success: false, error: "Not authorized" }, { status: 403 });
     }
     if (!allowedShiftStatuses.has(shift.status)) {
