@@ -6,13 +6,9 @@ import { useState, type ComponentType } from "react";
 import {
   FileCheck,
   FileText,
-  Glasses,
-  LayoutDashboard,
   LogOut,
   Menu,
   Plane,
-  Play,
-  ShieldCheck,
   Users,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
@@ -35,21 +31,9 @@ type NavItem = {
 const primaryNavItems: NavItem[] = [
   {
     href: "/sessions",
-    label: "Review Queue",
+    label: "Sessions",
     icon: FileCheck,
-    description: "Document review and approval",
-  },
-  {
-    href: "/dashboard",
-    label: "Parts Fleet",
-    icon: LayoutDashboard,
-    description: "Component status and risk",
-  },
-  {
-    href: "/integrity",
-    label: "Integrity",
-    icon: ShieldCheck,
-    description: "Exceptions and audit gaps",
+    description: "Capture and review work",
   },
 ];
 
@@ -61,23 +45,13 @@ const supportNavItems: NavItem[] = [
   },
   {
     href: "/technicians",
-    label: "Technicians",
+    label: "Team",
     icon: Users,
   },
 ];
 
-const onboardingNavItems: NavItem[] = [
-  {
-    href: "/demo",
-    label: "Product Walkthrough",
-    icon: Play,
-  },
-  {
-    href: "/glasses-demo",
-    label: "Glasses Preview",
-    icon: Glasses,
-  },
-];
+// Demo pages kept in codebase but hidden from production nav
+const onboardingNavItems: NavItem[] = [];
 
 const allNavItems = [
   ...primaryNavItems,
@@ -195,12 +169,14 @@ function SidebarBody({
           items={supportNavItems}
           onNavigate={onNavigate}
         />
-        <NavSection
-          pathname={pathname}
-          title="Intro & Onboarding"
-          items={onboardingNavItems}
-          onNavigate={onNavigate}
-        />
+        {onboardingNavItems.length > 0 && (
+          <NavSection
+            pathname={pathname}
+            title="Intro & Onboarding"
+            items={onboardingNavItems}
+            onNavigate={onNavigate}
+          />
+        )}
       </nav>
 
       <div
