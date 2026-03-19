@@ -46,6 +46,7 @@ export async function callWithFallback<T>(opts: {
   execute: (model: ModelConfig) => Promise<T>;
 }): Promise<CallResult<T>> {
   const { models, timeoutMs = 30000, cachedFallback, taskName, execute } = opts;
+  const errors: string[] = []; // Collect all errors for the final error message
 
   for (let i = 0; i < models.length; i++) {
     const model = models[i];
@@ -102,6 +103,7 @@ export async function callWithFallback<T>(opts: {
       callHistory.push(log);
       if (callHistory.length > 200) callHistory.splice(0, callHistory.length - 200);
 
+      errors.push(`${model.id}: ${errorMsg.slice(0, 150)}`);
       console.warn(
         `[AI] ${taskName} failed with ${model.displayName} (${latencyMs}ms): ${errorMsg}` +
           (i < models.length - 1
@@ -138,7 +140,7 @@ export async function callWithFallback<T>(opts: {
   }
 
   throw new Error(
-    `[AI] ${taskName}: all ${models.length} models failed and no cached fallback available`
+    `[AI] ${taskName}: all ${models.length} models failed. Errors: ${errors.join(" | ")}`
   );
 }
 

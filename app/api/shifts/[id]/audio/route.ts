@@ -29,7 +29,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     if (authHeader?.startsWith("Bearer ")) {
       const auth = await authenticateRequest(request);
       if ("error" in auth) return auth.error;
-      authenticatedTechnicianId = auth.technician.id;
+      authenticatedTechnicianId = auth.user.id;
     } else {
       const authResult = await requireAuth(request);
       if (authResult.error) return authResult.error;
@@ -41,7 +41,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     if (!shift) {
       return NextResponse.json({ success: false, error: "Shift not found" }, { status: 404 });
     }
-    if (authenticatedTechnicianId && shift.technicianId !== authenticatedTechnicianId) {
+    if (authenticatedTechnicianId && shift.userId !== authenticatedTechnicianId) {
       return NextResponse.json({ success: false, error: "Not authorized" }, { status: 403 });
     }
     if (!allowedShiftStatuses.has(shift.status)) {
@@ -79,12 +79,21 @@ export async function POST(request: Request, { params }: RouteParams) {
     // Parse chunk timestamp as a Date (ISO string like "2026-03-15T14:30:00Z")
     const chunkStartTime = chunkTimestamp ? new Date(chunkTimestamp).getTime() : Date.now();
 
+    // IMPORTANT: Read the file into a Buffer first. The FormData File stream
+    // can only be consumed once. If we pass the raw File to transcribeAudio,
+    // the first model in the fallback chain reads the stream, and all subsequent
+    // models get an empty/corrupt file — causing "all 3 models failed".
+    const audioBuffer = Buffer.from(await audioFile.arrayBuffer());
+    const mimeType = audioFile.type || "audio/webm";
+    const safeName = audioFile.name || "chunk.webm";
+    const fileForTranscription = new File([audioBuffer], safeName, { type: mimeType });
+
     // Step 1: Transcribe the audio
-    console.log(`[Audio] Step 1: Starting transcription (chunk size=${audioFile.size} bytes, type=${audioFile.type})...`);
+    console.log(`[Audio] Step 1: Starting transcription (chunk size=${audioBuffer.byteLength} bytes, type=${mimeType})...`);
     const t1 = Date.now();
     let transcription;
     try {
-      transcription = await transcribeAudio(audioFile, audioFile.name || "chunk.webm");
+      transcription = await transcribeAudio(fileForTranscription, safeName);
     } catch (transcriptionError) {
       // Log the full error chain so we can debug which models failed and why
       const msg = transcriptionError instanceof Error ? transcriptionError.message : String(transcriptionError);
