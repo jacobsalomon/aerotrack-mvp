@@ -2,7 +2,7 @@
 
 // Session Detail Page — full view of a capture session
 // Shows: header, evidence gallery (photos/video/audio with playback),
-// AI analysis + transcript, generated documents with approve/reject, audit trail
+// AI analysis + transcript, generated documents with confirm/flag, audit trail
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
@@ -349,23 +349,23 @@ function buildSessionDetailLoadError(
   }
 
   const detail =
-    error instanceof Error ? error.message : "Failed to load the reviewer cockpit.";
+    error instanceof Error ? error.message : "Failed to load session details.";
 
   if (detail.includes("404")) {
     return {
       title: "Session not found",
       error: `The session ${sessionId} could not be found.`,
       nextStep:
-        "Return to the review queue and try another session.",
+        "Return to sessions and try another one.",
       technicalDetails: detail,
     };
   }
 
   return {
-    title: "Reviewer cockpit unavailable",
+    title: "Session details unavailable",
     error: "AeroVision could not load this session.",
     nextStep:
-      "Retry this page or return to the review queue. If the problem persists, check your connection and try again.",
+      "Retry this page or return to sessions. If the problem persists, check your connection and try again.",
     technicalDetails: detail,
   };
 }
@@ -556,7 +556,7 @@ export default function SessionDetailPage() {
     fetchAudit();
   }, [auditOpen, sessionId]);
 
-  // Approve or reject a document
+  // Confirm or flag a document for correction
   async function handleReview(documentId: string, action: "approve" | "reject", notes?: string, refreshSession = true) {
     setReviewingDoc(documentId);
     try {
@@ -695,15 +695,15 @@ export default function SessionDetailPage() {
               {error?.error || "The selected session could not be loaded."}
             </p>
             <p className="mt-2 text-sm leading-6" style={{ color: "rgb(146, 64, 14)" }}>
-              Next step: {error?.nextStep || "Return to the review queue and try another session."}
+              Next step: {error?.nextStep || "Return to sessions and try another one."}
             </p>
             <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
               <Button onClick={() => void fetchSession()} className="gap-2">
                 <RefreshCw className="h-4 w-4" />
-                Retry Reviewer Cockpit
+                Retry
               </Button>
               <Button asChild variant="outline">
-                <Link href="/sessions">Back to Review Queue</Link>
+                <Link href="/sessions">Back to Sessions</Link>
               </Button>
             </div>
             <p className="mt-5 text-xs font-mono" style={{ color: "rgb(180, 83, 9)" }}>
@@ -717,7 +717,6 @@ export default function SessionDetailPage() {
   }
 
   // If the session is actively capturing and has a linked shift, show the live capture view
-  // instead of the full reviewer cockpit
   if (session.status === "capturing" && session.shiftSessionId) {
     return (
       <LiveCaptureView
@@ -731,7 +730,6 @@ export default function SessionDetailPage() {
   }
 
   // For freshly ended sessions that are still processing, show a simpler view
-  // instead of the full reviewer cockpit (which is overwhelming with no documents yet)
   const isProcessing =
     session.status === "capture_complete" ||
     session.status === "processing" ||
@@ -829,11 +827,11 @@ export default function SessionDetailPage() {
   const activeInternalStage = session.processingProgress?.internalStage;
   const progressCopy =
     progressState === "Verified"
-      ? "AI verification is complete. This session is ready for human review."
+      ? "AI verification is complete. This session is ready for your review."
       : progressState === "Packaged"
       ? "All asynchronous deliverables are assembled into a package manifest."
       : progressState === "Drafting"
-      ? "Background AI is drafting documents and preparing reviewer artifacts."
+      ? "Background AI is drafting documents for your review."
       : progressState === "Captured"
       ? "Evidence is saved. Background AI processing is queued or analyzing."
       : null;
@@ -926,15 +924,15 @@ export default function SessionDetailPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-lg font-bold mb-3" style={{ fontFamily: "var(--font-space-grotesk)", color: "rgb(20, 20, 20)" }}>
-              Reject Document
+              Flag for Correction
             </h3>
             <p className="text-sm mb-4" style={{ color: "rgb(100, 100, 100)" }}>
-              Add optional notes explaining why this document is being rejected.
+              Add optional notes explaining what needs correction.
             </p>
             <textarea
               value={rejectNotes}
               onChange={(e) => setRejectNotes(e.target.value)}
-              placeholder="Rejection notes (optional)..."
+              placeholder="Correction notes (optional)..."
               className="w-full border rounded-lg p-3 text-sm mb-4 resize-none"
               style={{ borderColor: "rgb(220, 220, 220)", minHeight: "100px" }}
             />
@@ -950,7 +948,7 @@ export default function SessionDetailPage() {
                 {reviewingDoc === showRejectDialog ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  "Reject"
+                  "Flag for Correction"
                 )}
               </Button>
             </div>
@@ -1095,16 +1093,16 @@ export default function SessionDetailPage() {
         />
       )}
 
-      {/* ═══ REVIEWER COCKPIT ═══ */}
+      {/* ═══ SESSION REVIEW ═══ */}
       <Card className="border-0 shadow-sm mb-6" data-demo-focus="reviewer-cockpit">
         <CardHeader>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <CardTitle className="text-lg font-bold flex items-center gap-2" style={{ fontFamily: "var(--font-space-grotesk)", color: "rgb(20, 20, 20)" }}>
-                <Shield className="h-5 w-5" /> Reviewer Cockpit
+                <Shield className="h-5 w-5" /> Session Review
               </CardTitle>
               <p className="text-sm mt-1" style={{ color: "rgb(100, 100, 100)" }}>
-                Review readiness, blockers, and the next document to approve from one place.
+                Review readiness, blockers, and the next document to confirm from one place.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -1144,7 +1142,7 @@ export default function SessionDetailPage() {
                   className="gap-1.5"
                   onClick={() => focusDocument(reviewerCockpit.nextDocumentId as string)}
                 >
-                  Review Next Document
+                  Next Document
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               )}
@@ -1157,7 +1155,7 @@ export default function SessionDetailPage() {
                   onClick={handleApproveReadyDocuments}
                 >
                   {bulkApproving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                  Approve All Ready ({reviewerCockpit.counts.readyToApprove})
+                  Confirm All Documents ({reviewerCockpit.counts.readyToApprove})
                 </Button>
               )}
             </div>
@@ -1177,17 +1175,17 @@ export default function SessionDetailPage() {
                 tone: "rgb(71, 85, 105)",
               },
               {
-                label: "Pending Review",
+                label: "Pending",
                 value: reviewerCockpit.counts.pendingReview,
                 tone: "rgb(29, 78, 216)",
               },
               {
-                label: "Approved",
+                label: "Confirmed",
                 value: reviewerCockpit.counts.approved,
                 tone: "rgb(21, 128, 61)",
               },
               {
-                label: "Rejected",
+                label: "Flagged",
                 value: reviewerCockpit.counts.rejected,
                 tone: "rgb(185, 28, 28)",
               },
@@ -1202,7 +1200,7 @@ export default function SessionDetailPage() {
                 tone: reviewerCockpit.counts.docsWithBlockers > 0 ? "rgb(185, 28, 28)" : "rgb(71, 85, 105)",
               },
               {
-                label: "Ready To Approve",
+                label: "Ready to Confirm",
                 value: reviewerCockpit.counts.readyToApprove,
                 tone: reviewerCockpit.counts.readyToApprove > 0 ? "rgb(21, 128, 61)" : "rgb(71, 85, 105)",
               },
@@ -1224,7 +1222,7 @@ export default function SessionDetailPage() {
               </div>
               {reviewerCockpit.blockers.length === 0 ? (
                 <div className="rounded-lg border border-dashed p-4 text-sm" style={{ borderColor: "rgb(220, 220, 220)", color: "rgb(100, 100, 100)" }}>
-                  No blockers detected. Documents are ready for reviewer approval.
+                  No blockers detected. Documents are ready for your confirmation.
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -1316,7 +1314,7 @@ export default function SessionDetailPage() {
                 <div className="rounded-lg p-3" style={{ backgroundColor: "rgb(248, 250, 252)" }}>
                   <p className="font-medium" style={{ color: "rgb(30, 30, 30)" }}>1. Review pending documents</p>
                   <p style={{ color: "rgb(100, 100, 100)" }}>
-                    {reviewerCockpit.counts.pendingReview} document{reviewerCockpit.counts.pendingReview === 1 ? "" : "s"} still need a reviewer decision.
+                    {reviewerCockpit.counts.pendingReview} document{reviewerCockpit.counts.pendingReview === 1 ? "" : "s"} still need your decision.
                   </p>
                 </div>
                 <div className="rounded-lg p-3" style={{ backgroundColor: "rgb(248, 250, 252)" }}>
@@ -1345,7 +1343,7 @@ export default function SessionDetailPage() {
                     onClick={handleApproveReadyDocuments}
                   >
                     {bulkApproving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                    Approve all ready documents
+                    Confirm all ready documents
                   </Button>
                 )}
               </div>
@@ -2261,7 +2259,7 @@ export default function SessionDetailPage() {
                             className="px-2.5 py-1 rounded-full text-[11px] font-semibold"
                             style={{ backgroundColor: "rgb(220, 252, 231)", color: "rgb(21, 128, 61)" }}
                           >
-                            Ready to approve
+                            Ready to confirm
                           </span>
                         )}
                         {docHasBlockers && (
@@ -2299,12 +2297,12 @@ export default function SessionDetailPage() {
                                 className="text-sm font-semibold"
                                 style={{ color: docReadyToApprove ? "rgb(21, 128, 61)" : "rgb(161, 98, 7)" }}
                               >
-                                {docReadyToApprove ? "Document is ready for certifier approval." : "Resolve blockers before approval."}
+                                {docReadyToApprove ? "Document is ready for your confirmation." : "Resolve blockers before confirming."}
                               </p>
                               <p className="text-xs mt-1" style={{ color: "rgb(100, 100, 100)" }}>
                                 {docReadyToApprove
                                   ? "Verification checks and confidence thresholds are clear for this document."
-                                  : `${docSummary?.blockerCount || 0} blocker pattern${(docSummary?.blockerCount || 0) === 1 ? "" : "s"} still require reviewer attention.`}
+                                  : `${docSummary?.blockerCount || 0} blocker pattern${(docSummary?.blockerCount || 0) === 1 ? "" : "s"} still need your attention.`}
                               </p>
                             </div>
                             <div className="flex items-center gap-2">
@@ -2321,7 +2319,7 @@ export default function SessionDetailPage() {
                                   ) : (
                                     <CheckCircle2 className="h-4 w-4" />
                                   )}
-                                  Approve document
+                                  Confirm document
                                 </Button>
                               ) : (
                                 <Button
@@ -2552,7 +2550,7 @@ export default function SessionDetailPage() {
                                             <p className="text-[11px]" style={{ color: "rgb(90, 90, 90)" }}>
                                               {attentionReasons.length > 0
                                                 ? `Attention: ${attentionReasons.join(", ")}.`
-                                                : "Reviewer disposition recorded."}
+                                                : "Your disposition recorded."}
                                             </p>
                                             {currentDisposition?.rationale && (
                                               <p className="text-[11px]" style={{ color: "rgb(100, 100, 100)" }}>
@@ -2643,7 +2641,7 @@ export default function SessionDetailPage() {
                                               placeholder={
                                                 fieldDispositionComposer.status === "accepted_with_rationale"
                                                   ? "Explain why this field is acceptable despite the blocker."
-                                                  : "Describe the evidence the technician or reviewer still needs."
+                                                  : "Describe what evidence is still needed."
                                               }
                                               className="min-h-[88px] text-xs"
                                             />
@@ -2806,7 +2804,7 @@ export default function SessionDetailPage() {
                                   ) : (
                                     <CheckCircle2 className="h-4 w-4" />
                                   )}
-                                  Approve document
+                                  Confirm document
                                 </Button>
                               ) : (
                                 <Button
@@ -2830,7 +2828,7 @@ export default function SessionDetailPage() {
                                 style={{ color: "rgb(220, 50, 50)", borderColor: "rgb(220, 50, 50)" }}
                               >
                                 <XCircle className="h-4 w-4" />
-                                Reject
+                                Flag for Correction
                               </Button>
                             </>
                           )}
@@ -2848,12 +2846,12 @@ export default function SessionDetailPage() {
                           )}
                           {doc.status === "approved" && (
                             <span className="text-xs font-medium" style={{ color: "rgb(21, 128, 61)" }}>
-                              Certificate-ready document approved.
+                              Document confirmed.
                             </span>
                           )}
                           {doc.status !== "approved" && doc.status !== "rejected" && docHasBlockers && (
                             <span className="text-xs" style={{ color: "rgb(161, 98, 7)" }}>
-                              Approval is intentionally gated until blockers are resolved.
+                              Confirmation is gated until blockers are resolved.
                             </span>
                           )}
                         </div>

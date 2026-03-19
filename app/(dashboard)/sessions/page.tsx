@@ -1,7 +1,7 @@
 "use client";
 
 // Capture Sessions dashboard — lists all mobile capture sessions
-// Two tabs: "All Sessions" and "Review Queue" (pending supervisor review)
+// Shows a flat list of all sessions (mechanic self-review workflow)
 // Rows are clickable — navigate to /sessions/[id] for full detail
 
 import { useCallback, useEffect, useState } from "react";
@@ -25,7 +25,6 @@ import {
 } from "@/components/ui/select";
 import { apiUrl } from "@/lib/api-url";
 import {
-  REVIEW_SESSION_STATUSES,
   SESSION_STATUS_COLORS,
   SESSION_STATUS_LABELS,
 } from "@/lib/session-status";
@@ -98,11 +97,11 @@ function buildSessionLoadError(error: unknown): SessionLoadError {
   }
 
   const detail =
-    error instanceof Error ? error.message : "Failed to load the review queue.";
+    error instanceof Error ? error.message : "Failed to load sessions.";
 
   return {
-    title: "Review queue unavailable",
-    error: "AeroVision could not load reviewer sessions.",
+    title: "Sessions unavailable",
+    error: "AeroVision could not load your sessions.",
     nextStep:
       "Refresh this page. If the problem persists, check your connection and try again.",
     technicalDetails: detail,
@@ -115,7 +114,6 @@ export default function SessionsPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<SessionLoadError | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
-  const [activeTab, setActiveTab] = useState<"all" | "review">("all");
   const [creatingSession, setCreatingSession] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -193,28 +191,18 @@ export default function SessionsPage() {
     return `${m}m ${s}s`;
   }
 
-  // Summary stats (computed from all sessions, not filtered by tab)
+  // Summary stats
   const totalSessions = sessions.length;
   const activeSessions = sessions.filter(
     (s) => s.status === "capturing" || s.processingProgress?.running
   ).length;
-  const pendingReview = sessions.filter(
-    (s) =>
-      REVIEW_SESSION_STATUSES.includes(
-        s.status as (typeof REVIEW_SESSION_STATUSES)[number]
-      )
+  const inProgressSessions = sessions.filter(
+    (s) => s.status !== "approved" && s.status !== "rejected" && s.status !== "capturing"
   ).length;
   const totalEvidence = sessions.reduce((sum, s) => sum + s._count.evidence, 0);
 
-  // Filter sessions by active tab
-  const displayedSessions =
-    activeTab === "review"
-      ? sessions.filter((s) =>
-          REVIEW_SESSION_STATUSES.includes(
-            s.status as (typeof REVIEW_SESSION_STATUSES)[number]
-          )
-        )
-      : sessions;
+  // All sessions shown in one flat list
+  const displayedSessions = sessions;
 
   return (
     <div>
@@ -222,9 +210,9 @@ export default function SessionsPage() {
       <div className="mb-8">
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>Review Queue</h1>
+            <h1 className="text-3xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>Sessions</h1>
             <p className="text-sm mt-2" style={{ color: 'rgb(100, 100, 100)' }}>
-              Sessions appear here as technicians capture maintenance work. Open a session to review evidence and approve documents.
+              Your capture sessions. Open a session to review evidence and confirm documents.
             </p>
           </div>
           <div className="shrink-0 text-right">
@@ -271,12 +259,12 @@ export default function SessionsPage() {
               </div>
             </CardContent>
           </Card>
-          <Card className="border-0 shadow-sm" data-demo-focus="sessions-pending-review">
+          <Card className="border-0 shadow-sm">
             <CardContent className="pt-6 pb-6">
               <div className="flex flex-col gap-2">
                 <FileText className="h-6 w-6 mb-1" style={{ color: 'rgb(147, 51, 234)' }} />
-                <p className="text-3xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>{pendingReview}</p>
-                <p className="text-xs font-medium" style={{ color: 'rgb(120, 120, 120)' }}>Needs Review</p>
+                <p className="text-3xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>{inProgressSessions}</p>
+                <p className="text-xs font-medium" style={{ color: 'rgb(120, 120, 120)' }}>In Progress</p>
               </div>
             </CardContent>
           </Card>
@@ -295,79 +283,32 @@ export default function SessionsPage() {
       {/* Tab bar + filter + table */}
       <Card className="border-0 shadow-sm" data-demo-focus="sessions-review-table">
         <CardHeader className="flex flex-col gap-4">
-          {/* Tab bar */}
-          <div className="flex gap-1 border-b" style={{ borderColor: 'rgb(230, 230, 230)' }}>
-            <button
-              onClick={() => setActiveTab("all")}
-              className="px-4 py-2.5 text-sm font-medium transition-colors relative"
-              style={{
-                color: activeTab === "all" ? "rgb(20, 20, 20)" : "rgb(140, 140, 140)",
-              }}
-            >
-              All Sessions
-              {activeTab === "all" && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5" style={{ backgroundColor: 'rgb(20, 20, 20)' }} />
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab("review")}
-              className="px-4 py-2.5 text-sm font-medium transition-colors relative flex items-center gap-2"
-              style={{
-                color: activeTab === "review" ? "rgb(20, 20, 20)" : "rgb(140, 140, 140)",
-              }}
-            >
-              Review Queue
-              {pendingReview > 0 && (
-                <span
-                  className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-xs font-bold"
-                  style={{
-                    backgroundColor: activeTab === "review" ? "rgb(147, 51, 234)" : "rgb(220, 220, 220)",
-                    color: activeTab === "review" ? "white" : "rgb(80, 80, 80)",
-                  }}
-                >
-                  {pendingReview}
-                </span>
-              )}
-              {activeTab === "review" && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5" style={{ backgroundColor: 'rgb(20, 20, 20)' }} />
-              )}
-            </button>
-          </div>
-
-          {/* Filter row — only shown on "All Sessions" tab */}
-          {activeTab === "all" && (
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle className="text-lg font-bold" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>
-                {statusFilter === "all"
-                  ? "All Sessions"
-                  : SESSION_STATUS_LABELS[
-                      statusFilter as keyof typeof SESSION_STATUS_LABELS
-                    ] || statusFilter}
-              </CardTitle>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full sm:w-48">
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="capturing">Capturing</SelectItem>
-                  <SelectItem value="capture_complete">Capture Complete</SelectItem>
-                  <SelectItem value="processing">Processing</SelectItem>
-                  <SelectItem value="analysis_complete">Analysis Complete</SelectItem>
-                  <SelectItem value="documents_generated">Docs Ready</SelectItem>
-                  <SelectItem value="verified">Verified</SelectItem>
-                  <SelectItem value="submitted">Submitted</SelectItem>
-                  <SelectItem value="approved">Approved</SelectItem>
-                  <SelectItem value="rejected">Rejected</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-          {activeTab === "review" && (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-lg font-bold" style={{ fontFamily: 'var(--font-space-grotesk)', color: 'rgb(20, 20, 20)' }}>
-              Sessions Awaiting Review
+              {statusFilter === "all"
+                ? "All Sessions"
+                : SESSION_STATUS_LABELS[
+                    statusFilter as keyof typeof SESSION_STATUS_LABELS
+                  ] || statusFilter}
             </CardTitle>
-          )}
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full sm:w-48">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="capturing">Capturing</SelectItem>
+                <SelectItem value="capture_complete">Capture Complete</SelectItem>
+                <SelectItem value="processing">Processing</SelectItem>
+                <SelectItem value="analysis_complete">Analysis Complete</SelectItem>
+                <SelectItem value="documents_generated">Docs Ready</SelectItem>
+                <SelectItem value="verified">Verified</SelectItem>
+                <SelectItem value="submitted">Submitted</SelectItem>
+                <SelectItem value="approved">Approved</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -391,7 +332,7 @@ export default function SessionsPage() {
               <div className="mt-6">
                 <Button onClick={() => void fetchSessions()} className="gap-2">
                   <RefreshCw className="h-4 w-4" />
-                  Retry Review Queue
+                  Retry
                 </Button>
               </div>
               <p className="mt-5 text-xs font-mono" style={{ color: "rgb(180, 83, 9)" }}>
@@ -402,14 +343,10 @@ export default function SessionsPage() {
             <div className="text-center py-12" style={{ color: 'rgb(140, 140, 140)' }}>
               <Smartphone className="h-12 w-12 mx-auto mb-3 opacity-50" />
               <p className="text-sm">
-                {activeTab === "review"
-                  ? "No sessions awaiting review"
-                  : "No capture sessions yet"}
+                No capture sessions yet
               </p>
               <p className="text-xs mt-1">
-                {activeTab === "review"
-                  ? "Sessions appear here when completed work is submitted for review"
-                  : "Start a capture session to begin recording maintenance work"}
+                Start a capture session to begin recording maintenance work
               </p>
             </div>
           ) : (
@@ -419,7 +356,7 @@ export default function SessionsPage() {
                   <TableRow>
                     <TableHead>Status</TableHead>
                     <TableHead>Component</TableHead>
-                    <TableHead>Technician</TableHead>
+                    <TableHead>Started By</TableHead>
                     <TableHead>Started</TableHead>
                     <TableHead>Duration</TableHead>
                     <TableHead className="text-center">Evidence</TableHead>
