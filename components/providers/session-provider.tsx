@@ -9,7 +9,7 @@ import { Suspense } from "react";
 
 function SessionProviderInner({ children }: { children: ReactNode }) {
   return (
-    <NextAuthSessionProvider basePath="/aerovision/api/auth">
+    <NextAuthSessionProvider basePath={`${process.env.NEXT_PUBLIC_BASE_PATH || ""}/api/auth`}>
       {children}
     </NextAuthSessionProvider>
   );

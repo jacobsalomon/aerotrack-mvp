@@ -184,7 +184,7 @@ function SidebarBody({
         style={{ borderColor: "rgba(255, 255, 255, 0.08)" }}
       >
         <button
-          onClick={() => signOut({ callbackUrl: "/aerovision/login" })}
+          onClick={() => signOut({ callbackUrl: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/login` })}
           className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-white/50 transition-colors hover:bg-white/6 hover:text-white/80"
         >
           <LogOut className="h-4 w-4" />

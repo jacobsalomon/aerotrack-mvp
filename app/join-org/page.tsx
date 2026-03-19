@@ -4,13 +4,11 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Plane, Building2, Plus, Copy, Check } from "lucide-react";
 import { apiUrl } from "@/lib/api-url";
 
 export default function JoinOrgPage() {
-  const router = useRouter();
   const { update } = useSession();
 
   // Which view is showing: "join" (invite code) or "create" (new org)

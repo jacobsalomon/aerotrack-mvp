@@ -4,13 +4,12 @@
 "use client";
 
 import { useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { Plane } from "lucide-react";
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const justRegistered = searchParams.get("registered") === "true";
 
@@ -34,7 +33,8 @@ function LoginForm() {
       if (result?.error) {
         setError("Invalid email or password");
       } else {
-        router.push("/sessions");
+        // Full page load so middleware runs with the fresh JWT
+        window.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/sessions`;
       }
     } catch {
       setError("Connection failed");
