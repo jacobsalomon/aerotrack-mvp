@@ -13,6 +13,7 @@
 // ──────────────────────────────────────────────────────
 
 import { prisma } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import { hasNonCompliantADs } from "@/lib/ad-sb-tracker";
 
 // ── Types ────────────────────────────────────────────
@@ -139,7 +140,7 @@ export async function scanComponent(componentId: string) {
           severity: issue.severity,
           title: issue.title,
           description: issue.description,
-          evidence: JSON.parse(JSON.stringify(evidenceData)),
+          evidence: evidenceData as unknown as Prisma.InputJsonValue,
         },
       });
       newExceptions.push(created);

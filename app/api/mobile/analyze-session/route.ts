@@ -5,6 +5,7 @@
 export const maxDuration = 120;
 
 import { prisma } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import { authenticateRequest } from "@/lib/mobile-auth";
 import { clampConfidence } from "@/lib/ai/utils";
 import { isAllowedEvidenceUrl } from "@/lib/evidence-url";
@@ -420,7 +421,7 @@ export async function POST(request: Request) {
 
             await prisma.captureEvidence.update({
               where: { id: photo.id },
-              data: { aiExtraction: JSON.parse(JSON.stringify(extraction)) },
+              data: { aiExtraction: extraction as unknown as Prisma.InputJsonValue },
             });
 
             return {
@@ -614,13 +615,13 @@ export async function POST(request: Request) {
     const savedAnalysis = await prisma.sessionAnalysis.create({
       data: {
         sessionId,
-        actionLog: JSON.parse(JSON.stringify(actionLog)),
-        partsIdentified: JSON.parse(JSON.stringify(partsIdentified)),
-        procedureSteps: JSON.parse(JSON.stringify(procedureSteps)),
-        anomalies: JSON.parse(JSON.stringify(anomalies)),
+        actionLog: actionLog as unknown as Prisma.InputJsonValue,
+        partsIdentified: partsIdentified as unknown as Prisma.InputJsonValue,
+        procedureSteps: procedureSteps as unknown as Prisma.InputJsonValue,
+        anomalies: anomalies as unknown as Prisma.InputJsonValue,
         audioTranscript,
-        photoExtractions: JSON.parse(JSON.stringify(photoExtractions)),
-        modelsUsed: JSON.parse(JSON.stringify(modelsUsed)),
+        photoExtractions: photoExtractions as unknown as Prisma.InputJsonValue,
+        modelsUsed: modelsUsed as unknown as Prisma.InputJsonValue,
         confidence,
         verificationSource:
           videoResult && !("skipped" in videoResult && videoResult.skipped)
@@ -648,7 +649,7 @@ export async function POST(request: Request) {
         action: "session_analyzed",
         entityType: "CaptureSession",
         entityId: sessionId,
-        metadata: JSON.parse(JSON.stringify({
+        metadata: {
           modelUsed: savedAnalysis.modelUsed,
           confidence,
           processingTime,
@@ -661,7 +662,7 @@ export async function POST(request: Request) {
             hasAudioTranscript: !!audioTranscript,
           },
           modelsUsed,
-        })),
+        } as unknown as Prisma.InputJsonValue,
       },
     });
 

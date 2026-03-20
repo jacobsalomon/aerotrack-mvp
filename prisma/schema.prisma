@@ -545,7 +545,6 @@ model ReferenceData {
 
 // ──────────────────────────────────────────────────────
 // CaptureDocument — AI-generated compliance documents from capture sessions
-// (formerly DocumentGeneration2; @@map keeps the original table name to avoid data migration)
 // ──────────────────────────────────────────────────────
 model CaptureDocument {
   id                  String    @id @default(cuid())
@@ -567,7 +566,6 @@ model CaptureDocument {
   verifiedAt          DateTime?                         // When the independent AI verification completed
   createdAt           DateTime  @default(now())
 
-  @@map("DocumentGeneration2")
   @@index([sessionId])
   @@index([reviewedById])
   @@unique([sessionId, documentType])

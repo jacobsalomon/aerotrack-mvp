@@ -242,12 +242,12 @@ export async function POST(request: Request) {
           data: {
             sessionId,
             documentType: doc.documentType,
-            contentJson: JSON.parse(JSON.stringify(doc.contentJson)),
+            contentJson: doc.contentJson as unknown as Prisma.InputJsonValue,
             status: "draft",
             confidence: clampConfidence(doc.confidence),
-            lowConfidenceFields: JSON.parse(JSON.stringify(doc.lowConfidenceFields || [])),
-            evidenceLineage: doc.evidenceLineage ? JSON.parse(JSON.stringify(doc.evidenceLineage)) : null,
-            provenanceJson: docProvenance ? JSON.parse(JSON.stringify(docProvenance)) : null,
+            lowConfidenceFields: (doc.lowConfidenceFields || []) as unknown as Prisma.InputJsonValue,
+            evidenceLineage: doc.evidenceLineage ? (doc.evidenceLineage as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
+            provenanceJson: docProvenance ? (docProvenance as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
           },
         });
       } catch (error) {

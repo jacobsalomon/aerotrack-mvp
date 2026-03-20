@@ -7,6 +7,7 @@
 export const maxDuration = 60;
 
 import { prisma } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import { requireAuth } from "@/lib/rbac";
 import { getValueAtPath, setValueAtPath } from "@/lib/document-field-layout";
 import {
@@ -143,7 +144,7 @@ export async function PATCH(
     const updated = await prisma.captureDocument.update({
       where: { id: docId },
       data: {
-        contentJson: JSON.parse(JSON.stringify(existingContent)),
+        contentJson: existingContent as unknown as Prisma.InputJsonValue,
         reviewNotes: nextReviewNotes,
       },
     });
@@ -156,7 +157,7 @@ export async function PATCH(
           action: "document_fields_edited",
           entityType: "CaptureDocument",
           entityId: docId,
-          metadata: JSON.parse(JSON.stringify({ sessionId, changes })),
+          metadata: { sessionId, changes } as unknown as Prisma.InputJsonValue,
         },
       });
     }

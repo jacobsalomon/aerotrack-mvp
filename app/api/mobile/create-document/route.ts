@@ -194,10 +194,10 @@ export async function POST(request: Request) {
         data: {
           sessionId,
           documentType: result.documentType,
-          contentJson: JSON.parse(JSON.stringify(result.contentJson)),
+          contentJson: result.contentJson as unknown as Prisma.InputJsonValue,
           status: "draft",
           confidence: clampConfidence(result.confidence),
-          lowConfidenceFields: JSON.parse(JSON.stringify(result.lowConfidenceFields || [])),
+          lowConfidenceFields: (result.lowConfidenceFields || []) as unknown as Prisma.InputJsonValue,
         },
       });
     } catch (error) {

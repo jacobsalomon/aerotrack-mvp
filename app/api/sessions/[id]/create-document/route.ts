@@ -170,11 +170,11 @@ export async function POST(
         data: {
           sessionId,
           documentType,
-          contentJson: JSON.parse(JSON.stringify(contentJson)),
+          contentJson: contentJson as unknown as Prisma.InputJsonValue,
           status: "draft",
           confidence,
-          lowConfidenceFields: JSON.parse(JSON.stringify(lowConfidenceFields)),
-          evidenceLineage: evidenceLineage ? JSON.parse(JSON.stringify(evidenceLineage)) : null,
+          lowConfidenceFields: lowConfidenceFields as unknown as Prisma.InputJsonValue,
+          evidenceLineage: evidenceLineage ? (evidenceLineage as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
         },
       });
     } catch (error) {

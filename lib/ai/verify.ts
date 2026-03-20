@@ -2,6 +2,7 @@
 // Chain: Claude Sonnet 4.6 → GPT-5.4 → cached fallback
 
 import { prisma } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 
 import type { ModelConfig } from "./models";
 import { VERIFICATION_MODELS } from "./models";
@@ -656,7 +657,7 @@ Review the full document set, compare each document to the evidence, and return 
       await tx.captureDocument.update({
         where: { id: doc.id },
         data: {
-          verificationJson: JSON.parse(JSON.stringify(buildPerDocumentVerificationPayload(verification, doc.documentType))),
+          verificationJson: buildPerDocumentVerificationPayload(verification, doc.documentType) as unknown as Prisma.InputJsonValue,
           verifiedAt: now,
         },
       });

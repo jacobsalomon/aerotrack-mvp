@@ -490,7 +490,7 @@ async function markStageCompleted(args: {
         status: "completed",
         completedAt: now,
         latencyMs: args.latencyMs,
-        errorMetadata: args.metadata ? JSON.parse(JSON.stringify(args.metadata)) : Prisma.DbNull,
+        errorMetadata: args.metadata ? (args.metadata as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
       },
     });
 

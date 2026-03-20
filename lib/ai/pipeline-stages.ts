@@ -341,10 +341,10 @@ export async function runSessionDraftingStage(
           data: {
             sessionId,
             documentType: doc.documentType,
-            contentJson: JSON.parse(JSON.stringify(doc.contentJson)),
+            contentJson: doc.contentJson as unknown as Prisma.InputJsonValue,
             status: "draft",
             confidence: clampConfidence(doc.confidence),
-            lowConfidenceFields: JSON.parse(JSON.stringify(doc.lowConfidenceFields || [])),
+            lowConfidenceFields: (doc.lowConfidenceFields || []) as unknown as Prisma.InputJsonValue,
           },
         });
       } catch (error) {
