@@ -1,5 +1,5 @@
 import type { NextConfig } from "next";
-import { withSentryConfig } from "@sentry/nextjs";
+// import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   // Serve all routes under /aerovision so the gateway domain
@@ -78,14 +78,7 @@ const nextConfig: NextConfig = {
   },
 };
 
-// Wrap with Sentry for automatic error and performance monitoring.
-// When no SENTRY_DSN is set, Sentry is disabled and this is a no-op.
-export default withSentryConfig(nextConfig, {
-  // Suppress noisy Sentry build logs
-  silent: true,
-
-  // Skip source map uploads when no auth token is set
-  sourcemaps: {
-    disable: !process.env.SENTRY_AUTH_TOKEN,
-  },
-});
+// Sentry temporarily disabled to diagnose serverless function hang.
+// withSentryConfig wraps all routes and instrumentation.ts runs Sentry.init()
+// before any function — if Sentry hangs on init, ALL functions hang.
+export default nextConfig;
