@@ -6,7 +6,7 @@
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  const loginUrl = new URL("/aerovision/login", process.env.NEXTAUTH_URL || "https://mechanicalvisioncorp.com");
+  const loginUrl = new URL("/aerovision/login", "https://mechanicalvisioncorp.com");
   const response = NextResponse.redirect(loginUrl);
 
   // Clear all auth-related cookies
