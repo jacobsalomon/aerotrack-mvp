@@ -1,0 +1,17 @@
+node_modules
+.git
+.next
+.vercel
+coverage
+test-results
+playwright-report
+screenshots
+public/evidence
+generated
+lib/generated
+*.tsbuildinfo
+* 2*
+dev.db
+test.db
+auth
+auth-wal
