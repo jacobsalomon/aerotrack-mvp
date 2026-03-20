@@ -42,7 +42,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# database (local dev — production uses Turso)
+# database (local dev — production uses Neon Postgres)
 dev.db
 
 # prisma generated client (regenerated on install)

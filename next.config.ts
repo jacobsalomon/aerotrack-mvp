@@ -1,5 +1,4 @@
 import type { NextConfig } from "next";
-// import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   // Serve all routes under /aerovision so the gateway domain
@@ -78,7 +77,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-// Sentry temporarily disabled to diagnose serverless function hang.
-// withSentryConfig wraps all routes and instrumentation.ts runs Sentry.init()
-// before any function — if Sentry hangs on init, ALL functions hang.
 export default nextConfig;
