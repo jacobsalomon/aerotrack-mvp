@@ -348,6 +348,7 @@ model Organization {
   zip                   String?
   phone                 String?
   email                 String?
+  agentInstructions     String?                         // Markdown instructions injected into all AI prompts for this org
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 

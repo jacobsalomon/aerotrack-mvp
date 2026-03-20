@@ -10,6 +10,7 @@ import { correctTranscriptSegment } from "@/lib/ai/transcript-correction";
 import { extractMeasurementsFromTranscript } from "@/lib/ai/measurement-extraction";
 import { recordMeasurement } from "@/lib/measurement-ledger";
 import { getCallHistory } from "@/lib/ai/provider";
+import { getOrgInstructions } from "@/lib/ai/org-context";
 import { NextResponse } from "next/server";
 
 // Allow up to 60 seconds — transcription + correction + measurement extraction
@@ -40,6 +41,11 @@ export async function POST(request: Request, { params }: RouteParams) {
         { status: 409 }
       );
     }
+
+    // Fetch org-specific agent instructions once for the whole pipeline
+    const orgInstructions = session.organizationId
+      ? await getOrgInstructions(session.organizationId)
+      : null;
 
     const formData = await request.formData();
     const audioFile = formData.get("audio") as File | null;
@@ -95,7 +101,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     const fileForTranscription = new File([audioBuffer], fileName, { type: mimeType });
     let transcription;
     try {
-      transcription = await transcribeAudio(fileForTranscription, fileName, previousTranscript);
+      transcription = await transcribeAudio(fileForTranscription, fileName, previousTranscript, orgInstructions);
     } catch (transcriptionError) {
       const msg = transcriptionError instanceof Error ? transcriptionError.message : String(transcriptionError);
       console.error(`[Audio] Step 2 FAILED after ${Date.now() - t2}ms: ${msg}`);
@@ -126,7 +132,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       console.log("[Audio] Step 4: Running LLM correction...");
       const t4 = Date.now();
       try {
-        correctedText = await correctTranscriptSegment(transcriptText);
+        correctedText = await correctTranscriptSegment(transcriptText, orgInstructions);
         // Update the evidence record with the corrected transcript
         await prisma.captureEvidence.update({
           where: { id: evidence.id },
@@ -161,7 +167,8 @@ export async function POST(request: Request, { params }: RouteParams) {
     const extracted = await extractMeasurementsFromTranscript(
       correctedText,
       transcription.words,
-      priorContext || undefined
+      priorContext || undefined,
+      orgInstructions
     );
     console.log(`[Audio] Step 5 done in ${Date.now() - t5}ms: ${extracted.length} measurements`);
 

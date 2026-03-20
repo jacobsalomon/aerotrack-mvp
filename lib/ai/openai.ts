@@ -6,6 +6,7 @@
 
 import { TRANSCRIPTION_MODELS, OCR_MODELS, GENERATION_MODELS } from "./models";
 import { callWithFallback, callOpenAI, callAnthropic, callGemini } from "./provider";
+import { formatOrgInstructions } from "./org-context";
 import type { ModelConfig } from "./models";
 
 // Aerospace vocabulary prompt — feeds domain-specific terms to the transcription model
@@ -100,7 +101,8 @@ export interface ImageOcrResult {
 export async function transcribeAudio(
   audioFile: File | Blob,
   fileName: string,
-  previousTranscript?: string
+  previousTranscript?: string,
+  orgInstructions?: string | null
 ): Promise<TranscriptionResult> {
   const result = await callWithFallback({
     models: TRANSCRIPTION_MODELS,
@@ -110,7 +112,7 @@ export async function transcribeAudio(
       if (model.provider === "elevenlabs") {
         return transcribeWithElevenLabs(audioFile, fileName, model.id);
       }
-      return transcribeWithOpenAI(audioFile, fileName, model.id, previousTranscript);
+      return transcribeWithOpenAI(audioFile, fileName, model.id, previousTranscript, orgInstructions);
     },
   });
 
@@ -122,7 +124,8 @@ async function transcribeWithOpenAI(
   audioFile: File | Blob,
   fileName: string,
   modelId: string,
-  previousTranscript?: string
+  previousTranscript?: string,
+  orgInstructions?: string | null
 ): Promise<TranscriptionResult> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
@@ -131,8 +134,10 @@ async function transcribeWithOpenAI(
   // OpenAI only considers the final ~224 tokens of the prompt field, so vocabulary goes LAST
   // to ensure it's always in the model's attention window. Previous transcript goes first
   // (it's useful context but getting cut off is acceptable).
+  // Org-specific instructions go between previous transcript and vocabulary.
   const promptParts: string[] = [];
   if (previousTranscript) promptParts.push(previousTranscript);
+  if (orgInstructions) promptParts.push(orgInstructions);
   promptParts.push(AEROSPACE_VOCABULARY_PROMPT);
   const combinedPrompt = promptParts.join("\n\n");
 
@@ -270,6 +275,7 @@ export async function generateDocuments(opts: {
   audioTranscript: string | null;
   cmmReference: string | null;
   referenceData: string | null;
+  orgInstructions?: string | null;
 }): Promise<
   DocumentGenerationResult & {
     modelUsed: string;
@@ -411,6 +417,9 @@ FEW-SHOT EXAMPLE (truncated — shows correct structure for one document with tw
   "discrepancies": []
 }`;
 
+  // Append org-specific instructions if set (e.g. equipment types, measurement precision)
+  const fullSystemPrompt = systemPrompt + formatOrgInstructions(opts.orgInstructions);
+
   // Build the user message (same for all providers)
   const userMessage = `Generate FAA compliance documents from this maintenance session evidence.
 
@@ -437,7 +446,7 @@ Remember: conflicts must be output as discrepancies; do not silently resolve con
     taskName: "document_generation",
     execute: async (model) => {
       // Route to the right provider API
-      const text = await callModelForGeneration(model, systemPrompt, userMessage);
+      const text = await callModelForGeneration(model, fullSystemPrompt, userMessage);
 
       try {
         return JSON.parse(text) as DocumentGenerationResult;
