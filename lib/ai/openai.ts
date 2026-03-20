@@ -48,10 +48,18 @@ export interface TranscriptionResult {
   model: string;
 }
 
-export interface EvidenceLineageEntry {
-  source: "photo_extraction" | "video_analysis" | "video_annotation" | "audio_transcript" | "cmm_reference" | "ai_inferred";
-  detail: string;
+export interface ProvenanceSource {
+  sourceType: "photo" | "video" | "audio" | "cmm" | "ai_inferred";
+  excerpt: string;
   confidence: number;
+  timestamp?: number;
+}
+
+export interface FieldProvenance {
+  value: unknown;
+  sources: ProvenanceSource[];
+  overallConfidence: number;
+  corroborationLevel: "single" | "double" | "triple";
 }
 
 export interface DocumentGenerationResult {
@@ -62,8 +70,9 @@ export interface DocumentGenerationResult {
     confidence: number;
     lowConfidenceFields: string[];
     reasoning: string;
+    provenance?: Record<string, FieldProvenance>;
+    // Legacy field — kept for backward compatibility with older cached responses
     evidenceLineage?: Record<string, unknown>;
-    provenance?: Record<string, unknown>;
     discrepancies?: Array<Record<string, unknown>>;
   }>;
   summary: string;
@@ -269,7 +278,21 @@ export async function generateDocuments(opts: {
   }
 > {
   // Build the system prompt (same for all providers)
+  // Structure: role → fusion rules (most important) → constraints → output schema
   const systemPrompt = `You are an FAA compliance document generator for aircraft maintenance. Given evidence from a maintenance session, determine which compliance documents are needed and generate complete form field data.
+
+Be thorough but conservative — only generate documents that the evidence supports.
+Today's date is ${new Date().toISOString().split("T")[0]}.
+
+MULTI-SOURCE FUSION RULES — follow these for EVERY field:
+1. Use ALL available sources for each field; never rely on a single source when corroboration exists.
+2. If sources agree → raise confidence, set corroborationLevel to "double" or "triple".
+3. If sources conflict → do NOT silently pick one. Add a discrepancy entry with both values. Set resolution to "REQUIRES MECHANIC REVIEW".
+4. Source authority hierarchy:
+   - Photo OCR: authoritative for data plate text, part numbers, serial numbers, and precise visible readings.
+   - Video: authoritative for sequence of actions, physical work performed, and tool usage.
+   - Audio: authoritative for mechanic judgment calls, spoken CMM references, and verbal measurements.
+5. For measurements: prefer highest-precision source (photo > audio > video), but include all corroborating sources in the provenance array.
 
 ORGANIZATION:
 - Name: ${opts.organizationName}
@@ -288,103 +311,105 @@ ${opts.componentInfo ? `COMPONENT:
 - Total Hours: ${opts.componentInfo.totalHours}
 - Total Cycles: ${opts.componentInfo.totalCycles}` : "COMPONENT: Not yet identified from evidence"}
 
-${opts.cmmReference ? `CMM REFERENCE:
-${opts.cmmReference}` : ""}
+${opts.cmmReference ? `CMM REFERENCE:\n${opts.cmmReference}` : ""}
 
-${opts.referenceData ? `${opts.referenceData}
+${opts.referenceData ? `${opts.referenceData}\n\nUse this reference data to ensure generated documents include correct procedures, torque values, wear limits, and service bulletin references. Cross-reference evidence against these specifications.` : ""}
 
-Use this reference data to ensure generated documents include correct procedures, torque values, wear limits, and service bulletin references. Cross-reference evidence against these specifications.` : ""}
+DOCUMENT TYPES (generate only those supported by the evidence):
 
-HOW TO USE EVIDENCE:
-- Use PHOTO ANALYSIS for part numbers, serial numbers, data plate info, and visual condition
-- Use VIDEO ANALYSIS action log to populate work-performed sections with specific timestamped actions
-- Use VIDEO ANALYSIS procedure steps to verify CMM compliance in remarks
-- Use VIDEO ANALYSIS anomalies to flag defects or non-conformances
-- Use VIDEO ANNOTATIONS for precise timestamps of when specific parts, tools, or actions were observed
-- Use AUDIO TRANSCRIPT for technician observations, measurements, and verbal notes
-- Use CMM REFERENCE to ensure correct manual citations and revision numbers
+| Type | When to use |
+|------|-------------|
+| "8130-3" | FAA Form 8130-3 — work complete, part being released |
+| "337" | FAA Form 337 — major repairs or alterations performed |
+| "8010-4" | FAA Form 8010-4 — defects found, malfunction/defect report |
+| "easa-form-1" | EASA Form 1 — European equivalent of 8130-3 (blocks 1-14) |
+| "8130-1" | FAA Form 8130-1 — part being exported to a foreign country |
+| "8130-6" | FAA Form 8130-6 — applying for U.S. airworthiness certificate |
 
-MULTI-SOURCE FUSION RULES (REQUIRED):
-- Use all available sources for each field; do not rely on a single source when corroboration exists.
-- If sources agree, raise confidence and mark corroboration level ("single", "double", "triple").
-- If sources conflict, do not silently pick one value. Add a discrepancy with both values and mark for mechanic review.
-- Source authority:
-  - Video is authoritative for sequence of actions, physical work performed, and tool usage.
-  - Audio is authoritative for mechanic judgment calls and spoken CMM references.
-  - Photo OCR is authoritative for data plate text, part numbers, serials, and precise visible readings.
-- For measurements, prefer highest-precision evidence (photo > audio > video), but include all corroborating sources.
+OUTPUT SCHEMA — return JSON matching this structure exactly. Do NOT add fields not listed here. All top-level keys are REQUIRED.
 
-DOCUMENT TYPES YOU CAN GENERATE:
-- "8130-3": FAA Form 8130-3 (Authorized Release Certificate) — use when work is complete and part is being released
-- "337": FAA Form 337 (Major Repair and Alteration) — use when major repairs or alterations were performed
-- "8010-4": FAA Form 8010-4 (Malfunction/Defect Report) — use when defects were found
-- "easa-form-1": EASA Form 1 (Authorized Release Certificate) — European equivalent of 8130-3, use for EASA-regulated work. Blocks match the official EASA Form 1 layout (block1=authority, block3=tracking number, block4=org, block5=work order, block6a-d=item, block7=remarks, block8=Part 21, block9=Part 145, block10=other regulation, block11=approval number, block12=date, block13=signature, block14=certifying statement)
-- "8130-1": FAA Form 8130-1 (Application for Export Certificate of Airworthiness) — use when a part is being exported to a foreign country. Fields: applicantName, applicantAddress, productType, partNumber, serialNumber, manufacturer, modelDesignation, importingCountry, foreignAuthority, basisForIssuance, remarks, inspectorName, certificateNumber, date, signature
-- "8130-6": FAA Form 8130-6 (Application for U.S. Airworthiness Certificate) — use when applying for airworthiness certification. Fields: registrationMark, aircraftBuilder, modelDesignation, serialNumber, engineModel, propellerModel, certificateType, category, operatingLimitations, typeCertNumber, productionBasis, remarks, applicantName, applicantSignature, date, inspectorSignature, inspectorDate
+{
+  "documents": [           // REQUIRED — array of generated documents
+    {
+      "documentType": "",  // REQUIRED — one of the types above
+      "title": "",         // REQUIRED — human-readable title
+      "contentJson": {},   // REQUIRED — all form fields as key-value pairs
+      "confidence": 0.0,   // REQUIRED — overall confidence 0-1
+      "lowConfidenceFields": [],  // REQUIRED — field names with confidence < 0.7
+      "reasoning": "",     // REQUIRED — why this document type was chosen
+      "provenance": {},    // REQUIRED — per-field audit trail (see structure below)
+      "discrepancies": []  // REQUIRED — conflicting evidence (see structure below)
+    }
+  ],
+  "summary": "",           // REQUIRED — brief summary of what was done
+  "discrepancies": []      // REQUIRED — top-level cross-document conflicts
+}
 
-For each document, generate complete form field data as JSON. Include a confidence score (0-1) and list any fields you're uncertain about.
+PROVENANCE structure (one entry per field in contentJson):
+{
+  "fieldName": {
+    "value": "the field value",
+    "sources": [
+      {
+        "sourceType": "photo|video|audio|cmm|ai_inferred",
+        "excerpt": "short evidence excerpt",
+        "confidence": 0.95,
+        "timestamp": 0
+      }
+    ],
+    "overallConfidence": 0.95,
+    "corroborationLevel": "single|double|triple"
+  }
+}
 
-IMPORTANT: For each document, also return an "evidenceLineage" object that maps each form field name to its evidence source. This creates an audit trail showing WHERE each field's data came from.
-Also return a "provenance" object with multi-source arrays for each field.
+DISCREPANCY structure:
+{
+  "field": "field path",
+  "description": "what conflicts",
+  "sourceA": { "type": "photo", "value": "123", "confidence": 0.9 },
+  "sourceB": { "type": "audio", "value": "132", "confidence": 0.85 },
+  "resolution": "REQUIRES MECHANIC REVIEW"
+}
 
-Return JSON with this exact structure:
+FEW-SHOT EXAMPLE (truncated — shows correct structure for one document with two fields):
 {
   "documents": [
     {
       "documentType": "8130-3",
-      "title": "Human-readable title",
-      "contentJson": { ...all form fields... },
-      "confidence": 0.85,
-      "lowConfidenceFields": ["fieldName1"],
-      "reasoning": "Why this document type was chosen",
+      "title": "Authorized Release Certificate — HPC Module Overhaul",
+      "contentJson": {
+        "partNumber": "881700-1089",
+        "serialNumber": "SN-2024-11432",
+        "description": "High Pressure Compressor Module"
+      },
+      "confidence": 0.92,
+      "lowConfidenceFields": [],
+      "reasoning": "Overhaul work is complete with all inspections passed. Part is being released as serviceable.",
       "provenance": {
-        "fieldName": {
-          "value": "field value",
-          "provenance": [
-            {
-              "sourceType": "audio|video|photo|cmm|ai_inferred",
-              "evidenceId": "optional",
-              "timestamp": 0,
-              "excerpt": "short evidence excerpt",
-              "confidence": 0.95
-            }
+        "partNumber": {
+          "value": "881700-1089",
+          "sources": [
+            { "sourceType": "photo", "excerpt": "Data plate reads P/N 881700-1089", "confidence": 0.98, "timestamp": 0 },
+            { "sourceType": "audio", "excerpt": "part number eight eight one seven hundred dash one oh eight nine", "confidence": 0.90, "timestamp": 45 }
           ],
-          "overallConfidence": 0.95,
-          "corroborationLevel": "single|double|triple"
+          "overallConfidence": 0.98,
+          "corroborationLevel": "double"
+        },
+        "serialNumber": {
+          "value": "SN-2024-11432",
+          "sources": [
+            { "sourceType": "photo", "excerpt": "S/N SN-2024-11432 visible on data plate", "confidence": 0.97, "timestamp": 0 }
+          ],
+          "overallConfidence": 0.97,
+          "corroborationLevel": "single"
         }
       },
-      "evidenceLineage": {
-        "fieldName": {
-          "source": "photo_extraction" | "video_analysis" | "video_annotation" | "audio_transcript" | "cmm_reference" | "ai_inferred",
-          "detail": "Brief description of which specific evidence",
-          "confidence": 0.95
-        }
-      },
-      "discrepancies": [
-        {
-          "field": "field path",
-          "description": "what conflicts",
-          "sourceA": { "type": "photo", "value": "123", "confidence": 0.9 },
-          "sourceB": { "type": "audio", "value": "132", "confidence": 0.85 },
-          "resolution": "REQUIRES MECHANIC REVIEW"
-        }
-      ]
+      "discrepancies": []
     }
   ],
-  "summary": "Brief summary of what was done",
-  "discrepancies": [
-    {
-      "field": "field path",
-      "description": "conflict summary",
-      "sourceA": { "type": "photo", "value": "123", "confidence": 0.9 },
-      "sourceB": { "type": "audio", "value": "132", "confidence": 0.85 },
-      "resolution": "REQUIRES MECHANIC REVIEW"
-    }
-  ]
-}
-
-Be thorough but conservative — only generate documents that the evidence supports.
-Today's date is ${new Date().toISOString().split("T")[0]}.`;
+  "summary": "HPC module overhaul completed. All dimensional checks within limits. Part released as serviceable.",
+  "discrepancies": []
+}`;
 
   // Build the user message (same for all providers)
   const userMessage = `Generate FAA compliance documents from this maintenance session evidence.
