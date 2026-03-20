@@ -190,8 +190,9 @@ export default function SessionsPage() {
     try {
       const res = await fetch(apiUrl("/api/org/documents"));
       if (res.ok) {
-        const docs = await res.json();
-        setOrgDocuments(Array.isArray(docs) ? docs : []);
+        const data = await res.json();
+        const docs = Array.isArray(data) ? data : data.documents ?? [];
+        setOrgDocuments(docs);
       }
     } catch (err) {
       console.error("Failed to fetch org documents:", err);
