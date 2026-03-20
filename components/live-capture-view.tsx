@@ -16,10 +16,12 @@ import {
   type SessionDeskMicRecorderHandle,
 } from "@/components/session-desk-mic-recorder";
 import { MeasurementFeed } from "@/components/measurement-feed";
+import { FormFieldOverlay } from "@/components/form-field-overlay";
 import { apiUrl } from "@/lib/api-url";
 import {
   ArrowLeft,
   Clock,
+  FileText,
   Loader2,
   Mic,
   Square,
@@ -34,10 +36,17 @@ interface TranscriptEntry {
   correctedText: string | null;
 }
 
+interface OrgDocumentInfo {
+  id: string;
+  title: string;
+  fileUrl: string;
+}
+
 interface LiveCaptureViewProps {
   sessionId: string;
   description: string | null;
   startedAt: string;
+  orgDocument?: OrgDocumentInfo | null;
   onSessionEnded: () => void;
 }
 
@@ -145,6 +154,7 @@ export function LiveCaptureView({
   sessionId,
   description,
   startedAt,
+  orgDocument,
   onSessionEnded,
 }: LiveCaptureViewProps) {
   const micRef = useRef<SessionDeskMicRecorderHandle>(null);
@@ -288,18 +298,26 @@ export function LiveCaptureView({
 
       {/* Two-panel layout */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-0">
-        {/* Left panel: Measurements */}
+        {/* Left panel: Form Fields (if org doc selected) or Measurements */}
         <Card className="border-0 shadow-sm flex flex-col min-h-0">
           <div className="px-4 py-3 border-b" style={{ borderColor: "rgb(243, 244, 246)" }}>
             <div className="flex items-center gap-2">
-              <Wrench className="h-4 w-4" style={{ color: "rgb(107, 114, 128)" }} />
+              {orgDocument ? (
+                <FileText className="h-4 w-4" style={{ color: "rgb(107, 114, 128)" }} />
+              ) : (
+                <Wrench className="h-4 w-4" style={{ color: "rgb(107, 114, 128)" }} />
+              )}
               <h2 className="text-sm font-semibold" style={{ fontFamily: "var(--font-space-grotesk)", color: "rgb(17, 24, 39)" }}>
-                Measurements
+                {orgDocument ? "Form Fields" : "Measurements"}
               </h2>
             </div>
           </div>
           <CardContent className="flex-1 overflow-y-auto p-4">
-            <MeasurementFeed sessionId={sessionId} isActive={true} />
+            {orgDocument ? (
+              <FormFieldOverlay sessionId={sessionId} orgDocument={orgDocument} />
+            ) : (
+              <MeasurementFeed sessionId={sessionId} isActive={true} />
+            )}
           </CardContent>
         </Card>
 

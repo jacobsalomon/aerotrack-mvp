@@ -391,6 +391,7 @@ model OrgDocument {
   title          String                                    // Display name (e.g., "Station Handoff Checklist")
   fileUrl        String                                    // Vercel Blob URL
   fileSizeBytes  Int      @default(0)
+  formFieldsJson String?                                   // Cached extracted form fields (JSON from Gemini)
   uploadedBy     String?                                   // userId who uploaded it
   createdAt      DateTime @default(now())
 

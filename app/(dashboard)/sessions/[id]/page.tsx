@@ -88,6 +88,11 @@ interface SessionDetail {
   // shiftSessionId removed — sessions are the single workflow path
   componentId: string | null;
   expectedSteps: string | null;
+  orgDocument: {
+    id: string;
+    title: string;
+    fileUrl: string;
+  } | null;
   startedAt: string;
   completedAt: string | null;
   user: {
@@ -471,6 +476,7 @@ export default function SessionDetailPage() {
         sessionId={session.id}
         description={session.description}
         startedAt={session.startedAt}
+        orgDocument={session.orgDocument}
         onSessionEnded={() => void fetchSession()}
       />
     );
