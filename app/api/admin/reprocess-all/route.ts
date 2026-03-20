@@ -6,8 +6,8 @@ import { requireAuth } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
 
-// Allow up to 10 minutes for batch reprocessing
-export const maxDuration = 600;
+// Allow up to 5 minutes for batch reprocessing (Vercel pro plan max = 300s)
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   try {
