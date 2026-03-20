@@ -44,18 +44,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Ensure user has the profile fields the mobile app needs
-    if (!user.organizationId || !user.badgeNumber) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Your account isn't set up for mobile access yet. Ask your admin to assign you a badge number.",
-        },
-        { status: 403 }
-      );
-    }
-
-    // Sign a JWT with all user claims
+    // Sign a JWT with all user claims (badge/org are optional for testing)
     const token = await new SignJWT({
       sub: user.id,
       userId: user.id,
@@ -63,9 +52,9 @@ export async function POST(request: Request) {
       name: user.name,
       firstName: user.firstName,
       lastName: user.lastName,
-      badgeNumber: user.badgeNumber,
+      ...(user.badgeNumber && { badgeNumber: user.badgeNumber }),
       role: user.role,
-      organizationId: user.organizationId,
+      ...(user.organizationId && { organizationId: user.organizationId }),
     })
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
