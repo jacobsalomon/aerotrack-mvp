@@ -1,26 +1,104 @@
-// POST /api/mobile/auth — Always succeeds with demo user
-// Auth is bypassed for MVP — the app just needs a success response to proceed.
+// POST /api/mobile/auth — Authenticate with email/password, return a JWT.
+// Uses the same User table and bcrypt hashing as the NextAuth web login.
+// The response shape matches what the iOS app's LoginResponse model expects.
 
+import { prisma } from "@/lib/db";
+import bcrypt from "bcryptjs";
+import { SignJWT } from "jose";
 import { NextResponse } from "next/server";
+import { getMobileSigningKey } from "@/lib/mobile-jwt";
 
-export async function POST() {
-  return NextResponse.json({
-    success: true,
-    data: {
-      user: {
-        id: "tech-mike-chen",
-        name: "Mike Chen",
-        badgeNumber: "PAM-1001",
-        email: "mike.chen@precisionaero.example.com",
-        role: "TECHNICIAN",
-        organizationId: "demo-precision-aero",
+const TOKEN_EXPIRY = "90d";
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const { email, password } = body;
+
+    if (!email || !password) {
+      return NextResponse.json(
+        { success: false, error: "Email and password are required" },
+        { status: 400 }
+      );
+    }
+
+    // Look up the user (same table NextAuth uses)
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase().trim() },
+      include: { organization: true },
+    });
+
+    if (!user?.passwordHash) {
+      return NextResponse.json(
+        { success: false, error: "Invalid email or password" },
+        { status: 401 }
+      );
+    }
+
+    // Verify password with bcrypt
+    const isValid = await bcrypt.compare(password, user.passwordHash);
+    if (!isValid) {
+      return NextResponse.json(
+        { success: false, error: "Invalid email or password" },
+        { status: 401 }
+      );
+    }
+
+    // Ensure user has the profile fields the mobile app needs
+    if (!user.organizationId || !user.badgeNumber) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Your account isn't set up for mobile access yet. Ask your admin to assign you a badge number.",
+        },
+        { status: 403 }
+      );
+    }
+
+    // Sign a JWT with all user claims
+    const token = await new SignJWT({
+      sub: user.id,
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      badgeNumber: user.badgeNumber,
+      role: user.role,
+      organizationId: user.organizationId,
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime(TOKEN_EXPIRY)
+      .sign(getMobileSigningKey());
+
+    // Response shape matches the iOS LoginResponse model
+    return NextResponse.json({
+      success: true,
+      data: {
+        user: {
+          id: user.id,
+          name: user.name ?? [user.firstName, user.lastName].filter(Boolean).join(" "),
+          email: user.email,
+          badgeNumber: user.badgeNumber,
+          role: user.role,
+          organizationId: user.organizationId,
+        },
+        organization: user.organization
+          ? {
+              id: user.organization.id,
+              name: user.organization.name,
+              faaRepairStationCert: user.organization.faaRepairStationCert ?? null,
+            }
+          : null,
+        token,
       },
-      organization: {
-        id: "demo-precision-aero",
-        name: "Precision Aerospace MRO",
-        faaRepairStationCert: "Y4PR509K",
-      },
-      token: "demo",
-    },
-  });
+    });
+  } catch (error) {
+    console.error("[Mobile auth error]", error);
+    return NextResponse.json(
+      { success: false, error: "Something went wrong. Please try again." },
+      { status: 500 }
+    );
+  }
 }
