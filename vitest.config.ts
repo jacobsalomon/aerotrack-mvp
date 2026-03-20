@@ -10,9 +10,10 @@ export default defineConfig({
     environment: "node",
     // Unit tests only — API tests run via Playwright (see tests/e2e/)
     include: ["tests/unit/**/*.test.ts", "tests/smoke.test.ts"],
-    // Use a separate test database so tests never touch dev data
+    // Block tests from hitting production DB — require explicit test database
     env: {
       NODE_ENV: "test",
+      DATABASE_URL: process.env.TEST_DATABASE_URL || "postgresql://test:test@localhost:5432/aerovision_test",
     },
   },
   resolve: {

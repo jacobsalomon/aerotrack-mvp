@@ -1,12 +1,6 @@
 // Database connection singleton.
-// Uses DATABASE_URL from environment (Neon Postgres in production, local in dev).
-// Uses the Neon serverless HTTP adapter for reliable connections on Vercel.
-// The HTTP adapter avoids TCP connection issues (SSL negotiation, PG* env var
-// conflicts, connection timeouts) that plague raw pg on serverless runtimes.
-
-if (typeof window !== "undefined") {
-  throw new Error("lib/db must only be imported on the server");
-}
+// Uses Neon serverless HTTP adapter — avoids TCP/SSL issues on Vercel.
+import "server-only";
 
 import { PrismaClient } from "@/generated/prisma/client";
 import { PrismaNeon } from "@prisma/adapter-neon";
