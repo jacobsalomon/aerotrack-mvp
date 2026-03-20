@@ -57,6 +57,9 @@ export async function recordMeasurement({
 
   // Compute tolerance status (no spec matching for now — can be added later)
   const inTolerance = checkTolerance(value, null, null);
+
+  // Check if the parameter name is generic/unnamed — flag for manual labeling
+  const isGenericName = /unknown|unspecified|parameter/i.test(parameterName);
   const measurementTimestamp =
     typeof source.timestamp === "number" && Number.isFinite(source.timestamp)
       ? new Date(source.timestamp * 1000)
@@ -108,9 +111,6 @@ export async function recordMeasurement({
   }
 
   // No existing match — create a new measurement + its first source
-  // Flag measurements with generic names (e.g., "Unspecified dimension") for manual labeling
-  const isGenericName = /unknown|unspecified|parameter/i.test(parameterName);
-
   const measurement = await prisma.$transaction(async (tx) => {
     const lastMeasurement = await tx.measurement.findFirst({
       where: { captureSessionId: sessionId },
