@@ -95,7 +95,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { description, targetFormType } = body;
+    const { description, targetFormType, orgDocumentId } = body;
     const user = authResult.user;
 
     // Look up user profile by the logged-in user's email
@@ -155,7 +155,8 @@ export async function POST(request: Request) {
         userId: userProfile.id,
         organizationId: userProfile.organizationId,
         description: description || "Web capture session",
-        targetFormType: targetFormType || null,
+        targetFormType: orgDocumentId ? null : (targetFormType || null),
+        orgDocumentId: orgDocumentId || null,
         status: "capturing",
       },
     });

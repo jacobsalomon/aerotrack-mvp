@@ -394,6 +394,9 @@ model OrgDocument {
   uploadedBy     String?                                   // userId who uploaded it
   createdAt      DateTime @default(now())
 
+  // Sessions that selected this document as their target
+  captureSessions CaptureSession[]
+
   @@index([organizationId])
 }
 
@@ -411,6 +414,8 @@ model CaptureSession {
   status          String    @default("capturing")       // capturing, processing, documents_generated, submitted, approved, rejected
   description     String?
   targetFormType  String?                               // Which FAA form to auto-populate: "8130-3", "337", or "8010-4"
+  orgDocumentId   String?                               // Internal form selected for this session (mutually exclusive with targetFormType)
+  orgDocument     OrgDocument? @relation(fields: [orgDocumentId], references: [id], onDelete: SetNull)
   expectedSteps   String?                               // Free-text SOP — expected maintenance steps for this session
   startedAt       DateTime  @default(now())
   completedAt     DateTime?
