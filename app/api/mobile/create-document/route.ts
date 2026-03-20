@@ -108,7 +108,7 @@ export async function POST(request: Request) {
     }
 
     // Check if this document type already exists for this session
-    const existingDoc = await prisma.documentGeneration2.findFirst({
+    const existingDoc = await prisma.captureDocument.findFirst({
       where: { sessionId, documentType },
     });
     if (existingDoc) {
@@ -122,19 +122,16 @@ export async function POST(request: Request) {
     const photoExtractions = session.evidence
       .filter((e) => e.type === "PHOTO" && e.aiExtraction)
       .map((e) => {
-        try { return JSON.parse(e.aiExtraction!); } catch { return { raw: e.aiExtraction }; }
+        return e.aiExtraction as Record<string, unknown>;
       });
 
     let videoAnalysis: Record<string, unknown> | null = null;
     if (session.analysis) {
-      const safeParse = (s: string, fallback: unknown = []) => {
-        try { return JSON.parse(s); } catch { return fallback; }
-      };
       videoAnalysis = {
-        actionLog: safeParse(session.analysis.actionLog),
-        partsIdentified: safeParse(session.analysis.partsIdentified),
-        procedureSteps: safeParse(session.analysis.procedureSteps),
-        anomalies: safeParse(session.analysis.anomalies),
+        actionLog: session.analysis.actionLog as unknown[],
+        partsIdentified: session.analysis.partsIdentified as unknown[],
+        procedureSteps: session.analysis.procedureSteps as unknown[],
+        anomalies: session.analysis.anomalies as unknown[],
         confidence: session.analysis.confidence,
       };
     }
@@ -193,14 +190,14 @@ export async function POST(request: Request) {
     // Save the document
     let saved;
     try {
-      saved = await prisma.documentGeneration2.create({
+      saved = await prisma.captureDocument.create({
         data: {
           sessionId,
           documentType: result.documentType,
-          contentJson: JSON.stringify(result.contentJson),
+          contentJson: JSON.parse(JSON.stringify(result.contentJson)),
           status: "draft",
           confidence: clampConfidence(result.confidence),
-          lowConfidenceFields: JSON.stringify(result.lowConfidenceFields || []),
+          lowConfidenceFields: JSON.parse(JSON.stringify(result.lowConfidenceFields || [])),
         },
       });
     } catch (error) {
@@ -232,12 +229,12 @@ export async function POST(request: Request) {
         action: "document_manually_created",
         entityType: "CaptureSession",
         entityId: sessionId,
-        metadata: JSON.stringify({
+        metadata: {
           documentType,
           userDescription: userDescription || null,
           latencyMs,
           confidence: result.confidence,
-        }),
+        },
       },
     });
 

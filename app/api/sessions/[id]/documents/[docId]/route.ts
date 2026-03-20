@@ -87,7 +87,7 @@ export async function PATCH(
 
   try {
     // Load the document
-    const doc = await prisma.documentGeneration2.findUnique({
+    const doc = await prisma.captureDocument.findUnique({
       where: { id: docId },
       include: { session: { select: { id: true, userId: true, organizationId: true } } },
     });
@@ -108,13 +108,11 @@ export async function PATCH(
       );
     }
 
-    // Parse existing contentJson and merge in updated fields
-    let existingContent: Record<string, unknown>;
-    try {
-      existingContent = JSON.parse(doc.contentJson);
-    } catch {
-      existingContent = {};
-    }
+    // contentJson is already a parsed object (Prisma Json type)
+    const existingContent: Record<string, unknown> =
+      (doc.contentJson && typeof doc.contentJson === "object" && !Array.isArray(doc.contentJson))
+        ? (doc.contentJson as Record<string, unknown>)
+        : {};
 
     const reviewState = parseDocumentReviewState(doc.reviewNotes);
 
@@ -142,10 +140,10 @@ export async function PATCH(
     const nextReviewNotes = serializeDocumentReviewState(reviewState);
 
     // Save updated contentJson and/or review state
-    const updated = await prisma.documentGeneration2.update({
+    const updated = await prisma.captureDocument.update({
       where: { id: docId },
       data: {
-        contentJson: JSON.stringify(existingContent),
+        contentJson: JSON.parse(JSON.stringify(existingContent)),
         reviewNotes: nextReviewNotes,
       },
     });
@@ -156,9 +154,9 @@ export async function PATCH(
           organizationId: doc.session.organizationId,
           userId: doc.session.userId,
           action: "document_fields_edited",
-          entityType: "DocumentGeneration2",
+          entityType: "CaptureDocument",
           entityId: docId,
-          metadata: JSON.stringify({ sessionId, changes }),
+          metadata: JSON.parse(JSON.stringify({ sessionId, changes })),
         },
       });
     }
@@ -172,14 +170,14 @@ export async function PATCH(
             fieldDisposition.status === null
               ? "document_field_disposition_cleared"
               : "document_field_disposition_set",
-          entityType: "DocumentGeneration2",
+          entityType: "CaptureDocument",
           entityId: docId,
-          metadata: JSON.stringify({
+          metadata: {
             sessionId,
             fieldKey: fieldDisposition.fieldKey,
             status: fieldDisposition.status,
             rationale: fieldDisposition.rationale?.trim() || null,
-          }),
+          },
         },
       });
     }

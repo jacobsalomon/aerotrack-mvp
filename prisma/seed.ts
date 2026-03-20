@@ -26,7 +26,7 @@ async function main() {
   await prisma.auditLogEntry.deleteMany();
   await prisma.videoAnnotation.deleteMany();
   await prisma.sessionAnalysis.deleteMany();
-  await prisma.documentGeneration2.deleteMany();
+  await prisma.captureDocument.deleteMany();
   await prisma.captureEvidence.deleteMany();
   await prisma.captureSession.deleteMany();
   await prisma.user.deleteMany();

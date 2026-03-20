@@ -31,7 +31,7 @@ export async function GET(request: Request, { params }: RouteParams) {
       success: true,
       data: {
         ...spec,
-        specItems: JSON.parse(spec.specItemsJson),
+        specItems: spec.specItemsJson,
       },
     });
   } catch (error) {
@@ -85,14 +85,14 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       data: {
         ...(name !== undefined && { name }),
         ...(componentPartNumber !== undefined && { componentPartNumber }),
-        ...(specItems !== undefined && { specItemsJson: JSON.stringify(specItems) }),
+        ...(specItems !== undefined && { specItemsJson: specItems }),
         ...(status !== undefined && { status }),
       },
     });
 
     return NextResponse.json({
       success: true,
-      data: { ...spec, specItems: JSON.parse(spec.specItemsJson) },
+      data: { ...spec, specItems: spec.specItemsJson },
     });
   } catch (error) {
     console.error("Update measurement spec error:", error);

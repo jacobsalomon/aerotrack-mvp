@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
       availableTables: [
         "CaptureSession",
         "CaptureEvidence",
-        "DocumentGeneration2",
+        "CaptureDocument",
         "SessionAnalysis",
         "VideoAnnotation",
         "AuditLogEntry",
@@ -78,11 +78,11 @@ export async function GET(request: NextRequest) {
         break;
       }
 
-      case "DocumentGeneration2": {
+      case "CaptureDocument": {
         const where: Record<string, unknown> = {};
         if (sessionId) where.sessionId = sessionId;
         if (id) where.id = id;
-        data = await prisma.documentGeneration2.findMany({
+        data = await prisma.captureDocument.findMany({
           where,
           orderBy: { generatedAt: "desc" },
           take: limit,

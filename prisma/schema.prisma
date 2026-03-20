@@ -44,7 +44,7 @@ model User {
 
   // Relationships (moved from Technician)
   captureSessions     CaptureSession[]
-  reviewedDocuments   DocumentGeneration2[]  @relation("reviewer")
+  reviewedDocuments   CaptureDocument[]  @relation("reviewer")
   auditLog            AuditLogEntry[]
 
   @@index([organizationId])
@@ -211,7 +211,7 @@ model Evidence {
   capturedByBadge String?        // Badge number
   location        String?        // Facility name
   transcription   String?        // AI transcription of voice note
-  structuredData  String?        // AI-structured version (JSON string)
+  structuredData  Json?          // AI-structured version (parsed JSON)
   hash            String         // SHA-256 hash for tamper evidence
   createdAt       DateTime       @default(now())
 
@@ -229,7 +229,7 @@ model GeneratedDocument {
   docType      String         // "8130-3", "work_order", "findings_report", "test_results"
   title        String
   content      String         // Full generated document content (JSON)
-  provenanceJson String?      // JSON — per-field evidence provenance for the evidence-chain UI
+  provenanceJson Json?        // JSON — per-field evidence provenance for the evidence-chain UI
   pdfPath      String?        // Path to generated PDF
   status       String    @default("draft") // "draft", "approved", "signed"
   approvedBy   String?        // Who approved/signed
@@ -296,7 +296,7 @@ model Exception {
   severity        String    // "info", "warning", "critical"
   title           String    // Human-readable title for the exception
   description     String    // Detailed plain-language explanation of what was found
-  evidence        String    // JSON string — the specific data points that triggered this
+  evidence        Json      // JSON — the specific data points that triggered this
   status          String    @default("open") // "open", "investigating", "resolved", "false_positive"
   detectedAt      DateTime  @default(now())
   resolvedAt      DateTime?
@@ -392,7 +392,7 @@ model OrgDocument {
   title          String                                    // Display name (e.g., "Station Handoff Checklist")
   fileUrl        String                                    // Vercel Blob URL
   fileSizeBytes  Int      @default(0)
-  formFieldsJson String?                                   // Cached extracted form fields (JSON from Gemini)
+  formFieldsJson Json?                                     // Cached extracted form fields (parsed JSON from Gemini)
   uploadedBy     String?                                   // userId who uploaded it
   createdAt      DateTime @default(now())
 
@@ -426,7 +426,7 @@ model CaptureSession {
 
   // Relationships
   evidence        CaptureEvidence[]
-  documents       DocumentGeneration2[]
+  documents       CaptureDocument[]
   analysis        SessionAnalysis?
   processingJob   SessionProcessingJob?
   packages        SessionPackage[]
@@ -455,7 +455,7 @@ model CaptureEvidence {
   mimeType        String                                // e.g., "image/jpeg", "video/mp4", "audio/m4a"
   durationSeconds Float?                                // For video and audio
   transcription   String?                               // AI transcription of audio
-  aiExtraction    String?                               // JSON — AI-extracted data from images (part numbers, text, etc.)
+  aiExtraction    Json?                                 // JSON — AI-extracted data from images (part numbers, text, etc.)
   gpsLatitude     Float?
   gpsLongitude    Float?
   capturedAt      DateTime  @default(now())
@@ -496,16 +496,16 @@ model SessionAnalysis {
   id              String   @id @default(cuid())
   sessionId       String   @unique
   session         CaptureSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  actionLog       String                                // JSON — timestamped list of actions observed (from video)
-  partsIdentified String                                // JSON — all part numbers/serials found (fused from all sources)
-  procedureSteps  String                                // JSON — maintenance steps identified
-  anomalies       String   @default("[]")               // JSON — any concerns or anomalies spotted
+  actionLog       Json                                  // JSON — timestamped list of actions observed (from video)
+  partsIdentified Json                                  // JSON — all part numbers/serials found (fused from all sources)
+  procedureSteps  Json                                  // JSON — maintenance steps identified
+  anomalies       Json     @default("[]")               // JSON — any concerns or anomalies spotted
   audioTranscript String?                               // Full stitched audio transcript with timestamps
-  photoExtractions String?                              // JSON — per-photo structured extraction data
+  photoExtractions Json?                                // JSON — per-photo structured extraction data
   confidence      Float    @default(0)                  // 0-1 overall confidence
   verificationSource String?                            // "cmm", "expected_steps", or "ai_inferred"
   modelUsed       String                                // e.g., "gemini-3.1-pro-preview"
-  modelsUsed      String?                               // JSON — all models used across modalities
+  modelsUsed      Json?                                 // JSON — all models used across modalities
   rawResponse     String?                               // Full AI response for debugging
   costEstimate    Float?                                // Estimated API cost in dollars
   processingTime  Int?                                  // Processing time in milliseconds
@@ -544,30 +544,30 @@ model ReferenceData {
 }
 
 // ──────────────────────────────────────────────────────
-// DocumentGeneration2 — AI-generated compliance documents from capture sessions
-// Named "2" to avoid conflict with existing GeneratedDocument model
-// (existing model is for the web MVP demo; this is for real mobile captures)
+// CaptureDocument — AI-generated compliance documents from capture sessions
+// (formerly DocumentGeneration2; @@map keeps the original table name to avoid data migration)
 // ──────────────────────────────────────────────────────
-model DocumentGeneration2 {
+model CaptureDocument {
   id                  String    @id @default(cuid())
   sessionId           String
   session             CaptureSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   documentType        String                            // "8130-3", "337", "8010-4", etc. — extensible
-  contentJson         String                            // Full form field data as JSON string
+  contentJson         Json                              // Full form field data as JSON
   status              String    @default("draft")       // draft, pending_review, approved, rejected
   confidence          Float     @default(0)             // 0-1 overall AI confidence score
-  lowConfidenceFields String    @default("[]")          // JSON array of field names AI was uncertain about
+  lowConfidenceFields Json      @default("[]")          // JSON array of field names AI was uncertain about
   generatedAt         DateTime  @default(now())
   reviewedById        String?
   reviewedBy          User? @relation("reviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   reviewedAt          DateTime?
   reviewNotes         String?
-  evidenceLineage     String?                           // JSON — maps each field to its evidence source, detail, and confidence (legacy single-source)
-  provenanceJson      String?                           // JSON — multi-source provenance: per-field array of all contributing sources with corroboration levels
-  verificationJson    String?                           // JSON — AI verification results (field-level issues, confidence)
+  evidenceLineage     Json?                             // JSON — maps each field to its evidence source, detail, and confidence (legacy single-source)
+  provenanceJson      Json?                             // JSON — multi-source provenance: per-field array of all contributing sources with corroboration levels
+  verificationJson    Json?                             // JSON — AI verification results (field-level issues, confidence)
   verifiedAt          DateTime?                         // When the independent AI verification completed
   createdAt           DateTime  @default(now())
 
+  @@map("DocumentGeneration2")
   @@index([sessionId])
   @@index([reviewedById])
   @@unique([sessionId, documentType])
@@ -605,7 +605,7 @@ model SessionProcessingStage {
   startedAt     DateTime?
   completedAt   DateTime?
   lastError     String?
-  errorMetadata String?
+  errorMetadata Json?
   latencyMs     Int?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -620,7 +620,7 @@ model SessionPackage {
   session     CaptureSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   packageType String    @default("evidence_bundle_manifest")
   status      String    @default("ready")
-  manifestJson String
+  manifestJson Json
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
@@ -641,7 +641,7 @@ model MeasurementSpec {
   organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name                String                          // e.g., "HPC-7 Overhaul Measurements"
   componentPartNumber String?                         // Which part number this spec applies to
-  specItemsJson       String                          // JSON array of expected measurements (see below)
+  specItemsJson       Json                            // JSON array of expected measurements (see below)
                                                       // Each item: { parameterName, measurementType, unit,
                                                       //   nominalValue, toleranceLow, toleranceHigh,
                                                       //   required, procedureStep, count }
@@ -747,9 +747,9 @@ model AuditLogEntry {
   user            User? @relation(fields: [userId], references: [id], onDelete: SetNull)
   action          String                                // "session_started", "evidence_captured", "document_generated",
                                                         // "document_approved", "document_rejected", "technician_created", etc.
-  entityType      String?                               // "CaptureSession", "CaptureEvidence", "DocumentGeneration2", etc.
+  entityType      String?                               // "CaptureSession", "CaptureEvidence", "CaptureDocument", etc.
   entityId        String?                               // ID of the affected record
-  metadata        String?                               // JSON — additional context
+  metadata        Json?                                 // JSON — additional context
   timestamp       DateTime  @default(now())
 
   @@index([organizationId])

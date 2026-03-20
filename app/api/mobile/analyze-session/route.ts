@@ -23,13 +23,10 @@ interface ModalityError {
   message: string;
 }
 
-function safeParse<T>(value: string | null | undefined, fallback: T): T {
-  if (!value) return fallback;
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return fallback;
-  }
+// Json fields are already parsed by Prisma — just apply fallback if null
+function jsonOrDefault<T>(value: unknown, fallback: T): T {
+  if (value == null) return fallback;
+  return value as T;
 }
 
 function toTimestampedTranscript(
@@ -222,12 +219,12 @@ export async function POST(request: Request) {
         data: {
           analysis: {
             ...existingAnalysis,
-            actionLog: safeParse(existingAnalysis.actionLog, []),
-            partsIdentified: safeParse(existingAnalysis.partsIdentified, []),
-            procedureSteps: safeParse(existingAnalysis.procedureSteps, []),
-            anomalies: safeParse(existingAnalysis.anomalies, []),
-            photoExtractions: safeParse(existingAnalysis.photoExtractions, []),
-            modelsUsed: safeParse(existingAnalysis.modelsUsed, {}),
+            actionLog: jsonOrDefault(existingAnalysis.actionLog, []),
+            partsIdentified: jsonOrDefault(existingAnalysis.partsIdentified, []),
+            procedureSteps: jsonOrDefault(existingAnalysis.procedureSteps, []),
+            anomalies: jsonOrDefault(existingAnalysis.anomalies, []),
+            photoExtractions: jsonOrDefault(existingAnalysis.photoExtractions, []),
+            modelsUsed: jsonOrDefault(existingAnalysis.modelsUsed, {}),
           },
           message: "Analysis already exists for this session",
         },
@@ -423,7 +420,7 @@ export async function POST(request: Request) {
 
             await prisma.captureEvidence.update({
               where: { id: photo.id },
-              data: { aiExtraction: JSON.stringify(extraction) },
+              data: { aiExtraction: JSON.parse(JSON.stringify(extraction)) },
             });
 
             return {
@@ -617,13 +614,13 @@ export async function POST(request: Request) {
     const savedAnalysis = await prisma.sessionAnalysis.create({
       data: {
         sessionId,
-        actionLog: JSON.stringify(actionLog),
-        partsIdentified: JSON.stringify(partsIdentified),
-        procedureSteps: JSON.stringify(procedureSteps),
-        anomalies: JSON.stringify(anomalies),
+        actionLog: JSON.parse(JSON.stringify(actionLog)),
+        partsIdentified: JSON.parse(JSON.stringify(partsIdentified)),
+        procedureSteps: JSON.parse(JSON.stringify(procedureSteps)),
+        anomalies: JSON.parse(JSON.stringify(anomalies)),
         audioTranscript,
-        photoExtractions: JSON.stringify(photoExtractions),
-        modelsUsed: JSON.stringify(modelsUsed),
+        photoExtractions: JSON.parse(JSON.stringify(photoExtractions)),
+        modelsUsed: JSON.parse(JSON.stringify(modelsUsed)),
         confidence,
         verificationSource:
           videoResult && !("skipped" in videoResult && videoResult.skipped)
@@ -651,7 +648,7 @@ export async function POST(request: Request) {
         action: "session_analyzed",
         entityType: "CaptureSession",
         entityId: sessionId,
-        metadata: JSON.stringify({
+        metadata: JSON.parse(JSON.stringify({
           modelUsed: savedAnalysis.modelUsed,
           confidence,
           processingTime,
@@ -664,7 +661,7 @@ export async function POST(request: Request) {
             hasAudioTranscript: !!audioTranscript,
           },
           modelsUsed,
-        }),
+        })),
       },
     });
 

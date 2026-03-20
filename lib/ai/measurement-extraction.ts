@@ -59,7 +59,7 @@ export async function getExtractionContext(sessionId: string): Promise<string> {
       const specLines: string[] = [];
       for (const spec of specs) {
         try {
-          const items = JSON.parse(spec.specItemsJson) as SpecItem[];
+          const items = spec.specItemsJson as unknown as SpecItem[];
           for (const item of items) {
             let line = `- ${item.parameterName} (${item.measurementType}, ${item.unit})`;
             if (item.nominalValue != null) line += ` — nominal: ${item.nominalValue}`;

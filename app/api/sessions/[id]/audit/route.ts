@@ -30,7 +30,7 @@ export async function GET(
     where: {
       OR: [
         { entityId: sessionId },
-        { metadata: { contains: sessionId }, entityId: { not: sessionId } },
+        { metadata: { string_contains: sessionId }, entityId: { not: sessionId } },
       ],
     },
     include: {

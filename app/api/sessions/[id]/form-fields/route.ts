@@ -41,11 +41,7 @@ export async function GET(
 
   // Return cached result if we already extracted fields (unless refreshing)
   if (doc.formFieldsJson && !forceRefresh) {
-    try {
-      return NextResponse.json(JSON.parse(doc.formFieldsJson));
-    } catch {
-      // Cache is corrupt — fall through to re-extract
-    }
+    return NextResponse.json(doc.formFieldsJson);
   }
 
   // Extract fields from the PDF using Gemini vision

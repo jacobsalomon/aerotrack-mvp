@@ -70,7 +70,7 @@ export async function POST(
     }
 
     // Check for duplicate
-    const existing = await prisma.documentGeneration2.findFirst({
+    const existing = await prisma.captureDocument.findFirst({
       where: { sessionId, documentType },
     });
     if (existing) {
@@ -83,16 +83,15 @@ export async function POST(
     // Gather evidence
     const photoExtractions = session.evidence
       .filter((e) => e.type === "PHOTO" && e.aiExtraction)
-      .map((e) => { try { return JSON.parse(e.aiExtraction!); } catch { return { raw: e.aiExtraction }; } });
+      .map((e) => e.aiExtraction as Record<string, unknown>);
 
     let videoAnalysis: Record<string, unknown> | null = null;
     if (session.analysis) {
-      const safeParse = (s: string, fallback: unknown = []) => { try { return JSON.parse(s); } catch { return fallback; } };
       videoAnalysis = {
-        actionLog: safeParse(session.analysis.actionLog),
-        partsIdentified: safeParse(session.analysis.partsIdentified),
-        procedureSteps: safeParse(session.analysis.procedureSteps),
-        anomalies: safeParse(session.analysis.anomalies),
+        actionLog: session.analysis.actionLog as unknown[],
+        partsIdentified: session.analysis.partsIdentified as unknown[],
+        procedureSteps: session.analysis.procedureSteps as unknown[],
+        anomalies: session.analysis.anomalies as unknown[],
         confidence: session.analysis.confidence,
       };
     }
@@ -167,15 +166,15 @@ export async function POST(
 
     let saved;
     try {
-      saved = await prisma.documentGeneration2.create({
+      saved = await prisma.captureDocument.create({
         data: {
           sessionId,
           documentType,
-          contentJson: JSON.stringify(contentJson),
+          contentJson: JSON.parse(JSON.stringify(contentJson)),
           status: "draft",
           confidence,
-          lowConfidenceFields: JSON.stringify(lowConfidenceFields),
-          evidenceLineage: evidenceLineage ? JSON.stringify(evidenceLineage) : null,
+          lowConfidenceFields: JSON.parse(JSON.stringify(lowConfidenceFields)),
+          evidenceLineage: evidenceLineage ? JSON.parse(JSON.stringify(evidenceLineage)) : null,
         },
       });
     } catch (error) {
@@ -206,7 +205,7 @@ export async function POST(
         action: "document_manually_created",
         entityType: "CaptureSession",
         entityId: sessionId,
-        metadata: JSON.stringify({ documentType, description: description || null }),
+        metadata: { documentType, description: description || null },
       },
     });
 

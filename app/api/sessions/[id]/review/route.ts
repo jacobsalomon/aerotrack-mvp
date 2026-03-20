@@ -1,5 +1,5 @@
 // POST /api/sessions/[id]/review — Approve or reject a generated document
-// Updates DocumentGeneration2 status, creates AuditLogEntry,
+// Updates CaptureDocument status, creates AuditLogEntry,
 // and auto-updates parent session status when all documents are reviewed
 
 import { prisma } from "@/lib/db";
@@ -54,7 +54,7 @@ export async function POST(
   }
 
   // Verify document belongs to this session
-  const doc = await prisma.documentGeneration2.findFirst({
+  const doc = await prisma.captureDocument.findFirst({
     where: { id: documentId, sessionId },
   });
 
@@ -69,7 +69,7 @@ export async function POST(
 
   // Update the document status
   const newStatus = action === "approve" ? "approved" : "rejected";
-  const updatedDoc = await prisma.documentGeneration2.update({
+  const updatedDoc = await prisma.captureDocument.update({
     where: { id: documentId },
     data: {
       status: newStatus,
@@ -86,20 +86,20 @@ export async function POST(
     data: {
       organizationId: session.organizationId,
       action: action === "approve" ? "document_approved" : "document_rejected",
-      entityType: "DocumentGeneration2",
+      entityType: "CaptureDocument",
       entityId: documentId,
-      metadata: JSON.stringify({
+      metadata: {
         sessionId,
         documentType: doc.documentType,
         notes: notes || null,
         performedBy: "dashboard-user",
-      }),
+      },
     },
   });
 
   // Check if all documents in the session are now reviewed
   // and auto-update session status accordingly
-  const allDocs = await prisma.documentGeneration2.findMany({
+  const allDocs = await prisma.captureDocument.findMany({
     where: { sessionId },
     select: { status: true },
   });

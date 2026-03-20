@@ -1,6 +1,6 @@
 // GET /api/capture-documents/download/[id]
-// Downloads a DocumentGeneration2 (capture session document) as a PDF.
-// Same PDF renderers as the demo documents, but reads from DocumentGeneration2 table.
+// Downloads a CaptureDocument (capture session document) as a PDF.
+// Same PDF renderers as the demo documents, but reads from CaptureDocument table.
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
@@ -16,7 +16,7 @@ export async function GET(
 
   const { id } = await params;
 
-  const doc = await prisma.documentGeneration2.findUnique({
+  const doc = await prisma.captureDocument.findUnique({
     where: { id },
   });
 
@@ -24,16 +24,8 @@ export async function GET(
     return NextResponse.json({ error: "Document not found" }, { status: 404 });
   }
 
-  // Parse the stored JSON content
-  let content;
-  try {
-    content = JSON.parse(doc.contentJson);
-  } catch {
-    return NextResponse.json(
-      { error: "Document content is malformed" },
-      { status: 500 }
-    );
-  }
+  // contentJson is already a parsed object (Prisma Json type)
+  const content = doc.contentJson as Record<string, string>;
 
   // Generate PDF based on document type
   let pdfBytes: Uint8Array;
