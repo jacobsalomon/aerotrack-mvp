@@ -232,6 +232,7 @@ export async function callAnthropic(opts: {
   system: string;
   messages: Array<{ role: string; content: string }>;
   maxTokens?: number;
+  temperature?: number;
   timeoutMs?: number;
 }): Promise<string> {
   const apiKey = getApiKey("anthropic");
@@ -248,6 +249,7 @@ export async function callAnthropic(opts: {
     body: JSON.stringify({
       model: opts.model,
       max_tokens: opts.maxTokens || 4000,
+      temperature: opts.temperature ?? 0.2,
       system: opts.system,
       messages: opts.messages,
     }),
