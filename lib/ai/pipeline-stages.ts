@@ -11,6 +11,7 @@ import { generateDocuments } from "./openai";
 import { clampConfidence } from "./utils";
 import { getReferenceDataForPart, formatReferenceDataForPrompt } from "@/lib/reference-data";
 import { reconcileSessionMeasurements } from "./measurement-extraction";
+import { extractOrgDocumentFields } from "./org-document-extraction";
 
 function isUniqueConstraintError(error: unknown): boolean {
   return (
@@ -228,6 +229,7 @@ export async function runSessionDraftingStage(
         user: true,
         organization: true,
         analysis: true,
+        orgDocument: true,
       },
     });
 
@@ -300,6 +302,19 @@ export async function runSessionDraftingStage(
       }
     }
 
+    // If an org document was selected, extract its form fields using vision AI
+    let orgDocumentStructure: string | null = null;
+    if (updatedSession.orgDocument) {
+      try {
+        console.log(`[Pipeline] Extracting form fields from org document: ${updatedSession.orgDocument.title}`);
+        const extraction = await extractOrgDocumentFields(updatedSession.orgDocument.fileUrl);
+        orgDocumentStructure = extraction.rawStructure;
+        console.log(`[Pipeline] Extracted ${extraction.fields.length} fields from ${extraction.pageCount} page(s)`);
+      } catch (err) {
+        console.error("[Pipeline] Org document extraction failed (non-fatal):", err);
+      }
+    }
+
     const generated = await generateDocuments({
       organizationName: updatedSession.organization.name,
       organizationCert: updatedSession.organization.faaRepairStationCert,
@@ -319,6 +334,8 @@ export async function runSessionDraftingStage(
       audioTranscript,
       cmmReference,
       referenceData,
+      targetFormType: updatedSession.targetFormType,
+      orgDocumentStructure,
     });
 
     estimatedCost += 0.065 * (generated.documents?.length || 1);

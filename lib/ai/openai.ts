@@ -276,6 +276,8 @@ export async function generateDocuments(opts: {
   cmmReference: string | null;
   referenceData: string | null;
   orgInstructions?: string | null;
+  targetFormType?: string | null; // If set, only generate this specific document type
+  orgDocumentStructure?: string | null; // Extracted form structure from an uploaded org document
 }): Promise<
   DocumentGenerationResult & {
     modelUsed: string;
@@ -331,7 +333,22 @@ DOCUMENT TYPES (generate only those supported by the evidence):
 | "easa-form-1" | EASA Form 1 — European equivalent of 8130-3 (blocks 1-14) |
 | "8130-1" | FAA Form 8130-1 — part being exported to a foreign country |
 | "8130-6" | FAA Form 8130-6 — applying for U.S. airworthiness certificate |
+${opts.targetFormType ? `\nIMPORTANT: The user has specifically requested ONLY the "${opts.targetFormType}" document type. Generate ONLY that document — do not generate any other document types, even if the evidence could support them.\n` : ""}
+${opts.orgDocumentStructure ? `INTERNAL FORM TO FILL:
+The user selected an internal organization form for this session. Instead of (or in addition to) generating FAA forms, you MUST fill in the fields of this form using evidence from the capture session.
 
+${opts.orgDocumentStructure}
+
+INSTRUCTIONS FOR FILLING THIS FORM:
+1. Generate a document with documentType "org-form" and title matching the form title above
+2. In contentJson, include a key for EVERY field listed above
+3. For each field, use evidence (photos, video, audio) to determine the correct value
+4. If evidence doesn't cover a field, set its value to "" and add it to lowConfidenceFields
+5. For checkbox fields, set value to "checked" or "unchecked" based on evidence
+6. For signature fields, set value to the technician name if they verbally confirmed
+7. Include provenance for each filled field showing which evidence source provided the value
+8. This form takes PRIORITY — generate it first, then generate any applicable FAA forms
+` : ""}
 OUTPUT SCHEMA — return JSON matching this structure exactly. Do NOT add fields not listed here. All top-level keys are REQUIRED.
 
 {
