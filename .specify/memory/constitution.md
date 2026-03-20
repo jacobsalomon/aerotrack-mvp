@@ -57,7 +57,7 @@ Detected from codebase:
 - **Framework:** Next.js 16 (App Router)
 - **Language:** TypeScript
 - **Styling:** Tailwind CSS 4 + shadcn/ui
-- **Database:** SQLite via Prisma 7
+- **Database:** PostgreSQL (Neon) via Prisma 7
 - **AI:** Anthropic Claude API (@anthropic-ai/sdk)
 - **Charts:** Recharts 3
 - **Icons:** Lucide React

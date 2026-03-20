@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS "User" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "name" TEXT,
     "email" TEXT,
-    "emailVerified" DATETIME,
+    "emailVerified" TIMESTAMP,
     "image" TEXT,
     "passwordHash" TEXT,
     "role" TEXT NOT NULL DEFAULT 'USER'
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS "Session" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "sessionToken" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
-    "expires" DATETIME NOT NULL,
+    "expires" TIMESTAMP NOT NULL,
     CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "Session_sessionToken_key" ON "Session"("sessionToken");
@@ -45,7 +45,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Session_sessionToken_key" ON "Session"("sessi
 CREATE TABLE IF NOT EXISTS "VerificationToken" (
     "identifier" TEXT NOT NULL,
     "token" TEXT NOT NULL,
-    "expires" DATETIME NOT NULL
+    "expires" TIMESTAMP NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "VerificationToken_identifier_token_key" ON "VerificationToken"("identifier", "token");
 
@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS "Signature" (
     "signatureImage" TEXT,
     "ipAddress" TEXT,
     "userAgent" TEXT,
-    "signedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "signedAt" TIMESTAMP NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS "Signature_documentId_idx" ON "Signature"("documentId");
 CREATE INDEX IF NOT EXISTS "Signature_signerId_idx" ON "Signature"("signerId");
@@ -72,8 +72,8 @@ CREATE TABLE IF NOT EXISTS "PasswordResetToken" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "email" TEXT NOT NULL,
     "token" TEXT NOT NULL,
-    "expiresAt" DATETIME NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "expiresAt" TIMESTAMP NOT NULL,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT NOW()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "PasswordResetToken_token_key" ON "PasswordResetToken"("token");
 CREATE INDEX IF NOT EXISTS "PasswordResetToken_email_idx" ON "PasswordResetToken"("email");

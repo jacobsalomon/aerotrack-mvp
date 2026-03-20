@@ -13,12 +13,12 @@ This repo is the web MVP: a Next.js app that serves as the supervisor dashboard,
 | Layer | Choice | Why |
 |-------|--------|-----|
 | Framework | Next.js 15 (App Router) | SSR, API routes, Vercel deployment. Was briefly on 16, downgraded due to manifest bug. |
-| Database | SQLite via Prisma 7 | Simple, local-first for MVP. Production uses Turso (hosted SQLite). |
+| Database | PostgreSQL via Prisma 7 + Neon | Serverless Postgres on Vercel. Uses `@prisma/adapter-neon` (HTTP transport). |
 | Styling | Tailwind 4 + shadcn/ui | Rapid UI development with accessible components. |
 | AI | Multi-provider (OpenAI, Anthropic, Google) | Fallback chains for reliability. See `lib/ai/models.ts`. |
 | PDF | pdf-lib v1.17.1 | Generates FAA forms (8130-3, 337, 8010-4). |
 | Auth | NextAuth v5 beta + passcode gate | Simple auth for MVP demo access. |
-| Monitoring | Sentry | Error tracking and performance. |
+| Monitoring | (none — Sentry removed during infra debug) | Error tracking needs to be re-enabled. |
 | Hosting | Vercel | Auto-deploy from GitHub. Part of multi-zone setup with gateway + seed deck. |
 
 ## Multi-Zone Architecture
@@ -54,7 +54,9 @@ Shifts (`/aerovision-demo/shifts`) represent desk mic recording sessions where m
 ## Prisma Notes
 
 - Client generates to `lib/generated/prisma/` (configured in `prisma.config.ts`)
-- SQLite dev database at `prisma/dev.db`
+- Production: Neon Postgres (pooled connection via `@prisma/adapter-neon` HTTP transport)
+- Dev: Connect to Neon dev branch or local Postgres via `DATABASE_URL`
 - 17 seeded components via `prisma/seed.ts`
-- 3 migrations so far (init, analysis fields, background jobs)
+- 4 migrations (init, analysis fields, background jobs, password auth)
 - `npm run prisma:generate` runs automatically via `predev` and `postinstall` scripts
+- Migrations require `DATABASE_URL_UNPOOLED` (direct, non-pooled connection)
