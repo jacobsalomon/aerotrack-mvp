@@ -12,6 +12,17 @@ const MEASUREMENT_RE =
 const PART_NUMBER_RE =
   /(?:P\/N\s*)?(\d{3,}-\d{2,}(?:-\d+)?)\b/g;
 
+// Model/ID numbers: alphanumeric identifiers that follow labels like "model", "FCC ID", "IC number"
+// Catches patterns like "A2450", "EMC3619", "BCGA2450", "579CA2450"
+const MODEL_NUMBER_RE =
+  /(?:model|FCC\s*ID|IC\s*(?:number|#)?|part\s*(?:number|#|no\.?)?)\s+(?:is\s+)?([A-Z0-9][\w-]{3,})/gi;
+
+// Standalone alphanumeric codes: mixed uppercase letters + digits, 4+ chars total.
+// Must contain at least one letter AND one digit to avoid matching plain words or numbers.
+// Catches IDs like "EMC3619", "BCGA2450", "579CA2450", "A2450" without needing a label.
+const STANDALONE_ID_RE =
+  /\b(?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*[0-9])[A-Z0-9]{4,}\b/g;
+
 // Serial numbers: S/N followed by alphanumeric-dash identifier
 const SERIAL_NUMBER_RE =
   /S\/N\s*[A-Z0-9][\w-]*/gi;
@@ -42,8 +53,22 @@ function findMatches(text: string): Match[] {
     }
   }
 
+  // Collect model/ID numbers — highlight just the identifier, not the label
+  function collectGroup(re: RegExp, style: string) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      if (m[1]) {
+        const groupStart = m.index + m[0].indexOf(m[1]);
+        matches.push({ start: groupStart, end: groupStart + m[1].length, text: m[1], style });
+      }
+    }
+  }
+
   collect(SERIAL_NUMBER_RE, STYLES.id);
   collect(PART_NUMBER_RE, STYLES.id);
+  collectGroup(MODEL_NUMBER_RE, STYLES.id);
+  collect(STANDALONE_ID_RE, STYLES.id);
   collect(MEASUREMENT_RE, STYLES.measurement);
 
   // Sort by position, longest first at same position
