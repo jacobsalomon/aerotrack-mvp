@@ -1,5 +1,5 @@
 // Centralized model registry — update model IDs here when new versions release
-// Last updated: March 2026
+// Last updated: March 2026 — upgraded GPT-4o → GPT-5.4 across all chains
 
 export type AIProvider = "google" | "openai" | "anthropic" | "openrouter" | "groq" | "elevenlabs";
 
@@ -75,6 +75,8 @@ export const TRANSCRIPTION_MODELS: ModelConfig[] = [
     contextWindow: 0,
     supportsAudio: true,
   },
+  // NOTE: keeping gpt-4o-transcribe models — OpenAI's transcription models are
+  // separate from the chat/generation line and haven't been updated to 5.x yet
   {
     id: "gpt-4o-mini-transcribe",
     provider: "openai",
@@ -111,9 +113,9 @@ export const CORRECTION_MODELS: ModelConfig[] = [
 // ── Photo OCR Models ────────────────────────────────────────────────
 export const OCR_MODELS: ModelConfig[] = [
   {
-    id: "gpt-4o",
+    id: "gpt-5.4",
     provider: "openai",
-    displayName: "GPT-4o",
+    displayName: "GPT-5.4",
     inputCostPer1M: 2.50,
     outputCostPer1M: 10.0,
     contextWindow: 128_000,
@@ -135,9 +137,9 @@ export const OCR_MODELS: ModelConfig[] = [
 // ── Document Generation Models ──────────────────────────────────────
 export const GENERATION_MODELS: ModelConfig[] = [
   {
-    id: "gpt-4o",
+    id: "gpt-5.4",
     provider: "openai",
-    displayName: "GPT-4o",
+    displayName: "GPT-5.4",
     inputCostPer1M: 2.50,
     outputCostPer1M: 10.0,
     contextWindow: 128_000,
@@ -175,9 +177,9 @@ export const VERIFICATION_MODELS: ModelConfig[] = [
     supportsJsonOutput: true,
   },
   {
-    id: "gpt-4o",
+    id: "gpt-5.4",
     provider: "openai",
-    displayName: "GPT-4o (fallback verification)",
+    displayName: "GPT-5.4 (fallback verification)",
     inputCostPer1M: 2.50,
     outputCostPer1M: 10.0,
     contextWindow: 128_000,

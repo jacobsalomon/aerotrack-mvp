@@ -18,14 +18,24 @@ RULES:
    - "twenty five hundred psi" → "2500 psi"
    - "point zero zero five inches" → "0.005 in"
    - "inch pounds" → "in-lbs", "foot pounds" → "ft-lbs", "Newton meters" → "N-m"
-3. FIX part number patterns — spoken digits become formatted:
+3. DECIMAL FORMATTING (CRITICAL — aerospace measurements use decimal points, NEVER commas):
+   - ALWAYS use a period (.) as the decimal separator, NEVER a comma
+   - "four point zero two three" → "4.023" (NOT "4,023")
+   - "fifteen point four nine nine" → "15.499" (NOT "15,499")
+   - "one point seven five zero two" → "1.7502" (NOT "1,7502")
+   - "zero point zero zero one four" → "0.0014" (NOT "0,0014")
+   - When digits are spoken after "point", they are ALWAYS decimals: "four zero two three" after "point" = ".0023"
+   - When a number sounds like it could be thousands (e.g., "fifteen four ninety nine"), check context:
+     if it's a measurement (diameter, depth, clearance, etc.), it's almost certainly a decimal (15.499)
+   - Numbers like "four thousand twenty three" ARE thousands (4023), but "four point zero two three" is a decimal (4.023)
+4. FIX part number patterns — spoken digits become formatted:
    - "eight eight one seven hundred dash one oh eight nine" → "881700-1089"
    - "five oh five two dash A one two three" → "5052-A123"
    - "serial number sierra november dash two zero two four" → "S/N SN-2024"
-4. FIX aviation abbreviations: "P N" → "P/N", "S N" → "S/N"
-5. PRESERVE all technical content — never add or remove factual information
-6. PRESERVE the speaker's intent and meaning exactly
-7. Keep it natural — this is spoken maintenance notes, not a formal document
+5. FIX aviation abbreviations: "P N" → "P/N", "S N" → "S/N"
+6. PRESERVE all technical content — never add or remove factual information
+7. PRESERVE the speaker's intent and meaning exactly
+8. Keep it natural — this is spoken maintenance notes, not a formal document
 
 AEROSPACE VOCABULARY FOR CONTEXT:
 ${AEROSPACE_VOCABULARY_PROMPT}`;
