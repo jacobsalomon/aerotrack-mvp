@@ -1,0 +1,72 @@
+{
+  "sessionId": "cmmydgw4f000004l492wen6bs",
+  "description": "HPC7 overhaul measurement capture — mechanic reads dimensional measurements from calipers during turbine component inspection. Ground truth manually verified from transcript audio.",
+  "createdAt": "2026-03-19",
+  "transcript": [
+    "The first stage blade tip. Let me get my calipers. Where are they? Okay, here we go. Let's just go through this list. The first piece is",
+    "70.4 mm. Wait, that doesn't make sense. I should be working in inches, shouldn't I? Hold on. Okay, first one is 18.751 in.",
+    "The second stage diameter is 17.13 in. The third is 15.499 in. The bore rotator diameter...",
+    "This is 4.0. The rotator bore diameter aft is 4.023. The rotator disc.",
+    "Run-out is almost zero. The measurement is 0.0014 in. The balance weight slot depth is 1 in.",
+    "2. Wait, no, it's 0.12. Okay, now moving on to the shaft assembly. The main bearing journal, the forward journal.",
+    "1.7499. The aft one is 1.7502. The shaft run-out, this is the midspan measurement, is 0.003 in.",
+    "31 in. The shaft end play is 0.0067 in. The bearing housing is 2.8351 in. The aft bearing bore ID",
+    "is 2.8349. The oil groove width is 1.787 in. The oil seal groove depth is 0.0928 in. The housing bore roundness",
+    "TIR? Leave this one blank. I don't know how to measure this. I need to get someone else to come and look at this. Then the turbine section is... Hold on,",
+    "The turbine section. The first stage nozzle throat area is... I need to go look at the CMM. I'll just take a note to look at that later. Flag that for me to review later. The turbine blade tip clearance is",
+    "0.0193 in. The turbine disc rim width is 0.4891 in. The blade root bearing surface width is 0.3712 in. The case and housing.",
+    "The case and housing are apart. What is Steve saying? Should we go get lunch? No, let's... All right. Well, let me finish this thing, and then I'll get lunch in a minute. Okay. Where was I exactly? Let me look.",
+    "The blade root bearing surface. The next one is the casing housing compressor case flange flatness. Let me measure this. It is flat. It is 0.0013 in. The stator vane bore diameter now is 6 in.",
+    "6.251. The mounting pad hole diameter is 0.3126 in. The case OD at the split line is",
+    "12.002 in. The inspection crew didn't do a great job cleaning this, note to them. Secondly, we should also note that the aft bearing bore ID.",
+    "Has some discoloration. We may want to replace that. Let's have the technician look at it and then just replace it if we have some in inventory. The part number for this is A1535E.",
+    "AMC-2733. The serial number is BCGA-1535-003150102. The work order is unknown. The OEM is Parker.",
+    "And that's that. Okay, great. I finished the session."
+  ],
+  "groundTruth": {
+    "measurements": [
+      { "parameterName": "First stage blade tip", "value": 18.751, "unit": "in", "notes": "Mechanic initially says 70.4 mm then corrects to inches" },
+      { "parameterName": "Second stage diameter", "value": 17.13, "unit": "in" },
+      { "parameterName": "Third stage diameter", "value": 15.499, "unit": "in" },
+      { "parameterName": "Rotator bore diameter aft", "value": 4.023, "unit": "in", "notes": "Also mentions 4.0 for forward bore but unclear if that's a measurement or just speech" },
+      { "parameterName": "Rotator disc runout", "value": 0.0014, "unit": "in" },
+      { "parameterName": "Balance weight slot depth", "value": 0.12, "unit": "in", "notes": "Mechanic first says 1, then corrects to 0.12" },
+      { "parameterName": "Shaft main bearing journal forward diameter", "value": 1.7499, "unit": "in" },
+      { "parameterName": "Shaft main bearing journal aft diameter", "value": 1.7502, "unit": "in" },
+      { "parameterName": "Shaft runout midspan", "value": 0.003, "unit": "in" },
+      { "parameterName": "Shaft end play", "value": 0.0067, "unit": "in" },
+      { "parameterName": "Bearing housing", "value": 2.8351, "unit": "in" },
+      { "parameterName": "Aft bearing bore ID", "value": 2.8349, "unit": "in" },
+      { "parameterName": "Oil groove width", "value": 1.787, "unit": "in" },
+      { "parameterName": "Oil seal groove depth", "value": 0.0928, "unit": "in" },
+      { "parameterName": "Turbine blade tip clearance", "value": 0.0193, "unit": "in" },
+      { "parameterName": "Turbine disc rim width", "value": 0.4891, "unit": "in" },
+      { "parameterName": "Blade root bearing surface width", "value": 0.3712, "unit": "in" },
+      { "parameterName": "Compressor case flange flatness", "value": 0.0013, "unit": "in" },
+      { "parameterName": "Stator vane bore diameter", "value": 6.0, "unit": "in", "notes": "Two stator vane bore diameter readings: 6.0 and 6.251" },
+      { "parameterName": "Stator vane bore diameter (second reading)", "value": 6.251, "unit": "in" },
+      { "parameterName": "Mounting pad hole diameter", "value": 0.3126, "unit": "in" },
+      { "parameterName": "Case OD at the split line", "value": 12.002, "unit": "in" }
+    ],
+    "skippedMeasurements": [
+      { "parameterName": "Housing bore roundness TIR", "reason": "Mechanic said to leave blank — doesn't know how to measure" },
+      { "parameterName": "First stage nozzle throat area", "reason": "Mechanic needs to check CMM, flagged for later review" }
+    ],
+    "identifiers": [
+      { "type": "part_number", "value": "A1535E" },
+      { "type": "part_number", "value": "AMC-2733" },
+      { "type": "serial_number", "value": "BCGA-1535-003150102" },
+      { "type": "oem", "value": "Parker" }
+    ],
+    "qualitativeNotes": [
+      "Inspection crew didn't do a great job cleaning — note to them",
+      "Aft bearing bore ID has discoloration — may need replacement",
+      "Check inventory for replacement part"
+    ]
+  },
+  "expectedMeasurementCount": 22,
+  "tolerances": {
+    "valueMatch": 0.001,
+    "nameMatchThreshold": 0.6
+  }
+}
