@@ -13,14 +13,14 @@ export async function GET() {
 
   const org = await prisma.organization.findUnique({
     where: { id: session.user.organizationId },
-    select: { agentInstructions: true },
+    select: { name: true, agentInstructions: true },
   });
 
   if (!org) {
     return NextResponse.json({ error: "Organization not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ agentInstructions: org.agentInstructions ?? "" });
+  return NextResponse.json({ orgName: org.name, agentInstructions: org.agentInstructions ?? "" });
 }
 
 export async function PUT(request: Request) {

@@ -21,6 +21,7 @@ const PLACEHOLDER = `## Transcription
 # Any preferences for FAA form generation? Common form types? Regulatory specifics?`;
 
 export default function SettingsPage() {
+  const [orgName, setOrgName] = useState("");
   const [instructions, setInstructions] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -35,6 +36,7 @@ export default function SettingsPage() {
         const res = await fetch(apiUrl("/api/org/settings"));
         if (!res.ok) throw new Error(`API error: ${res.status}`);
         const data = await res.json();
+        setOrgName(data.orgName || "");
         setInstructions(data.agentInstructions || "");
       } catch (err) {
         console.error("Failed to load settings:", err);
@@ -80,7 +82,7 @@ export default function SettingsPage() {
           Settings
         </h1>
         <p className="mt-2 text-sm" style={{ color: "rgb(100, 100, 100)" }}>
-          Customize how AeroVision&apos;s AI works for your organization.
+          Customize how AeroVision&apos;s AI works{orgName ? ` for ${orgName}` : ""}.
         </p>
       </div>
 
@@ -131,10 +133,10 @@ export default function SettingsPage() {
           </div>
 
           <p className="mb-4 text-xs" style={{ color: "rgb(130, 130, 130)" }}>
-            Write instructions in markdown. These are injected into every AI step — transcription
-            correction, measurement extraction, and document generation. Use section headers
-            (## Transcription, ## Measurements, ## Documents) so the AI knows which instructions
-            apply where.
+            These instructions apply to all sessions across{orgName ? ` ${orgName}` : " your organization"}.
+            They are injected into every AI step — transcription correction, measurement extraction,
+            and document generation. Use section headers (## Transcription, ## Measurements,
+            ## Documents) so the AI knows which instructions apply where.
           </p>
 
           {loading ? (
