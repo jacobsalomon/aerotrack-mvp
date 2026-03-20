@@ -62,21 +62,16 @@ export async function getExtractionContext(sessionId: string): Promise<string> {
           const items = JSON.parse(spec.specItemsJson) as SpecItem[];
           for (const item of items) {
             let line = `- ${item.parameterName} (${item.measurementType}, ${item.unit})`;
-            if (item.nominalValue != null)
-              line += ` — nominal: ${item.nominalValue}`;
+            if (item.nominalValue != null) line += ` — nominal: ${item.nominalValue}`;
             if (item.toleranceLow != null || item.toleranceHigh != null) {
               line += ` [${item.toleranceLow ?? "—"} to ${item.toleranceHigh ?? "—"}]`;
             }
             specLines.push(line);
           }
-        } catch {
-          /* skip malformed JSON */
-        }
+        } catch { /* skip malformed JSON */ }
       }
       if (specLines.length > 0) {
-        sections.push(
-          `EXPECTED MEASUREMENTS (from measurement specs for P/N ${component.partNumber}):\n${specLines.join("\n")}`
-        );
+        sections.push(`EXPECTED MEASUREMENTS (from measurement specs for P/N ${component.partNumber}):\n${specLines.join("\n")}`);
       }
     }
 
@@ -97,17 +92,13 @@ export async function getExtractionContext(sessionId: string): Promise<string> {
       select: { title: true, formFieldsJson: true },
     });
     if (orgDoc?.formFieldsJson) {
-      sections.push(
-        `TARGET DOCUMENT STRUCTURE (${orgDoc.title}):\n${orgDoc.formFieldsJson}`
-      );
+      sections.push(`TARGET DOCUMENT STRUCTURE (${orgDoc.title}):\n${orgDoc.formFieldsJson}`);
     }
   }
 
   // 4. Add component description for general context
   if (component?.description) {
-    sections.push(
-      `COMPONENT: ${component.description} (P/N: ${component.partNumber})`
-    );
+    sections.push(`COMPONENT: ${component.description} (P/N: ${component.partNumber})`);
   }
 
   const context = sections.join("\n\n");
@@ -245,9 +236,10 @@ export async function extractMeasurementsFromTranscript(
   return result.data;
 }
 
-// Session-level measurement reconciliation — the "golden pass" that runs on the
-// full stitched transcript after capture ends. Uses document context and reference
-// data to catch missed measurements, fix mislabeled ones, and flag unnamed ones.
+// Session-level measurement reconciliation — runs on the full stitched transcript
+// after capture ends. This is the "golden pass" that uses document context and the
+// complete transcript (no chunk boundaries) to catch missed measurements, fix
+// mislabeled ones, and flag any that still can't be named.
 export async function reconcileSessionMeasurements(
   sessionId: string,
   fullTranscript: string
@@ -267,17 +259,16 @@ export async function reconcileSessionMeasurements(
     where: { id: sessionId },
     select: { organizationId: true },
   });
-  const { getOrgInstructions } = await import("./org-context");
   const orgInstructions = session?.organizationId
-    ? await getOrgInstructions(session.organizationId)
+    ? (await import("./org-context")).getOrgInstructions(session.organizationId)
     : null;
 
   // Run measurement extraction on the full transcript with document context
   const extracted = await extractMeasurementsFromTranscript(
     cleanTranscript,
     [],
-    undefined,
-    orgInstructions,
+    undefined, // no prior context needed — we have the full transcript
+    await orgInstructions,
     documentContext || undefined
   );
 
@@ -302,34 +293,24 @@ export async function reconcileSessionMeasurements(
     const match = existing.find((m) => {
       const sameType = m.measurementType === ext.measurementType;
       const valueDiff = Math.abs(m.value - ext.value);
-      const valueClose =
-        valueDiff < 0.005 ||
-        (Math.abs(m.value) > 0.01 && valueDiff / Math.abs(m.value) < 0.05);
+      const valueClose = valueDiff < 0.005 || (Math.abs(m.value) > 0.01 && valueDiff / Math.abs(m.value) < 0.05);
       return sameType && valueClose;
     });
 
     if (match) {
-      const isGenericName = /unknown|unspecified|parameter/i.test(
-        match.parameterName
-      );
-      const hasRealName = !/unknown|unspecified|parameter/i.test(
-        ext.parameterName
-      );
+      // If the existing measurement has a generic name but the full-transcript
+      // extraction found a real name, update it
+      const isGenericName = /unknown|unspecified|parameter/i.test(match.parameterName);
+      const hasRealName = !/unknown|unspecified|parameter/i.test(ext.parameterName);
 
       if (isGenericName && hasRealName) {
-        // Reconciliation found a better name — rename and clear the "needs label" flag
+        // Reconciliation found a better name — rename and clear the flag
         await prisma.measurement.update({
           where: { id: match.id },
           data: {
             parameterName: ext.parameterName,
-            status:
-              match.status === "flagged" &&
-              match.flagReason?.includes("Needs label")
-                ? "pending"
-                : match.status,
-            flagReason: match.flagReason?.includes("Needs label")
-              ? null
-              : match.flagReason,
+            status: match.status === "flagged" && match.flagReason?.includes("Needs label") ? "pending" : match.status,
+            flagReason: match.flagReason?.includes("Needs label") ? null : match.flagReason,
           },
         });
         stats.renamed++;
@@ -340,8 +321,7 @@ export async function reconcileSessionMeasurements(
             where: { id: match.id },
             data: {
               status: "flagged",
-              flagReason:
-                "Needs label — the AI couldn't determine what this measurement refers to",
+              flagReason: "Needs label — the AI couldn't determine what this measurement refers to",
             },
           });
           stats.flagged++;
@@ -360,9 +340,8 @@ export async function reconcileSessionMeasurements(
       });
       const nextSequence = (lastMeasurement?.sequenceInShift ?? 0) + 1;
 
-      const isNewGeneric = /unknown|unspecified|parameter/i.test(
-        ext.parameterName
-      );
+      // Check if this new measurement also has a generic name
+      const isNewGeneric = /unknown|unspecified|parameter/i.test(ext.parameterName);
 
       await prisma.measurement.create({
         data: {
