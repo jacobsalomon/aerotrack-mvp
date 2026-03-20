@@ -90,7 +90,8 @@ export interface ImageOcrResult {
 // ──────────────────────────────────────────────────────
 export async function transcribeAudio(
   audioFile: File | Blob,
-  fileName: string
+  fileName: string,
+  previousTranscript?: string
 ): Promise<TranscriptionResult> {
   const result = await callWithFallback({
     models: TRANSCRIPTION_MODELS,
@@ -100,7 +101,7 @@ export async function transcribeAudio(
       if (model.provider === "elevenlabs") {
         return transcribeWithElevenLabs(audioFile, fileName, model.id);
       }
-      return transcribeWithOpenAI(audioFile, fileName, model.id);
+      return transcribeWithOpenAI(audioFile, fileName, model.id, previousTranscript);
     },
   });
 
@@ -111,10 +112,19 @@ export async function transcribeAudio(
 async function transcribeWithOpenAI(
   audioFile: File | Blob,
   fileName: string,
-  modelId: string
+  modelId: string,
+  previousTranscript?: string
 ): Promise<TranscriptionResult> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
+
+  // Combine previous chunk's transcript (for cross-chunk continuity) with aerospace vocabulary.
+  // OpenAI considers the final ~224 tokens of the prompt, so previous transcript goes first
+  // and vocabulary after — ensuring recent words carry across chunk boundaries.
+  const promptParts: string[] = [];
+  if (previousTranscript) promptParts.push(previousTranscript);
+  promptParts.push(AEROSPACE_VOCABULARY_PROMPT);
+  const combinedPrompt = promptParts.join("\n\n");
 
   const formData = new FormData();
   formData.append("file", audioFile, fileName);
@@ -122,7 +132,7 @@ async function transcribeWithOpenAI(
   formData.append("language", "en");
   // gpt-4o-transcribe only supports "json" or "text" (NOT verbose_json)
   formData.append("response_format", "json");
-  formData.append("prompt", AEROSPACE_VOCABULARY_PROMPT);
+  formData.append("prompt", combinedPrompt);
 
   const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",

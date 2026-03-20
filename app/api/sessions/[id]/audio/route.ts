@@ -79,13 +79,23 @@ export async function POST(request: Request, { params }: RouteParams) {
     // Step 1: Persist the raw audio to Vercel Blob so it's replayable
     const blob = await uploadFile(audioBuffer, blobPath, mimeType);
 
+    // Step 1b: Look up the previous chunk's corrected transcript for cross-chunk continuity.
+    // Passing it as context to the transcription API prevents words/numbers from being
+    // split when they fall on a chunk boundary (e.g. "A2450" → "18" + "2450").
+    const previousChunk = await prisma.captureEvidence.findFirst({
+      where: { sessionId, type: "AUDIO_CHUNK" },
+      orderBy: { capturedAt: "desc" },
+      select: { transcription: true },
+    });
+    const previousTranscript = previousChunk?.transcription || undefined;
+
     // Step 2: Transcribe using a fresh File from the buffer (original stream is consumed)
-    console.log(`[Audio] Step 2: Starting transcription (chunk size=${audioBuffer.byteLength} bytes, type=${mimeType})...`);
+    console.log(`[Audio] Step 2: Starting transcription (chunk size=${audioBuffer.byteLength} bytes, type=${mimeType}, hasPrevContext=${!!previousTranscript})...`);
     const t2 = Date.now();
     const fileForTranscription = new File([audioBuffer], fileName, { type: mimeType });
     let transcription;
     try {
-      transcription = await transcribeAudio(fileForTranscription, fileName);
+      transcription = await transcribeAudio(fileForTranscription, fileName, previousTranscript);
     } catch (transcriptionError) {
       const msg = transcriptionError instanceof Error ? transcriptionError.message : String(transcriptionError);
       console.error(`[Audio] Step 2 FAILED after ${Date.now() - t2}ms: ${msg}`);

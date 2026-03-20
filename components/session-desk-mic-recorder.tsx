@@ -27,7 +27,7 @@ import { apiUrl } from "@/lib/api-url";
 // We stop and restart (instead of using MediaRecorder's timeslice param) because
 // timeslice produces chunks without WebM headers — only the first chunk is a valid
 // standalone file. Transcription APIs reject headerless chunks as "corrupted audio".
-const CHUNK_INTERVAL_MS = 15_000;
+const CHUNK_INTERVAL_MS = 30_000;
 const DEFAULT_DEVICE_ID = "__default__";
 
 // Browser support varies — Chrome uses webm/opus, Safari uses mp4/aac
