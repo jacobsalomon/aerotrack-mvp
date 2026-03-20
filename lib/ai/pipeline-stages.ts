@@ -10,6 +10,7 @@ import {
 import { generateDocuments } from "./openai";
 import { clampConfidence } from "./utils";
 import { getReferenceDataForPart, formatReferenceDataForPrompt } from "@/lib/reference-data";
+import { reconcileSessionMeasurements } from "./measurement-extraction";
 
 function isUniqueConstraintError(error: unknown): boolean {
   return (
@@ -74,6 +75,18 @@ export async function runSessionAnalysisStage(
         where: { id: sessionId },
         data: { description: fullTranscript },
       });
+
+      // Reconcile measurements against the full stitched transcript.
+      // This catches measurements missed or mislabeled during chunk-by-chunk
+      // extraction (e.g., labels split across chunk boundaries, compound values).
+      try {
+        const reconciled = await reconcileSessionMeasurements(sessionId, fullTranscript);
+        console.log(
+          `[Pipeline] Measurement reconciliation: added=${reconciled.added}, renamed=${reconciled.renamed}, skipped=${reconciled.skipped}`
+        );
+      } catch (reconcileError) {
+        console.error("[Pipeline] Measurement reconciliation failed (non-fatal):", reconcileError);
+      }
 
       result.transcriptionStitch = {
         success: true,

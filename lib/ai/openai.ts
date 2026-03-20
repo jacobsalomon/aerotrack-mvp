@@ -118,9 +118,10 @@ async function transcribeWithOpenAI(
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
 
-  // Combine previous chunk's transcript (for cross-chunk continuity) with aerospace vocabulary.
-  // OpenAI considers the final ~224 tokens of the prompt, so previous transcript goes first
-  // and vocabulary after — ensuring recent words carry across chunk boundaries.
+  // Combine aerospace vocabulary with previous chunk's transcript (for cross-chunk continuity).
+  // OpenAI only considers the final ~224 tokens of the prompt field, so vocabulary goes LAST
+  // to ensure it's always in the model's attention window. Previous transcript goes first
+  // (it's useful context but getting cut off is acceptable).
   const promptParts: string[] = [];
   if (previousTranscript) promptParts.push(previousTranscript);
   promptParts.push(AEROSPACE_VOCABULARY_PROMPT);

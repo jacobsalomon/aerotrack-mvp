@@ -139,11 +139,29 @@ export async function POST(request: Request, { params }: RouteParams) {
     }
 
     // Step 5: Extract measurements from the corrected transcript
-    console.log("[Audio] Step 5: Extracting measurements from corrected text...");
+    // Build prior context from ALL previous chunks so the AI can resolve
+    // measurement labels that were split across chunk boundaries.
+    const allPreviousChunks = await prisma.captureEvidence.findMany({
+      where: { sessionId, type: "AUDIO_CHUNK", NOT: { id: evidence.id } },
+      orderBy: { capturedAt: "asc" },
+      select: { transcription: true },
+    });
+    const priorTranscripts = allPreviousChunks
+      .filter(c => c.transcription)
+      .map(c => c.transcription!)
+      .join(" ");
+    // Trim to last ~200 words to keep the prompt focused
+    const priorWords = priorTranscripts.split(/\s+/);
+    const priorContext = priorWords.length > 200
+      ? priorWords.slice(-200).join(" ")
+      : priorTranscripts;
+
+    console.log(`[Audio] Step 5: Extracting measurements (priorContext=${priorContext.length} chars)...`);
     const t5 = Date.now();
     const extracted = await extractMeasurementsFromTranscript(
       correctedText,
-      transcription.words
+      transcription.words,
+      priorContext || undefined
     );
     console.log(`[Audio] Step 5 done in ${Date.now() - t5}ms: ${extracted.length} measurements`);
 
