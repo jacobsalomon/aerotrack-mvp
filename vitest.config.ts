@@ -12,7 +12,6 @@ export default defineConfig({
     include: ["tests/unit/**/*.test.ts", "tests/smoke.test.ts"],
     // Use a separate test database so tests never touch dev data
     env: {
-      TURSO_DATABASE_URL: "file:./test.db",
       NODE_ENV: "test",
     },
   },
