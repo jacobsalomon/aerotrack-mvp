@@ -1,10 +1,6 @@
-// Global error boundary — catches unhandled errors in the app and reports
-// them to Sentry. Shows a simple "something went wrong" message to the user.
+// Global error boundary — catches unhandled errors in the app.
 
 "use client";
-
-import * as Sentry from "@sentry/nextjs";
-import { useEffect } from "react";
 
 export default function GlobalError({
   error,
@@ -13,11 +9,6 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  useEffect(() => {
-    // Send the error to Sentry (if configured)
-    Sentry.captureException(error);
-  }, [error]);
-
   return (
     <html>
       <body className="flex min-h-screen items-center justify-center bg-gray-50">
