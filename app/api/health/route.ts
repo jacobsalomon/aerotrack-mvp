@@ -1,5 +1,6 @@
 // Minimal health check — no imports, no DB, no auth.
-// If this hangs, the issue is Vercel platform-level, not code.
+// Force edge runtime to test if the issue is Node.js function init.
+export const runtime = "edge";
 
 export async function GET() {
   return new Response(
