@@ -47,6 +47,7 @@ export async function callWithFallback<T>(opts: {
 }): Promise<CallResult<T>> {
   const { models, timeoutMs = 30000, cachedFallback, taskName, execute } = opts;
   const errors: string[] = []; // Collect all errors for the final error message
+  const retried = new Set<string>(); // Track which models we've already retried for rate limits
 
   for (let i = 0; i < models.length; i++) {
     const model = models[i];
@@ -90,6 +91,19 @@ export async function callWithFallback<T>(opts: {
     } catch (error) {
       const latencyMs = Date.now() - start;
       const errorMsg = error instanceof Error ? error.message : String(error);
+
+      // Retry once with backoff for rate limit errors (429) before falling through
+      const isRateLimit = errorMsg.includes("429") || errorMsg.includes("rate") || errorMsg.includes("quota");
+      if (isRateLimit && !retried.has(model.id)) {
+        retried.add(model.id);
+        const backoffMs = 2000 + Math.random() * 1000; // 2-3 seconds
+        console.warn(
+          `[AI] ${taskName} rate-limited by ${model.displayName} — retrying in ${Math.round(backoffMs)}ms`
+        );
+        await new Promise((r) => setTimeout(r, backoffMs));
+        i--; // Retry the same model
+        continue;
+      }
 
       // Log failure
       const log: CallLog = {
