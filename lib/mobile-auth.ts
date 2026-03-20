@@ -1,12 +1,8 @@
 // Mobile API authentication helper
 // Used by all /api/mobile/* endpoints
 //
-// Supports two auth methods:
-// 1. JWT Bearer token (from /api/mobile/login) — resolves to the real user
-// 2. Legacy fallback — returns demo user when no auth header is present
-//
-// JWT is tried first. If no Authorization header, falls back to demo user
-// so existing mobile flows don't break during migration.
+// Requires JWT Bearer token (from /api/mobile/auth).
+// Returns 401 if no valid token is present.
 
 import { jwtVerify } from "jose";
 import { NextResponse } from "next/server";
@@ -16,26 +12,19 @@ import type { AuthenticatedUser } from "@/lib/rbac";
 // Re-export for convenience — all consumers use the same type
 export type { AuthenticatedUser } from "@/lib/rbac";
 
-// Demo user — used as fallback when no auth header is present
-const DEMO_USER: AuthenticatedUser = {
-  id: "tech-mike-chen",
-  firstName: "Mike",
-  lastName: "Chen",
-  email: "mike.chen@precisionaero.example.com",
-  badgeNumber: "PAM-1001",
-  role: "USER",
-  name: "Mike Chen",
-  organizationId: "demo-precision-aero",
-};
-
 export async function authenticateRequest(
   request: Request
 ): Promise<{ user: AuthenticatedUser } | { error: NextResponse }> {
   const authHeader = request.headers.get("Authorization");
 
-  // No auth header → fall back to demo user (backwards compatible)
+  // No auth header → reject
   if (!authHeader?.startsWith("Bearer ")) {
-    return { user: DEMO_USER };
+    return {
+      error: NextResponse.json(
+        { success: false, error: "Authorization header required. Use POST /api/mobile/auth to get a token." },
+        { status: 401 }
+      ),
+    };
   }
 
   const token = authHeader.slice(7);

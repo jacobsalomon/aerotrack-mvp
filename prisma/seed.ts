@@ -11,6 +11,7 @@ import "dotenv/config";
 import { PrismaClient } from "../generated/prisma/client.js";
 import { PrismaNeon } from "@prisma/adapter-neon";
 import crypto from "crypto";
+import bcrypt from "bcryptjs";
 
 const adapter = new PrismaNeon({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
@@ -2685,14 +2686,19 @@ async function main() {
     },
   });
 
-  // Demo users — each gets a deterministic API key for easy mobile testing
+  // Demo users — each gets a password hash and API key
+  // Password for all demo users: AeroVision2026!
+  const demoPasswordHash = await bcrypt.hash("AeroVision2026!", 10);
+
   const techMike = await prisma.user.create({
     data: {
       id: "tech-mike-chen",
       organizationId: demoOrg.id,
       firstName: "Mike",
       lastName: "Chen",
+      name: "Mike Chen",
       email: "mike.chen@precisionaero.example.com",
+      passwordHash: demoPasswordHash,
       badgeNumber: "PAM-1001",
       role: "TECHNICIAN",
       status: "ACTIVE",
@@ -2706,7 +2712,9 @@ async function main() {
       organizationId: demoOrg.id,
       firstName: "Sarah",
       lastName: "Okafor",
+      name: "Sarah Okafor",
       email: "sarah.okafor@precisionaero.example.com",
+      passwordHash: demoPasswordHash,
       badgeNumber: "PAM-1002",
       role: "SUPERVISOR",
       status: "ACTIVE",
@@ -2720,7 +2728,9 @@ async function main() {
       organizationId: demoOrg.id,
       firstName: "Juan",
       lastName: "Ramirez",
+      name: "Juan Ramirez",
       email: "juan.ramirez@precisionaero.example.com",
+      passwordHash: demoPasswordHash,
       badgeNumber: "PAM-1003",
       role: "TECHNICIAN",
       status: "ACTIVE",
