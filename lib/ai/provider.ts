@@ -2,6 +2,7 @@
 // Every AI call in the pipeline goes through this layer
 
 import { type ModelConfig, type AIProvider, getApiKey, getApiBase } from "./models";
+import { logAICall } from "./braintrust";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -80,6 +81,18 @@ export async function callWithFallback<T>(opts: {
           (i > 0 ? ` (fallback level ${i})` : "")
       );
 
+      // Log to Braintrust (fire-and-forget — never blocks the pipeline)
+      logAICall({
+        taskName,
+        model: model.id,
+        provider: model.provider,
+        input: { task: taskName, model: model.id },
+        output: { type: typeof result, preview: String(result).slice(0, 500) },
+        latencyMs,
+        success: true,
+        fallbackLevel: i,
+      }).catch(() => {});
+
       return {
         data: result,
         modelUsed: model,
@@ -118,6 +131,20 @@ export async function callWithFallback<T>(opts: {
       if (callHistory.length > 200) callHistory.splice(0, callHistory.length - 200);
 
       errors.push(`${model.id}: ${errorMsg.slice(0, 150)}`);
+
+      // Log failure to Braintrust
+      logAICall({
+        taskName,
+        model: model.id,
+        provider: model.provider,
+        input: { task: taskName, model: model.id },
+        output: {},
+        latencyMs,
+        success: false,
+        fallbackLevel: i,
+        error: errorMsg.slice(0, 500),
+      }).catch(() => {});
+
       console.warn(
         `[AI] ${taskName} failed with ${model.displayName} (${latencyMs}ms): ${errorMsg}` +
           (i < models.length - 1

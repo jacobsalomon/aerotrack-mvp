@@ -1,0 +1,11 @@
+# Heavy folders that choke Claude Code's search/read tools
+node_modules/
+.next/
+.vercel/
+
+# Auto-generated Prisma client (read schema.prisma instead)
+lib/generated/prisma/
+
+# Build artifacts
+dist/
+out/

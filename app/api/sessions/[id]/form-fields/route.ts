@@ -1,4 +1,4 @@
-// GET /api/sessions/[sessionId]/form-fields
+// GET /api/sessions/[id]/form-fields
 // Returns extracted form fields for the session's org document.
 // Caches the result on the OrgDocument so Gemini only runs once per PDF.
 
@@ -9,16 +9,16 @@ import { extractOrgDocumentFields } from "@/lib/ai/org-document-extraction";
 
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ sessionId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuth(request);
   if (authResult.error) return authResult.error;
 
-  const { sessionId } = await params;
+  const { id } = await params;
 
   // Find the session and its linked org document
   const session = await prisma.captureSession.findUnique({
-    where: { id: sessionId },
+    where: { id },
     select: {
       orgDocument: {
         select: { id: true, fileUrl: true, formFieldsJson: true },
