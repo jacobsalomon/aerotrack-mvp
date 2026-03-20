@@ -40,7 +40,7 @@ const nextConfig: NextConfig = {
   // Without this, the bundler tries to process native modules and gets stuck,
   // causing the dev server to take 40+ seconds to start instead of ~5 seconds.
   serverExternalPackages: [
-    "@prisma/adapter-pg",
+    "@prisma/adapter-neon",
     "@prisma/client",
     "prisma",
     "pdf-lib",
