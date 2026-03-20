@@ -4,7 +4,7 @@
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { render8130Pdf, render337Pdf, render8010Pdf } from "@/lib/pdf-renderers";
+import { render8130Pdf, render337Pdf, render8010Pdf, renderOrgFormPdf } from "@/lib/pdf-renderers";
 import { requireAuth } from "@/lib/rbac";
 
 export async function GET(
@@ -52,6 +52,10 @@ export async function GET(
       case "8010-4":
         pdfBytes = await render8010Pdf(content, undefined);
         filename = `Form8010-4_${doc.id}.pdf`;
+        break;
+      case "org-form":
+        pdfBytes = await renderOrgFormPdf(content, undefined);
+        filename = `Inspection_Record_${doc.id}.pdf`;
         break;
       default:
         pdfBytes = await render337Pdf(content, undefined);

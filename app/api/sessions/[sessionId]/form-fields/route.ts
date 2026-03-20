@@ -35,8 +35,12 @@ export async function GET(
 
   const doc = session.orgDocument;
 
-  // Return cached result if we already extracted fields
-  if (doc.formFieldsJson) {
+  // Allow ?refresh=true to force re-extraction (clears the cache)
+  const url = new URL(request.url);
+  const forceRefresh = url.searchParams.get("refresh") === "true";
+
+  // Return cached result if we already extracted fields (unless refreshing)
+  if (doc.formFieldsJson && !forceRefresh) {
     try {
       return NextResponse.json(JSON.parse(doc.formFieldsJson));
     } catch {

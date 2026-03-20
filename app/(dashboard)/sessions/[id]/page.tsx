@@ -18,6 +18,7 @@ import {
 } from "@/lib/session-status";
 import { shouldPollSessionProgress } from "@/lib/session-progress";
 import { apiUrl } from "@/lib/api-url";
+import { parseSpecRange, parseActualValue, checkPassFail } from "@/lib/measurement-validation";
 import { useSmartPoll } from "@/lib/use-smart-poll";
 import { PollStatusBadge } from "@/components/poll-status-badge";
 import { LiveSessionPanel } from "@/components/live-session-panel";
@@ -165,6 +166,7 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   "8130-3": "FAA 8130-3 — Airworthiness Approval Tag",
   "337": "FAA Form 337 — Major Repair and Alteration",
   "8010-4": "FAA 8010-4 — Federal Aviation Administration Complaint",
+  "org-form": "Dimensional Inspection Record",
 };
 
 // ─── Helpers ───────────────────────────────────────────────────────────
@@ -856,8 +858,228 @@ export default function SessionDetailPage() {
                     {/* Expanded document content */}
                     {isExpanded && (
                       <div className="border-t px-4 py-4" style={{ borderColor: "rgb(240, 240, 240)" }}>
-                        {/* Document fields */}
-                        {contentFields && (
+                        {/* Document fields — org-form gets measurement table, others get generic grid */}
+                        {contentFields && doc.documentType === "org-form" && (() => {
+                          // Build measurement table data from contentFields
+                          const headerLabels = ["Part Number", "Serial Number", "Work Order", "Date", "Inspector"];
+                          const headerEntries: { label: string; key: string; value: string }[] = [];
+                          const measurementRows: { key: string; name: string; spec: string; actual: string; section: string }[] = [];
+
+                          for (const [key, val] of Object.entries(contentFields)) {
+                            if (key.startsWith("_")) continue; // skip metadata keys
+                            const isHeader = headerLabels.some(
+                              (h) => h.toLowerCase().replace(/[_\s-]/g, "") === key.toLowerCase().replace(/[_\s-]/g, "")
+                            );
+                            if (isHeader) {
+                              headerEntries.push({ label: humanizeFieldLabel(key), key, value: val });
+                            } else {
+                              const sectionKey = `_section_${key}`;
+                              const specKey = `_spec_${key}`;
+                              measurementRows.push({
+                                key,
+                                name: humanizeFieldLabel(key),
+                                spec: (contentFields as Record<string, string>)[specKey] || "",
+                                actual: val || "",
+                                section: (contentFields as Record<string, string>)[sectionKey] || "Measurements",
+                              });
+                            }
+                          }
+
+                          // Group by section
+                          const sectionMap = new Map<string, typeof measurementRows>();
+                          for (const row of measurementRows) {
+                            if (!sectionMap.has(row.section)) sectionMap.set(row.section, []);
+                            sectionMap.get(row.section)!.push(row);
+                          }
+
+                          // Count stats
+                          let filledCount = 0;
+                          let passCount = 0;
+                          let failCount = 0;
+                          for (const row of measurementRows) {
+                            if (row.actual && row.actual !== "—") filledCount++;
+                            const spec = parseSpecRange(row.spec);
+                            const actual = parseActualValue(row.actual);
+                            if (spec && actual !== null) {
+                              if (checkPassFail(actual, spec) === "PASS") passCount++;
+                              else failCount++;
+                            }
+                          }
+
+                          return (
+                            <div className="mb-4">
+                              {/* Header fields */}
+                              {headerEntries.length > 0 && (
+                                <div className="grid md:grid-cols-3 gap-3 mb-4">
+                                  {headerEntries.map((h) => (
+                                    <div key={h.key} className="text-xs p-2 rounded" style={{ backgroundColor: "rgb(248, 248, 248)" }}>
+                                      <span className="font-medium" style={{ color: "rgb(80, 80, 80)" }}>{h.label}:</span>{" "}
+                                      <span style={{ color: "rgb(20, 20, 20)" }}>{h.value || "—"}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Progress summary */}
+                              <div className="flex items-center gap-4 mb-3">
+                                <h4 className="text-xs font-semibold" style={{ color: "rgb(80, 80, 80)" }}>
+                                  Measurements
+                                </h4>
+                                <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ backgroundColor: "rgb(240, 240, 240)", color: "rgb(80, 80, 80)" }}>
+                                  {filledCount} of {measurementRows.length} filled
+                                </span>
+                                {passCount > 0 && (
+                                  <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ backgroundColor: "rgb(220, 252, 231)", color: "rgb(21, 128, 61)" }}>
+                                    {passCount} pass
+                                  </span>
+                                )}
+                                {failCount > 0 && (
+                                  <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ backgroundColor: "rgb(254, 226, 226)", color: "rgb(185, 28, 28)" }}>
+                                    {failCount} fail
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* View original PDF link */}
+                              {session.orgDocument?.fileUrl && (
+                                <a
+                                  href={session.orgDocument.fileUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 text-xs mb-3 hover:underline"
+                                  style={{ color: "rgb(59, 130, 246)" }}
+                                >
+                                  <FileText className="h-3 w-3" /> View Original PDF
+                                </a>
+                              )}
+
+                              {/* Measurement table by section */}
+                              {Array.from(sectionMap.entries()).map(([section, rows]) => (
+                                <div key={section} className="mb-4">
+                                  <div className="text-[11px] font-bold uppercase tracking-wide px-2 py-1.5 rounded-t" style={{ backgroundColor: "rgb(240, 240, 240)", color: "rgb(60, 60, 60)" }}>
+                                    {section}
+                                  </div>
+                                  <table className="w-full text-xs border-collapse">
+                                    <thead>
+                                      <tr style={{ backgroundColor: "rgb(250, 250, 250)" }}>
+                                        <th className="text-left px-2 py-1.5 font-semibold" style={{ color: "rgb(100, 100, 100)", width: "24px" }}>#</th>
+                                        <th className="text-left px-2 py-1.5 font-semibold" style={{ color: "rgb(100, 100, 100)" }}>Measurement</th>
+                                        <th className="text-left px-2 py-1.5 font-semibold" style={{ color: "rgb(100, 100, 100)" }}>Spec</th>
+                                        <th className="text-left px-2 py-1.5 font-semibold" style={{ color: "rgb(100, 100, 100)", width: "100px" }}>Actual</th>
+                                        <th className="text-left px-2 py-1.5 font-semibold" style={{ color: "rgb(100, 100, 100)", width: "70px" }}>Status</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {rows.map((row, idx) => {
+                                        const isCurrentlyEditing = editingField?.docId === doc.id && editingField?.field === row.key;
+                                        const wasEdited = docEditedFields?.has(row.key);
+                                        const spec = parseSpecRange(row.spec);
+                                        const actual = parseActualValue(row.actual);
+                                        let status: "PASS" | "FAIL" | "MISSING" | "N/A" = "MISSING";
+                                        if (actual !== null && spec) {
+                                          status = checkPassFail(actual, spec);
+                                        } else if (row.actual && row.actual !== "—") {
+                                          status = "N/A";
+                                        }
+
+                                        return (
+                                          <tr
+                                            key={row.key}
+                                            className="group border-t"
+                                            style={{
+                                              borderColor: "rgb(245, 245, 245)",
+                                              backgroundColor: idx % 2 === 1 ? "rgb(252, 252, 252)" : "white",
+                                            }}
+                                          >
+                                            <td className="px-2 py-1.5" style={{ color: "rgb(160, 160, 160)" }}>{idx + 1}</td>
+                                            <td className="px-2 py-1.5 font-medium" style={{ color: "rgb(30, 30, 30)" }}>{row.name}</td>
+                                            <td className="px-2 py-1.5" style={{ color: "rgb(120, 120, 120)" }}>
+                                              {row.spec ? row.spec.replace(/^spec:\s*/i, "") : "—"}
+                                            </td>
+                                            <td className="px-2 py-1.5">
+                                              {isCurrentlyEditing ? (
+                                                <div className="flex items-center gap-1">
+                                                  <input
+                                                    type="text"
+                                                    value={editingValue}
+                                                    onChange={(e) => setEditingValue(e.target.value)}
+                                                    className="w-20 text-xs border rounded px-1.5 py-0.5"
+                                                    style={{ borderColor: "rgb(180, 180, 180)" }}
+                                                    autoFocus
+                                                    onKeyDown={(e) => {
+                                                      if (e.key === "Enter") handleSaveField(doc.id, row.key, editingValue);
+                                                      if (e.key === "Escape") { setEditingField(null); setEditingValue(""); }
+                                                    }}
+                                                  />
+                                                  <button
+                                                    onClick={() => handleSaveField(doc.id, row.key, editingValue)}
+                                                    disabled={savingField}
+                                                    className="p-0.5 rounded hover:bg-green-100"
+                                                  >
+                                                    {savingField ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" style={{ color: "rgb(34, 197, 94)" }} />}
+                                                  </button>
+                                                  <button
+                                                    onClick={() => { setEditingField(null); setEditingValue(""); }}
+                                                    className="p-0.5 rounded hover:bg-red-100"
+                                                  >
+                                                    <X className="h-3 w-3" style={{ color: "rgb(220, 50, 50)" }} />
+                                                  </button>
+                                                </div>
+                                              ) : (
+                                                <div className="flex items-center gap-1">
+                                                  <span className="font-medium" style={{ color: "rgb(20, 20, 20)" }}>{row.actual || "—"}</span>
+                                                  {wasEdited && (
+                                                    <span className="px-1 py-0.5 rounded text-[9px] font-medium" style={{ backgroundColor: "rgb(219, 234, 254)", color: "rgb(37, 99, 235)" }}>
+                                                      edited
+                                                    </span>
+                                                  )}
+                                                  {isEditable && (
+                                                    <button
+                                                      className="p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-200"
+                                                      title="Edit value"
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setEditingField({ docId: doc.id, field: row.key });
+                                                        setEditingValue(row.actual);
+                                                      }}
+                                                    >
+                                                      <Pencil className="h-3 w-3" style={{ color: "rgb(100, 100, 100)" }} />
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              )}
+                                            </td>
+                                            <td className="px-2 py-1.5">
+                                              {status === "PASS" && (
+                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: "rgb(220, 252, 231)", color: "rgb(21, 128, 61)" }}>
+                                                  <CheckCircle2 className="h-3 w-3" /> PASS
+                                                </span>
+                                              )}
+                                              {status === "FAIL" && (
+                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: "rgb(254, 226, 226)", color: "rgb(185, 28, 28)" }}>
+                                                  <XCircle className="h-3 w-3" /> FAIL
+                                                </span>
+                                              )}
+                                              {status === "MISSING" && (
+                                                <span className="text-[10px]" style={{ color: "rgb(180, 180, 180)" }}>—</span>
+                                              )}
+                                              {status === "N/A" && (
+                                                <span className="text-[10px]" style={{ color: "rgb(160, 160, 160)" }}>N/A</span>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+
+                        {/* Generic field grid for non-org-form documents */}
+                        {contentFields && doc.documentType !== "org-form" && (
                           <div className="mb-4">
                             <h4 className="text-xs font-semibold mb-3" style={{ color: "rgb(80, 80, 80)" }}>Form Fields</h4>
                             <div className="grid md:grid-cols-2 gap-2">
