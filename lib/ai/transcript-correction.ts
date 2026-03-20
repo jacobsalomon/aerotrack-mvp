@@ -3,7 +3,7 @@
 // Runs after ElevenLabs transcription, before measurement extraction
 
 import { CORRECTION_MODELS } from "./models";
-import { callWithFallback, callOpenAI, callAnthropic } from "./provider";
+import { callWithFallback, callOpenAI, callAnthropic, callOpenRouter } from "./provider";
 import { AEROSPACE_VOCABULARY_PROMPT } from "./openai";
 import { formatOrgInstructions } from "./org-context";
 
@@ -79,6 +79,18 @@ export async function correctTranscriptSegment(text: string, orgInstructions?: s
             model: model.id,
             system: systemPrompt,
             messages: [{ role: "user", content: text }],
+            maxTokens: 1000,
+            timeoutMs: 10000,
+          });
+          break;
+
+        case "openrouter":
+          corrected = await callOpenRouter({
+            model: model.id,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: text },
+            ],
             maxTokens: 1000,
             timeoutMs: 10000,
           });
