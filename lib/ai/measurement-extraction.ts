@@ -5,6 +5,7 @@
 
 import { GENERATION_MODELS } from "./models";
 import { callWithFallback, callOpenAI, callAnthropic, callGemini } from "./provider";
+import { formatOrgInstructions } from "./org-context";
 import { prisma } from "@/lib/db";
 
 export interface ExtractedMeasurement {
@@ -51,9 +52,13 @@ with the same parameterName and a suffix like "(segment 1)", "(segment 2)".`;
 export async function extractMeasurementsFromTranscript(
   transcript: string,
   words: Array<{ word: string; start: number; end: number }>,
-  previousContext?: string
+  previousContext?: string,
+  orgInstructions?: string | null
 ): Promise<ExtractedMeasurement[]> {
   if (!transcript || transcript.trim().length < 10) return [];
+
+  // Build the system prompt with optional org-specific instructions
+  const systemPrompt = SYSTEM_PROMPT + formatOrgInstructions(orgInstructions);
 
   // Build the user message, optionally including prior context for cross-chunk continuity
   let userMessage = '';
@@ -75,7 +80,7 @@ export async function extractMeasurementsFromTranscript(
           response = await callOpenAI({
             model: model.id,
             messages: [
-              { role: "system", content: SYSTEM_PROMPT },
+              { role: "system", content: systemPrompt },
               { role: "user", content: userMessage },
             ],
             jsonMode: true,
@@ -85,7 +90,7 @@ export async function extractMeasurementsFromTranscript(
         case "anthropic":
           response = await callAnthropic({
             model: model.id,
-            system: SYSTEM_PROMPT,
+            system: systemPrompt,
             messages: [{ role: "user", content: userMessage }],
           });
           break;
@@ -93,7 +98,7 @@ export async function extractMeasurementsFromTranscript(
         case "google":
           response = await callGemini({
             model: model.id,
-            contents: [{ parts: [{ text: `${SYSTEM_PROMPT}\n\n${userMessage}` }] }],
+            contents: [{ parts: [{ text: `${systemPrompt}\n\n${userMessage}` }] }],
             generationConfig: {
               temperature: 0.1,
               responseMimeType: "application/json",

@@ -5,8 +5,9 @@
 import { CORRECTION_MODELS } from "./models";
 import { callWithFallback, callOpenAI, callAnthropic } from "./provider";
 import { AEROSPACE_VOCABULARY_PROMPT } from "./openai";
+import { formatOrgInstructions } from "./org-context";
 
-const CORRECTION_SYSTEM_PROMPT = `You are an aerospace maintenance transcript corrector. Your job is to clean up speech-to-text output WITHOUT changing the meaning.
+const CORRECTION_SYSTEM_PROMPT_BASE = `You are an aerospace maintenance transcript corrector. Your job is to clean up speech-to-text output WITHOUT changing the meaning.
 
 RULES:
 1. STRIP filler words: "uh", "um", "yeah" (when filler), "so" (when filler), "like" (when filler), "you know", "I mean", "basically", "actually" (when filler)
@@ -27,12 +28,16 @@ RULES:
 7. Keep it natural — this is spoken maintenance notes, not a formal document
 
 AEROSPACE VOCABULARY FOR CONTEXT:
-${AEROSPACE_VOCABULARY_PROMPT}
+${AEROSPACE_VOCABULARY_PROMPT}`;
 
-Return ONLY the corrected text. No explanations, no JSON wrapping.`;
+// Build the full system prompt, optionally including org-specific instructions
+function buildCorrectionPrompt(orgInstructions?: string | null): string {
+  const orgBlock = formatOrgInstructions(orgInstructions);
+  return CORRECTION_SYSTEM_PROMPT_BASE + orgBlock + "\n\nReturn ONLY the corrected text. No explanations, no JSON wrapping.";
+}
 
 // Correct a single transcript segment using a lightweight LLM
-export async function correctTranscriptSegment(text: string): Promise<string> {
+export async function correctTranscriptSegment(text: string, orgInstructions?: string | null): Promise<string> {
   // Skip correction for very short or empty text
   if (!text || text.trim().length < 5) return text;
 
@@ -44,13 +49,14 @@ export async function correctTranscriptSegment(text: string): Promise<string> {
     cachedFallback: text,
     execute: async (model) => {
       let corrected: string;
+      const systemPrompt = buildCorrectionPrompt(orgInstructions);
 
       switch (model.provider) {
         case "openai":
           corrected = await callOpenAI({
             model: model.id,
             messages: [
-              { role: "system", content: CORRECTION_SYSTEM_PROMPT },
+              { role: "system", content: systemPrompt },
               { role: "user", content: text },
             ],
             maxTokens: 1000,
@@ -61,7 +67,7 @@ export async function correctTranscriptSegment(text: string): Promise<string> {
         case "anthropic":
           corrected = await callAnthropic({
             model: model.id,
-            system: CORRECTION_SYSTEM_PROMPT,
+            system: systemPrompt,
             messages: [{ role: "user", content: text }],
             maxTokens: 1000,
             timeoutMs: 10000,

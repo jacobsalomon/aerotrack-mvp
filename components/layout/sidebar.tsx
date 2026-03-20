@@ -9,6 +9,7 @@ import {
   LogOut,
   Menu,
   Plane,
+  Settings,
   Users,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
@@ -57,6 +58,7 @@ const allNavItems = [
   ...primaryNavItems,
   ...supportNavItems,
   ...onboardingNavItems,
+  { href: "/settings", label: "Settings", icon: Settings } as NavItem,
 ];
 
 function isActivePath(pathname: string, href: string) {
@@ -183,6 +185,19 @@ function SidebarBody({
         className="border-t px-5 py-4"
         style={{ borderColor: "rgba(255, 255, 255, 0.08)" }}
       >
+        <Link
+          href="/settings"
+          onClick={onNavigate}
+          className={cn(
+            "flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm transition-colors",
+            pathname === "/settings"
+              ? "bg-white/10 text-white"
+              : "text-white/50 hover:bg-white/6 hover:text-white/80"
+          )}
+        >
+          <Settings className="h-4 w-4" />
+          Settings
+        </Link>
         <button
           onClick={() => signOut({ callbackUrl: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/login` })}
           className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-white/50 transition-colors hover:bg-white/6 hover:text-white/80"
