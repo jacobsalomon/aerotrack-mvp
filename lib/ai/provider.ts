@@ -269,3 +269,49 @@ export async function callAnthropic(opts: {
   if (!content) throw new Error("Empty response from Anthropic");
   return content;
 }
+
+// Call OpenRouter API (OpenAI-compatible format, used as last-resort fallback)
+// OpenRouter aggregates many providers so it rarely goes down entirely.
+export async function callOpenRouter(opts: {
+  model: string;
+  messages: Array<{ role: string; content: string | unknown[] }>;
+  jsonMode?: boolean;
+  maxTokens?: number;
+  timeoutMs?: number;
+}): Promise<string> {
+  const apiKey = getApiKey("openrouter");
+  const base = getApiBase("openrouter");
+
+  const body: Record<string, unknown> = {
+    model: opts.model,
+    messages: opts.messages,
+    max_tokens: opts.maxTokens || 4000,
+    temperature: 0.2,
+  };
+
+  if (opts.jsonMode) {
+    body.response_format = { type: "json_object" };
+  }
+
+  const response = await fetch(`${base}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://mechanicalvisioncorp.com",
+      "X-Title": "AeroVision",
+    },
+    signal: AbortSignal.timeout(opts.timeoutMs || 30000),
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "");
+    throw new Error(`OpenRouter API error ${response.status}: ${errText.slice(0, 200)}`);
+  }
+
+  const result = await response.json();
+  const content = result.choices?.[0]?.message?.content;
+  if (!content) throw new Error("Empty response from OpenRouter");
+  return content;
+}

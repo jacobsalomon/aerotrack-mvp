@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { safeParseJson } from "@/lib/utils";
 import type { ModelConfig } from "./models";
 import { VERIFICATION_MODELS } from "./models";
-import { callAnthropic, callOpenAI, callWithFallback } from "./provider";
+import { callAnthropic, callOpenAI, callOpenRouter, callWithFallback } from "./provider";
 
 type VerificationSeverity = "info" | "warning" | "critical";
 type DiscrepancyStatus = "confirmed" | "resolved" | "needs_review";
@@ -727,6 +727,18 @@ async function callModelForVerification(
 
     case "openai":
       return callOpenAI({
+        model: model.id,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+        jsonMode: true,
+        maxTokens: 3000,
+        timeoutMs: 50000,
+      });
+
+    case "openrouter":
+      return callOpenRouter({
         model: model.id,
         messages: [
           { role: "system", content: systemPrompt },

@@ -100,9 +100,9 @@ export const CORRECTION_MODELS: ModelConfig[] = [
     supportsJsonOutput: true,
   },
   {
-    id: "claude-sonnet-4-6-20250514",
-    provider: "anthropic",
-    displayName: "Claude Sonnet 4.6 (fallback correction)",
+    id: "anthropic/claude-sonnet-4-6-20250514",
+    provider: "openrouter",
+    displayName: "Claude Sonnet 4.6 via OpenRouter (fallback correction)",
     inputCostPer1M: 3.0,
     outputCostPer1M: 15.0,
     contextWindow: 200_000,
@@ -129,6 +129,16 @@ export const OCR_MODELS: ModelConfig[] = [
     inputCostPer1M: 0.25,
     outputCostPer1M: 1.5,
     contextWindow: 1_000_000,
+    supportsImages: true,
+    supportsJsonOutput: true,
+  },
+  {
+    id: "anthropic/claude-sonnet-4-6-20250514",
+    provider: "openrouter",
+    displayName: "Claude Sonnet 4.6 via OpenRouter (last resort OCR)",
+    inputCostPer1M: 3.0,
+    outputCostPer1M: 15.0,
+    contextWindow: 200_000,
     supportsImages: true,
     supportsJsonOutput: true,
   },
@@ -163,6 +173,15 @@ export const GENERATION_MODELS: ModelConfig[] = [
     contextWindow: 1_000_000,
     supportsJsonOutput: true,
   },
+  {
+    id: "anthropic/claude-sonnet-4-6-20250514",
+    provider: "openrouter",
+    displayName: "Claude Sonnet 4.6 via OpenRouter (last resort)",
+    inputCostPer1M: 3.0,
+    outputCostPer1M: 15.0,
+    contextWindow: 200_000,
+    supportsJsonOutput: true,
+  },
 ];
 
 // ── Document Verification Models ────────────────────────────────────
@@ -183,6 +202,15 @@ export const VERIFICATION_MODELS: ModelConfig[] = [
     inputCostPer1M: 2.50,
     outputCostPer1M: 10.0,
     contextWindow: 128_000,
+    supportsJsonOutput: true,
+  },
+  {
+    id: "anthropic/claude-sonnet-4-6-20250514",
+    provider: "openrouter",
+    displayName: "Claude Sonnet 4.6 via OpenRouter (last resort verification)",
+    inputCostPer1M: 3.0,
+    outputCostPer1M: 15.0,
+    contextWindow: 200_000,
     supportsJsonOutput: true,
   },
 ];

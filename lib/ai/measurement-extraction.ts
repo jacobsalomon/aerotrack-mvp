@@ -4,7 +4,7 @@
 // Routes to the correct provider (OpenAI, Anthropic, Gemini) based on model config.
 
 import { GENERATION_MODELS } from "./models";
-import { callWithFallback, callOpenAI, callAnthropic, callGemini } from "./provider";
+import { callWithFallback, callOpenAI, callAnthropic, callGemini, callOpenRouter } from "./provider";
 import { formatOrgInstructions } from "./org-context";
 import { getReferenceDataForPart, formatReferenceDataForPrompt } from "@/lib/reference-data";
 import { prisma } from "@/lib/db";
@@ -219,6 +219,17 @@ export async function extractMeasurementsFromTranscript(
               temperature: 0.1,
               responseMimeType: "application/json",
             },
+          });
+          break;
+
+        case "openrouter":
+          response = await callOpenRouter({
+            model: model.id,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userMessage },
+            ],
+            jsonMode: true,
           });
           break;
 

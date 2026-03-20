@@ -5,7 +5,7 @@
 // Generation chain: GPT-5.4 → Claude Sonnet 4.6 → Gemini 3.1 Pro → cached
 
 import { TRANSCRIPTION_MODELS, OCR_MODELS, GENERATION_MODELS } from "./models";
-import { callWithFallback, callOpenAI, callAnthropic, callGemini } from "./provider";
+import { callWithFallback, callOpenAI, callAnthropic, callGemini, callOpenRouter } from "./provider";
 import { formatOrgInstructions } from "./org-context";
 import type { ModelConfig } from "./models";
 
@@ -570,6 +570,18 @@ async function callModelForGeneration(
         timeoutMs: 50000,
       });
 
+    case "openrouter":
+      return callOpenRouter({
+        model: model.id,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+        jsonMode: true,
+        maxTokens: 4000,
+        timeoutMs: 50000,
+      });
+
     default:
       throw new Error(`Unsupported provider for generation: ${model.provider}`);
   }
@@ -628,6 +640,30 @@ async function callModelForOcr(
           temperature: 0.1,
           responseMimeType: "application/json",
         },
+        timeoutMs: 15000,
+      });
+
+    case "openrouter":
+      return callOpenRouter({
+        model: model.id,
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Analyze this image from an aircraft maintenance workbench. Extract all part identification information.",
+              },
+              {
+                type: "image_url",
+                image_url: { url: imageDataUrl },
+              },
+            ],
+          },
+        ],
+        jsonMode: true,
+        maxTokens: 1000,
         timeoutMs: 15000,
       });
 
