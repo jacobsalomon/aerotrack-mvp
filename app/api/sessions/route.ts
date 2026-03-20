@@ -17,12 +17,15 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
 
-    const where: Record<string, unknown> = {};
-    if (status && status !== "all") where.status = status;
-    // Scope to the authenticated user's organization
-    if (authResult.user.organizationId) {
-      where.organizationId = authResult.user.organizationId;
+    // Cross-org isolation: require an organization — never return unscoped data
+    if (!authResult.user.organizationId) {
+      return NextResponse.json({ error: "No organization assigned" }, { status: 403 });
     }
+
+    const where: Record<string, unknown> = {
+      organizationId: authResult.user.organizationId,
+    };
+    if (status && status !== "all") where.status = status;
 
     const sessions = await prisma.captureSession.findMany({
       where,

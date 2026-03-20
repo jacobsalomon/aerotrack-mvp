@@ -97,6 +97,14 @@ export async function PATCH(
       return NextResponse.json({ error: "Document not found" }, { status: 404 });
     }
 
+    // Cross-org isolation: verify the document's session belongs to the authenticated user's org
+    if (!authResult.user.organizationId) {
+      return NextResponse.json({ error: "No organization assigned" }, { status: 403 });
+    }
+    if (doc.session.organizationId !== authResult.user.organizationId) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
     if (doc.sessionId !== sessionId) {
       return NextResponse.json({ error: "Document does not belong to this session" }, { status: 400 });
     }

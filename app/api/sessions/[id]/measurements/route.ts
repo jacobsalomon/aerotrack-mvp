@@ -14,6 +14,30 @@ export async function GET(request: Request, { params }: RouteParams) {
   if (authResult.error) return authResult.error;
 
   try {
+    // Cross-org isolation: verify the session belongs to the authenticated user's org
+    const session = await prisma.captureSession.findUnique({
+      where: { id: sessionId },
+      select: { id: true, organizationId: true },
+    });
+    if (!session) {
+      return NextResponse.json(
+        { success: false, error: "Session not found" },
+        { status: 404 }
+      );
+    }
+    if (!authResult.user.organizationId) {
+      return NextResponse.json(
+        { success: false, error: "No organization assigned" },
+        { status: 403 }
+      );
+    }
+    if (session.organizationId !== authResult.user.organizationId) {
+      return NextResponse.json(
+        { success: false, error: "Session not found" },
+        { status: 404 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const since = searchParams.get("since");
 

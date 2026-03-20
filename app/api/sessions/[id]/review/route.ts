@@ -53,6 +53,14 @@ export async function POST(
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
 
+  // Cross-org isolation: verify the session belongs to the authenticated user's org
+  if (!authResult.user.organizationId) {
+    return NextResponse.json({ error: "No organization assigned" }, { status: 403 });
+  }
+  if (session.organizationId !== authResult.user.organizationId) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   // Verify document belongs to this session
   const doc = await prisma.captureDocument.findFirst({
     where: { id: documentId, sessionId },

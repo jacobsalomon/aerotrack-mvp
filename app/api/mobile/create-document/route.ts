@@ -100,7 +100,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (session.userId !== auth.user.id) {
+    if (session.userId !== auth.user.id || session.organizationId !== auth.user.organizationId) {
       return NextResponse.json(
         { success: false, error: "Not authorized for this session" },
         { status: 403 }

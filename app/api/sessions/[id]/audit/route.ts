@@ -17,11 +17,19 @@ export async function GET(
   // Verify session exists
   const session = await prisma.captureSession.findUnique({
     where: { id: sessionId },
-    select: { id: true },
+    select: { id: true, organizationId: true },
   });
 
   if (!session) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+
+  // Cross-org isolation: verify the session belongs to the authenticated user's org
+  if (!authResult.user.organizationId) {
+    return NextResponse.json({ error: "No organization assigned" }, { status: 403 });
+  }
+  if (session.organizationId !== authResult.user.organizationId) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   // Find audit entries where entityId matches the session,
