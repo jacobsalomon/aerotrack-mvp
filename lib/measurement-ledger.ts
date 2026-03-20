@@ -108,6 +108,9 @@ export async function recordMeasurement({
   }
 
   // No existing match — create a new measurement + its first source
+  // Flag measurements with generic names (e.g., "Unspecified dimension") for manual labeling
+  const isGenericName = /unknown|unspecified|parameter/i.test(parameterName);
+
   const measurement = await prisma.$transaction(async (tx) => {
     const lastMeasurement = await tx.measurement.findFirst({
       where: { captureSessionId: sessionId },
@@ -127,7 +130,8 @@ export async function recordMeasurement({
         inTolerance,
         confidence: source.confidence,
         corroborationLevel: "single",
-        status: inTolerance === false ? "out_of_tolerance" : "pending",
+        status: isGenericName ? "flagged" : (inTolerance === false ? "out_of_tolerance" : "pending"),
+        flagReason: isGenericName ? "Needs label — the AI couldn't determine what this measurement refers to" : null,
         procedureStep: procedureStep || null,
         taskCardRef: taskCardRef || null,
         sequenceInShift: nextSequence,

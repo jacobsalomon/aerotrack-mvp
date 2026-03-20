@@ -30,9 +30,6 @@ export async function getExtractionContext(sessionId: string): Promise<string> {
       targetFormType: true,
       orgDocumentId: true,
       componentId: true,
-      component: {
-        select: { partNumber: true, description: true },
-      },
     },
   });
 
@@ -40,11 +37,19 @@ export async function getExtractionContext(sessionId: string): Promise<string> {
 
   const sections: string[] = [];
 
+  // Load the component if linked (separate query — CaptureSession has componentId, not a relation)
+  const component = session.componentId
+    ? await prisma.component.findUnique({
+        where: { id: session.componentId },
+        select: { partNumber: true, description: true },
+      })
+    : null;
+
   // 1. Load measurement specs for the part number (most specific context)
-  if (session.component?.partNumber) {
+  if (component?.partNumber) {
     const specs = await prisma.measurementSpec.findMany({
       where: {
-        componentPartNumber: session.component.partNumber,
+        componentPartNumber: component.partNumber,
         status: "active",
       },
       select: { name: true, specItemsJson: true },
@@ -57,21 +62,26 @@ export async function getExtractionContext(sessionId: string): Promise<string> {
           const items = JSON.parse(spec.specItemsJson) as SpecItem[];
           for (const item of items) {
             let line = `- ${item.parameterName} (${item.measurementType}, ${item.unit})`;
-            if (item.nominalValue != null) line += ` — nominal: ${item.nominalValue}`;
+            if (item.nominalValue != null)
+              line += ` — nominal: ${item.nominalValue}`;
             if (item.toleranceLow != null || item.toleranceHigh != null) {
               line += ` [${item.toleranceLow ?? "—"} to ${item.toleranceHigh ?? "—"}]`;
             }
             specLines.push(line);
           }
-        } catch { /* skip malformed JSON */ }
+        } catch {
+          /* skip malformed JSON */
+        }
       }
       if (specLines.length > 0) {
-        sections.push(`EXPECTED MEASUREMENTS (from measurement specs for P/N ${session.component.partNumber}):\n${specLines.join("\n")}`);
+        sections.push(
+          `EXPECTED MEASUREMENTS (from measurement specs for P/N ${component.partNumber}):\n${specLines.join("\n")}`
+        );
       }
     }
 
     // 2. Load reference data (limits, specifications) for the part
-    const refEntries = await getReferenceDataForPart(session.component.partNumber);
+    const refEntries = await getReferenceDataForPart(component.partNumber);
     const limitEntries = refEntries.filter(
       (e) => e.category === "limit" || e.category === "specification"
     );
@@ -84,16 +94,20 @@ export async function getExtractionContext(sessionId: string): Promise<string> {
   if (session.orgDocumentId) {
     const orgDoc = await prisma.orgDocument.findUnique({
       where: { id: session.orgDocumentId },
-      select: { rawStructure: true, name: true },
+      select: { title: true, formFieldsJson: true },
     });
-    if (orgDoc?.rawStructure) {
-      sections.push(`TARGET DOCUMENT STRUCTURE (${orgDoc.name}):\n${orgDoc.rawStructure}`);
+    if (orgDoc?.formFieldsJson) {
+      sections.push(
+        `TARGET DOCUMENT STRUCTURE (${orgDoc.title}):\n${orgDoc.formFieldsJson}`
+      );
     }
   }
 
   // 4. Add component description for general context
-  if (session.component?.description) {
-    sections.push(`COMPONENT: ${session.component.description} (P/N: ${session.component.partNumber})`);
+  if (component?.description) {
+    sections.push(
+      `COMPONENT: ${component.description} (P/N: ${component.partNumber})`
+    );
   }
 
   const context = sections.join("\n\n");
@@ -231,22 +245,41 @@ export async function extractMeasurementsFromTranscript(
   return result.data;
 }
 
-// Session-level measurement reconciliation — runs on the full stitched transcript
-// after capture ends. Catches measurements that were missed or mislabeled during
-// chunk-by-chunk extraction (e.g., "Unknown parameter" when context was split).
+// Session-level measurement reconciliation — the "golden pass" that runs on the
+// full stitched transcript after capture ends. Uses document context and reference
+// data to catch missed measurements, fix mislabeled ones, and flag unnamed ones.
 export async function reconcileSessionMeasurements(
   sessionId: string,
   fullTranscript: string
-): Promise<{ added: number; renamed: number; skipped: number }> {
-  const stats = { added: 0, renamed: 0, skipped: 0 };
+): Promise<{ added: number; renamed: number; flagged: number; skipped: number }> {
+  const stats = { added: 0, renamed: 0, flagged: 0, skipped: 0 };
 
   if (!fullTranscript || fullTranscript.trim().length < 10) return stats;
 
   // Strip timestamp markers like [00:00] that were added during stitching
   const cleanTranscript = fullTranscript.replace(/\[\d{2}:\d{2}\]\s*/g, "");
 
-  // Run measurement extraction on the full transcript (no chunk boundaries)
-  const extracted = await extractMeasurementsFromTranscript(cleanTranscript, []);
+  // Load document context for this session (expected measurements, reference data, form structure)
+  const documentContext = await getExtractionContext(sessionId);
+
+  // Load org instructions for the session
+  const session = await prisma.captureSession.findUnique({
+    where: { id: sessionId },
+    select: { organizationId: true },
+  });
+  const { getOrgInstructions } = await import("./org-context");
+  const orgInstructions = session?.organizationId
+    ? await getOrgInstructions(session.organizationId)
+    : null;
+
+  // Run measurement extraction on the full transcript with document context
+  const extracted = await extractMeasurementsFromTranscript(
+    cleanTranscript,
+    [],
+    undefined,
+    orgInstructions,
+    documentContext || undefined
+  );
 
   if (extracted.length === 0) return stats;
 
@@ -259,6 +292,8 @@ export async function reconcileSessionMeasurements(
       measurementType: true,
       value: true,
       unit: true,
+      status: true,
+      flagReason: true,
     },
   });
 
@@ -267,22 +302,52 @@ export async function reconcileSessionMeasurements(
     const match = existing.find((m) => {
       const sameType = m.measurementType === ext.measurementType;
       const valueDiff = Math.abs(m.value - ext.value);
-      const valueClose = valueDiff < 0.005 || (Math.abs(m.value) > 0.01 && valueDiff / Math.abs(m.value) < 0.05);
+      const valueClose =
+        valueDiff < 0.005 ||
+        (Math.abs(m.value) > 0.01 && valueDiff / Math.abs(m.value) < 0.05);
       return sameType && valueClose;
     });
 
     if (match) {
-      // If the existing measurement has a generic name but the full-transcript
-      // extraction found a real name, update it
-      const isGenericName = /unknown|unspecified|parameter/i.test(match.parameterName);
-      const hasRealName = !/unknown|unspecified|parameter/i.test(ext.parameterName);
+      const isGenericName = /unknown|unspecified|parameter/i.test(
+        match.parameterName
+      );
+      const hasRealName = !/unknown|unspecified|parameter/i.test(
+        ext.parameterName
+      );
 
       if (isGenericName && hasRealName) {
+        // Reconciliation found a better name — rename and clear the "needs label" flag
         await prisma.measurement.update({
           where: { id: match.id },
-          data: { parameterName: ext.parameterName },
+          data: {
+            parameterName: ext.parameterName,
+            status:
+              match.status === "flagged" &&
+              match.flagReason?.includes("Needs label")
+                ? "pending"
+                : match.status,
+            flagReason: match.flagReason?.includes("Needs label")
+              ? null
+              : match.flagReason,
+          },
         });
         stats.renamed++;
+      } else if (isGenericName && !hasRealName) {
+        // Still unnamed even after the golden pass — flag for manual labeling
+        if (match.status !== "flagged") {
+          await prisma.measurement.update({
+            where: { id: match.id },
+            data: {
+              status: "flagged",
+              flagReason:
+                "Needs label — the AI couldn't determine what this measurement refers to",
+            },
+          });
+          stats.flagged++;
+        } else {
+          stats.skipped++;
+        }
       } else {
         stats.skipped++;
       }
@@ -295,6 +360,10 @@ export async function reconcileSessionMeasurements(
       });
       const nextSequence = (lastMeasurement?.sequenceInShift ?? 0) + 1;
 
+      const isNewGeneric = /unknown|unspecified|parameter/i.test(
+        ext.parameterName
+      );
+
       await prisma.measurement.create({
         data: {
           captureSessionId: sessionId,
@@ -304,7 +373,10 @@ export async function reconcileSessionMeasurements(
           unit: ext.unit,
           confidence: ext.confidence,
           corroborationLevel: "single",
-          status: "pending",
+          status: isNewGeneric ? "flagged" : "pending",
+          flagReason: isNewGeneric
+            ? "Needs label — the AI couldn't determine what this measurement refers to"
+            : null,
           sequenceInShift: nextSequence,
           measuredAt: new Date(),
           sources: {
@@ -323,7 +395,7 @@ export async function reconcileSessionMeasurements(
   }
 
   console.log(
-    `[Reconciliation] session=${sessionId}: added=${stats.added}, renamed=${stats.renamed}, skipped=${stats.skipped}`
+    `[Reconciliation] session=${sessionId}: added=${stats.added}, renamed=${stats.renamed}, flagged=${stats.flagged}, skipped=${stats.skipped}`
   );
   return stats;
 }

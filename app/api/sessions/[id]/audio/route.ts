@@ -7,7 +7,10 @@ import { prisma } from "@/lib/db";
 import { uploadFile } from "@/lib/storage";
 import { transcribeAudio } from "@/lib/ai/openai";
 import { correctTranscriptSegment } from "@/lib/ai/transcript-correction";
-import { extractMeasurementsFromTranscript } from "@/lib/ai/measurement-extraction";
+import {
+  extractMeasurementsFromTranscript,
+  getExtractionContext,
+} from "@/lib/ai/measurement-extraction";
 import { recordMeasurement } from "@/lib/measurement-ledger";
 import { getCallHistory } from "@/lib/ai/provider";
 import { getOrgInstructions } from "@/lib/ai/org-context";
@@ -156,19 +159,23 @@ export async function POST(request: Request, { params }: RouteParams) {
       .filter(c => c.transcription)
       .map(c => c.transcription!)
       .join(" ");
-    // Trim to last ~200 words to keep the prompt focused
+    // Use up to ~2000 words of prior context (expanded from 200 for better continuity)
     const priorWords = priorTranscripts.split(/\s+/);
-    const priorContext = priorWords.length > 200
-      ? priorWords.slice(-200).join(" ")
+    const priorContext = priorWords.length > 2000
+      ? priorWords.slice(-2000).join(" ")
       : priorTranscripts;
 
-    console.log(`[Audio] Step 5: Extracting measurements (priorContext=${priorContext.length} chars)...`);
+    // Load document context (expected measurements, form fields, reference data)
+    const documentContext = await getExtractionContext(sessionId);
+
+    console.log(`[Audio] Step 5: Extracting measurements (priorContext=${priorContext.length} chars, docContext=${documentContext.length} chars)...`);
     const t5 = Date.now();
     const extracted = await extractMeasurementsFromTranscript(
       correctedText,
       transcription.words,
       priorContext || undefined,
-      orgInstructions
+      orgInstructions,
+      documentContext || undefined
     );
     console.log(`[Audio] Step 5 done in ${Date.now() - t5}ms: ${extracted.length} measurements`);
 
