@@ -69,6 +69,9 @@ export async function GET(
             },
           },
         },
+        orgDocument: {
+          select: { id: true, title: true, fileUrl: true, formFieldsJson: true },
+        },
         packages: {
           orderBy: { createdAt: "desc" },
         },
