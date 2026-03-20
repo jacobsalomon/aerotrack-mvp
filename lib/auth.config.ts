@@ -5,10 +5,12 @@
 import type { NextAuthConfig } from "next-auth";
 
 export const authConfig: NextAuthConfig = {
-  // Tell NextAuth the full URL path to auth routes, including Next.js basePath.
-  // Without this, NextAuth can't parse the action from URLs like
-  // /aerovision/api/auth/providers (it expects /api/auth/providers).
-  basePath: "/aerovision/api/auth",
+  // NextAuth's basePath must match what the route handler sees AFTER
+  // Next.js strips its own basePath ("/aerovision"). The default "/api/auth"
+  // is correct here — don't include "/aerovision".
+  // The client-side SessionProvider separately sets "/aerovision/api/auth"
+  // for browser requests (see components/providers/session-provider.tsx).
+  basePath: "/api/auth",
 
   // JWT strategy — required for Credentials provider
   session: { strategy: "jwt" },

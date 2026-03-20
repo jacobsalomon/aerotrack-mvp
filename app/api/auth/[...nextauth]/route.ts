@@ -3,12 +3,10 @@
 
 import { handlers } from "@/lib/auth";
 
-// Temporary debug wrapper to log the request URL NextAuth receives
-const origGET = handlers.GET;
-export async function GET(req: Request) {
-  console.log("[auth-debug] Request URL:", req.url);
-  console.log("[auth-debug] URL pathname:", new URL(req.url).pathname);
-  return origGET(req);
-}
+// NextAuth v5 beta types NextRequest; Next.js route handlers receive Request.
+const { GET, POST } = handlers as {
+  GET: (req: Request) => Promise<Response>;
+  POST: (req: Request) => Promise<Response>;
+};
 
-export const { POST } = handlers;
+export { GET, POST };
