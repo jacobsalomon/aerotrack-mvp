@@ -194,10 +194,14 @@ export async function callOpenAI(opts: {
   const apiKey = getApiKey("openai");
   const base = getApiBase("openai");
 
+  // GPT-5.x models use max_completion_tokens instead of max_tokens
+  const isGpt5 = opts.model.startsWith("gpt-5");
   const body: Record<string, unknown> = {
     model: opts.model,
     messages: opts.messages,
-    max_tokens: opts.maxTokens || 4000,
+    ...(isGpt5
+      ? { max_completion_tokens: opts.maxTokens || 4000 }
+      : { max_tokens: opts.maxTokens || 4000 }),
     temperature: 0.2,
   };
 
