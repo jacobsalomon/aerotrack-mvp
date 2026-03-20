@@ -46,6 +46,7 @@ import {
   RefreshCw,
   Mic,
   Sparkles,
+  Upload,
 } from "lucide-react";
 
 // The 3 FAA forms AeroVision can auto-generate
@@ -147,6 +148,8 @@ export default function SessionsPage() {
   const [creatingSession, setCreatingSession] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [showFormPicker, setShowFormPicker] = useState(false);
+  const [orgDocuments, setOrgDocuments] = useState<{ id: string; title: string; fileSizeBytes: number }[]>([]);
+  const [loadingOrgDocs, setLoadingOrgDocs] = useState(false);
 
   const fetchSessions = useCallback(async () => {
     setLoading(true);
@@ -181,19 +184,41 @@ export default function SessionsPage() {
     void fetchSessions();
   }, [fetchSessions]);
 
-  // Start a new capture session with the selected target form
-  async function handleStartSession(targetFormType: string) {
+  // Fetch org documents when the picker modal opens
+  async function fetchOrgDocuments() {
+    setLoadingOrgDocs(true);
+    try {
+      const res = await fetch(apiUrl("/api/org/documents"));
+      if (res.ok) {
+        const docs = await res.json();
+        setOrgDocuments(Array.isArray(docs) ? docs : []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch org documents:", err);
+    } finally {
+      setLoadingOrgDocs(false);
+    }
+  }
+
+  // Start a new capture session with the selected target form or org document
+  async function handleStartSession(targetFormType: string, orgDocumentId?: string) {
     setShowFormPicker(false);
     setCreatingSession(true);
     setCreateError(null);
     const formLabel = TARGET_FORMS.find((f) => f.id === targetFormType)?.formNumber;
+    const orgDocLabel = orgDocuments.find((d) => d.id === orgDocumentId)?.title;
     try {
       const res = await fetch(apiUrl("/api/sessions"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          description: formLabel ? `Capture for ${formLabel}` : "Web capture session",
-          targetFormType: targetFormType || null,
+          description: orgDocLabel
+            ? `Capture for ${orgDocLabel}`
+            : formLabel
+              ? `Capture for ${formLabel}`
+              : "Web capture session",
+          targetFormType: orgDocumentId ? null : (targetFormType || null),
+          orgDocumentId: orgDocumentId || null,
         }),
       });
       if (!res.ok) {
@@ -253,7 +278,7 @@ export default function SessionsPage() {
           </div>
           <div className="shrink-0 text-right">
             <Button
-              onClick={() => setShowFormPicker(true)}
+              onClick={() => { setShowFormPicker(true); void fetchOrgDocuments(); }}
               disabled={creatingSession}
               className="gap-2"
               style={{ backgroundColor: "rgb(239, 68, 68)", color: "white" }}
@@ -488,7 +513,7 @@ export default function SessionsPage() {
         </CardContent>
       </Card>
 
-      {/* Form picker dialog — select which FAA form this session will populate */}
+      {/* Form picker dialog — select which form this session will populate */}
       <Dialog open={showFormPicker} onOpenChange={setShowFormPicker}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -499,7 +524,10 @@ export default function SessionsPage() {
               Pick the form AeroVision should auto-populate from your capture.
             </p>
           </DialogHeader>
-          <div className="grid gap-2 mt-2">
+
+          {/* FAA Forms */}
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mt-2">FAA Forms</p>
+          <div className="grid gap-2">
             {TARGET_FORMS.map((form) => (
               <button
                 key={form.id}
@@ -520,6 +548,39 @@ export default function SessionsPage() {
               </button>
             ))}
           </div>
+
+          {/* Internal Forms (org documents) */}
+          {loadingOrgDocs ? (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+            </div>
+          ) : orgDocuments.length > 0 && (
+            <>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mt-3">Internal Forms</p>
+              <div className="grid gap-2">
+                {orgDocuments.map((doc) => (
+                  <button
+                    key={doc.id}
+                    onClick={() => void handleStartSession("", doc.id)}
+                    className="flex items-start gap-3 rounded-lg border border-slate-200 p-4 text-left transition-colors hover:bg-slate-50 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <div className="shrink-0 mt-0.5 w-9 h-9 rounded-lg bg-orange-50 flex items-center justify-center">
+                      <Upload className="h-4 w-4 text-orange-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-900">
+                        {doc.title}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {doc.fileSizeBytes ? `${Math.round(doc.fileSizeBytes / 1024)} KB` : "Uploaded PDF"}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
           <button
             onClick={() => void handleStartSession("")}
             className="mt-1 text-sm text-slate-400 hover:text-slate-600 transition-colors"
