@@ -156,7 +156,7 @@ export const GENERATION_MODELS: ModelConfig[] = [
     supportsJsonOutput: true,
   },
   {
-    id: "claude-sonnet-4-6-20250514",
+    id: "claude-sonnet-4-20250514",
     provider: "anthropic",
     displayName: "Claude Sonnet 4.6",
     inputCostPer1M: 3.0,
@@ -187,7 +187,7 @@ export const GENERATION_MODELS: ModelConfig[] = [
 // ── Document Verification Models ────────────────────────────────────
 export const VERIFICATION_MODELS: ModelConfig[] = [
   {
-    id: "claude-sonnet-4-6-20250514",
+    id: "claude-sonnet-4-20250514",
     provider: "anthropic",
     displayName: "Claude Sonnet 4.6",
     inputCostPer1M: 3.0,
@@ -252,7 +252,7 @@ export const CMM_EXTRACTION_MODELS: ModelConfig[] = [
     supportsJsonOutput: true,
   },
   {
-    id: "claude-sonnet-4-6-20250514",
+    id: "claude-sonnet-4-20250514",
     provider: "anthropic",
     displayName: "Claude Sonnet 4.6 (last resort extraction)",
     inputCostPer1M: 3.0,

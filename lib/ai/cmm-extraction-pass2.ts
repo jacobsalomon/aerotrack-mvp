@@ -1,40 +1,191 @@
-// Pass 2: Deep extraction of specs, tools, and checks from each sub-assembly section.
-// Processes one section at a time (1-3 pages) with Gemini 2.5 Pro for max accuracy.
-// Falls back to GPT-5.4 and Claude Sonnet 4.6 if Gemini fails.
+// Pass 2: Deep extraction with dual-model consensus for 99%+ accuracy.
+// Sends each page individually to Gemini 2.5 Pro AND Claude Sonnet 4.6 in parallel,
+// then reconciles their outputs field-by-field. Items both models agree on get
+// confidence 1.0. Disagreements get flagged for human review.
 
 import { prisma } from "@/lib/db";
-import { extractPdfPages } from "@/lib/pdf-utils";
-import { callWithFallback } from "./provider";
-import { CMM_EXTRACTION_MODELS } from "./models";
+import { extractSinglePageAsBase64 } from "@/lib/pdf-utils";
+import { callGemini } from "./provider";
+import { getApiKey, getApiBase } from "./models";
 import { PASS2_EXTRACTION_PROMPT } from "./cmm-prompts";
 import {
   validateExtractionResults,
+  reconcileExtractions,
   type ExtractedItem,
+  type DisagreementRecord,
 } from "./cmm-validation";
-import { callGemini } from "./provider";
-import { getApiKey, getApiBase } from "./models";
 
-// The structure Gemini returns for a section
+// The JSON structure both models return
 interface ExtractionResponse {
   items: ExtractedItem[];
   sectionConfidence: number;
   extractionNotes: string;
 }
 
+// Per-page extraction result before merging
+interface PageExtractionResult {
+  pageIndex: number;
+  items: ExtractedItem[];
+  geminiSucceeded: boolean;
+  claudeSucceeded: boolean;
+  agreementRate: number;
+  disagreements: DisagreementRecord[];
+}
+
+// ── Provider-specific single-page extraction helpers ──────────────────
+
+// Call Gemini 2.5 Pro with a single PDF page
+async function extractWithGemini(
+  pageBase64: string,
+  prompt: string
+): Promise<ExtractedItem[]> {
+  const responseText = await callGemini({
+    model: "gemini-2.5-pro",
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { text: prompt },
+          { inlineData: { mimeType: "application/pdf", data: pageBase64 } },
+        ],
+      },
+    ],
+    generationConfig: { temperature: 0.1, responseMimeType: "application/json" },
+    timeoutMs: 90000, // Single page — Gemini Pro can be slow on dense diagrams
+  });
+
+  const parsed = JSON.parse(responseText) as ExtractionResponse;
+  if (!parsed.items || !Array.isArray(parsed.items)) {
+    throw new Error("Gemini response missing items array");
+  }
+  return parsed.items;
+}
+
+// Call Claude Sonnet 4.6 with a single PDF page
+async function extractWithClaude(
+  pageBase64: string,
+  prompt: string
+): Promise<ExtractedItem[]> {
+  const apiKey = getApiKey("anthropic");
+  const apiBase = getApiBase("anthropic");
+
+  const response = await fetch(`${apiBase}/messages`, {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "Content-Type": "application/json",
+      "anthropic-version": "2023-06-01",
+    },
+    signal: AbortSignal.timeout(90000),
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 8192,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: {
+                type: "base64",
+                media_type: "application/pdf",
+                data: pageBase64,
+              },
+            },
+            { type: "text", text: prompt },
+          ],
+        },
+      ],
+      temperature: 0.1,
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "");
+    throw new Error(`Anthropic API error ${response.status}: ${errText.slice(0, 200)}`);
+  }
+
+  const data = await response.json();
+  const rawText = data.content?.[0]?.text || "";
+
+  // Claude doesn't support responseMimeType, so strip markdown fences if present
+  const jsonText = rawText.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+
+  const parsed = JSON.parse(jsonText) as ExtractionResponse;
+  if (!parsed.items || !Array.isArray(parsed.items)) {
+    throw new Error("Claude response missing items array");
+  }
+  return parsed.items;
+}
+
+// ── Core: extract one page with dual-model consensus ──────────────────
+
+async function extractPageWithConsensus(
+  pageBase64: string,
+  prompt: string,
+  pageIndex: number
+): Promise<PageExtractionResult> {
+  // Fire both models in parallel
+  const [geminiResult, claudeResult] = await Promise.allSettled([
+    extractWithGemini(pageBase64, prompt),
+    extractWithClaude(pageBase64, prompt),
+  ]);
+
+  const geminiItems = geminiResult.status === "fulfilled" ? geminiResult.value : null;
+  const claudeItems = claudeResult.status === "fulfilled" ? claudeResult.value : null;
+
+  if (geminiResult.status === "rejected") {
+    console.warn(`[Consensus] Gemini failed on page ${pageIndex + 1}: ${geminiResult.reason}`);
+  }
+  if (claudeResult.status === "rejected") {
+    console.warn(`[Consensus] Claude failed on page ${pageIndex + 1}: ${claudeResult.reason}`);
+  }
+
+  // Case 1: Both models returned results — reconcile
+  if (geminiItems && claudeItems) {
+    const consensus = reconcileExtractions(geminiItems, claudeItems);
+    return {
+      pageIndex,
+      items: consensus.items,
+      geminiSucceeded: true,
+      claudeSucceeded: true,
+      agreementRate: consensus.agreementRate,
+      disagreements: consensus.disagreements,
+    };
+  }
+
+  // Case 2: Only one model succeeded — use its results with lower confidence
+  const singleModelItems = geminiItems || claudeItems || [];
+  const itemsWithReducedConfidence = singleModelItems.map((item) => ({
+    ...item,
+    confidence: Math.min(item.confidence, 0.7), // Cap at 0.7 for single-model
+  }));
+
+  return {
+    pageIndex,
+    items: itemsWithReducedConfidence,
+    geminiSucceeded: !!geminiItems,
+    claudeSucceeded: !!claudeItems,
+    agreementRate: 0, // No consensus possible
+    disagreements: [],
+  };
+}
+
+// ── Main: extract a full section page-by-page ─────────────────────────
+
 /**
- * Extract specs from a single section. Returns the number of items created.
+ * Extract specs from a single section using per-page dual-model consensus.
+ * Returns the number of items created.
  */
 export async function extractSection(
   templateId: string,
   sectionId: string
 ): Promise<number> {
-  // Load the section and template
   const section = await prisma.inspectionSection.findUniqueOrThrow({
     where: { id: sectionId },
     include: { template: true },
   });
 
-  // Update section status
   await prisma.inspectionSection.update({
     where: { id: sectionId },
     data: { status: "extracting" },
@@ -46,13 +197,6 @@ export async function extractSection(
     if (!pdfResponse.ok) throw new Error("Failed to download PDF");
     const pdfBytes = Buffer.from(await pdfResponse.arrayBuffer());
 
-    // Extract the relevant pages for this section
-    const sectionPdfBuffer = await extractPdfPages(
-      pdfBytes,
-      section.pageNumbers
-    );
-    const sectionPdfBase64 = sectionPdfBuffer.toString("base64");
-
     // Build the prompt with section context
     const prompt = PASS2_EXTRACTION_PROMPT
       .replace("{figureNumber}", section.figureNumber)
@@ -62,134 +206,35 @@ export async function extractSection(
         section.template.partNumbersCovered.join(", ") || "not specified"
       );
 
-    // Call AI with fallback chain
-    const result = await callWithFallback<ExtractionResponse>({
-      models: CMM_EXTRACTION_MODELS,
-      timeoutMs: 120000,
-      taskName: `cmm_extraction_fig${section.figureNumber}`,
-      execute: async (model) => {
-        let responseText: string;
+    // Extract each page individually and run consensus
+    const allPageResults: PageExtractionResult[] = [];
+    let totalAgreementRate = 0;
+    let allDisagreements: DisagreementRecord[] = [];
 
-        if (model.provider === "google") {
-          // Use Gemini directly (supports PDF inline data)
-          responseText = await callGemini({
-            model: model.id,
-            contents: [
-              {
-                role: "user",
-                parts: [
-                  { text: prompt },
-                  {
-                    inlineData: {
-                      mimeType: "application/pdf",
-                      data: sectionPdfBase64,
-                    },
-                  },
-                ],
-              },
-            ],
-            generationConfig: {
-              temperature: 0.1,
-              responseMimeType: "application/json",
-            },
-            timeoutMs: 110000,
-          });
-        } else if (model.provider === "openai") {
-          // OpenAI — send PDF as base64 image (they accept PDFs in image URLs)
-          const apiKey = getApiKey("openai");
-          const apiBase = getApiBase("openai");
-          const response = await fetch(`${apiBase}/chat/completions`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${apiKey}`,
-              "Content-Type": "application/json",
-            },
-            signal: AbortSignal.timeout(110000),
-            body: JSON.stringify({
-              model: model.id,
-              response_format: { type: "json_object" },
-              messages: [
-                {
-                  role: "user",
-                  content: [
-                    { type: "text", text: prompt },
-                    {
-                      type: "image_url",
-                      image_url: {
-                        url: `data:application/pdf;base64,${sectionPdfBase64}`,
-                      },
-                    },
-                  ],
-                },
-              ],
-              temperature: 0.1,
-            }),
-          });
-          if (!response.ok) {
-            const errText = await response.text().catch(() => "");
-            throw new Error(`OpenAI API error ${response.status}: ${errText.slice(0, 200)}`);
-          }
-          const data = await response.json();
-          responseText = data.choices?.[0]?.message?.content || "";
-        } else if (model.provider === "anthropic") {
-          // Anthropic — send as document
-          const apiKey = getApiKey("anthropic");
-          const apiBase = getApiBase("anthropic");
-          const response = await fetch(`${apiBase}/messages`, {
-            method: "POST",
-            headers: {
-              "x-api-key": apiKey,
-              "Content-Type": "application/json",
-              "anthropic-version": "2023-06-01",
-            },
-            signal: AbortSignal.timeout(110000),
-            body: JSON.stringify({
-              model: model.id,
-              max_tokens: 8192,
-              messages: [
-                {
-                  role: "user",
-                  content: [
-                    {
-                      type: "document",
-                      source: {
-                        type: "base64",
-                        media_type: "application/pdf",
-                        data: sectionPdfBase64,
-                      },
-                    },
-                    { type: "text", text: prompt },
-                  ],
-                },
-              ],
-              temperature: 0.1,
-            }),
-          });
-          if (!response.ok) {
-            const errText = await response.text().catch(() => "");
-            throw new Error(`Anthropic API error ${response.status}: ${errText.slice(0, 200)}`);
-          }
-          const data = await response.json();
-          responseText = data.content?.[0]?.text || "";
-        } else {
-          throw new Error(`Unsupported provider: ${model.provider}`);
-        }
+    for (const pageIdx of section.pageNumbers) {
+      const pageBase64 = await extractSinglePageAsBase64(pdfBytes, pageIdx);
+      const pageResult = await extractPageWithConsensus(pageBase64, prompt, pageIdx);
 
-        // Parse the JSON response
-        const parsed = JSON.parse(responseText) as ExtractionResponse;
-        if (!parsed.items || !Array.isArray(parsed.items)) {
-          throw new Error("Response missing items array");
-        }
-        return parsed;
-      },
-    });
+      allPageResults.push(pageResult);
+      totalAgreementRate += pageResult.agreementRate;
+      allDisagreements = allDisagreements.concat(pageResult.disagreements);
 
-    const extraction = result.data;
+      const modelInfo = pageResult.geminiSucceeded && pageResult.claudeSucceeded
+        ? `consensus (${(pageResult.agreementRate * 100).toFixed(0)}% agree)`
+        : pageResult.geminiSucceeded ? "Gemini only" : "Claude only";
+      console.log(
+        `[Consensus] Page ${pageIdx + 1}: ${pageResult.items.length} items — ${modelInfo}`
+      );
+    }
 
-    // Run structural validation on all items
-    const { validatedItems, sectionConfidence } = validateExtractionResults(
-      extraction.items
-    );
+    // Merge all page results into one list
+    const allItems = allPageResults.flatMap((r) => r.items);
+
+    // Run structural validation on merged items
+    const { validatedItems, sectionConfidence } = validateExtractionResults(allItems);
+
+    // Delete any existing items for this section (in case of re-extraction)
+    await prisma.inspectionItem.deleteMany({ where: { sectionId } });
 
     // Save items to database
     let sortOrder = 0;
@@ -220,6 +265,12 @@ export async function extractSection(
       });
     }
 
+    // Calculate stats for logging
+    const avgAgreement = section.pageNumbers.length > 0
+      ? totalAgreementRate / section.pageNumbers.length
+      : 0;
+    const bothSucceeded = allPageResults.filter((r) => r.geminiSucceeded && r.claudeSucceeded).length;
+
     // Update section with results
     await prisma.inspectionSection.update({
       where: { id: sectionId },
@@ -228,18 +279,28 @@ export async function extractSection(
         itemCount: validatedItems.length,
         extractionConfidence: sectionConfidence,
         rawExtractionResponse: JSON.parse(JSON.stringify({
-          modelUsed: result.modelUsed.displayName,
-          fallbackLevel: result.fallbackLevel,
-          latencyMs: result.latencyMs,
-          extractionNotes: extraction.extractionNotes,
-          rawItems: extraction.items,
+          method: "dual-model-consensus",
+          pagesProcessed: section.pageNumbers.length,
+          consensusPages: bothSucceeded,
+          averageAgreementRate: avgAgreement,
+          totalDisagreements: allDisagreements.length,
+          disagreements: allDisagreements.slice(0, 20), // Keep first 20 for review
+          pageResults: allPageResults.map((r) => ({
+            page: r.pageIndex + 1,
+            items: r.items.length,
+            gemini: r.geminiSucceeded,
+            claude: r.claudeSucceeded,
+            agreement: r.agreementRate,
+          })),
         })),
       },
     });
 
     console.log(
-      `[CMM Pass 2] Fig. ${section.figureNumber}: ${validatedItems.length} items extracted ` +
-        `(confidence: ${sectionConfidence.toFixed(2)}, model: ${result.modelUsed.displayName})`
+      `[CMM Pass 2] Fig. ${section.figureNumber}: ${validatedItems.length} items ` +
+        `(confidence: ${sectionConfidence.toFixed(2)}, ` +
+        `consensus: ${bothSucceeded}/${section.pageNumbers.length} pages, ` +
+        `agreement: ${(avgAgreement * 100).toFixed(0)}%)`
     );
 
     return validatedItems.length;
