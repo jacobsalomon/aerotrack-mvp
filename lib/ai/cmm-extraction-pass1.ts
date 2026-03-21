@@ -1,12 +1,20 @@
 // Pass 1: Index a CMM PDF by classifying each page and identifying sub-assemblies.
-// Sends each page individually to Gemini 2.5 Flash for fast classification.
-// Groups multi-sheet figures into single sections.
-// Creates InspectionSection records for each identified sub-assembly.
+// Sends each page individually to Gemini 2.5 Flash — one at a time for maximum
+// accuracy (never parallelize AI calls).
+//
+// Because large PDFs exceed the 300s serverless timeout, Pass 1 is split into
+// batches. Each invocation classifies PAGES_PER_BATCH pages sequentially, saves
+// progress to extractionMetadata, then the extract route self-calls for the next
+// batch. When all pages are classified, finalizePass1 groups them into sections.
 
 import { prisma } from "@/lib/db";
 import { parsePdf } from "@/lib/pdf-utils";
 import { callGemini } from "./provider";
 import { PASS1_CLASSIFICATION_PROMPT } from "./cmm-prompts";
+
+// How many pages to classify per serverless invocation.
+// At ~4s per page, 40 pages ≈ 160s — well within 300s limit.
+const PAGES_PER_BATCH = 40;
 
 // The structure Gemini returns for each page
 interface PageClassification {
@@ -19,6 +27,13 @@ interface PageClassification {
   notes: string | null;
 }
 
+// Stored in extractionMetadata during incremental Pass 1
+interface Pass1Progress {
+  pagesToProcess: number[];
+  classifiedSoFar: { pageIndex: number; result: PageClassification }[];
+  nextBatchStart: number; // index into pagesToProcess array
+}
+
 // A grouped figure (may span multiple pages/sheets)
 interface FigureGroup {
   figureNumber: string;
@@ -29,38 +44,69 @@ interface FigureGroup {
 }
 
 /**
- * Run Pass 1 on a template: classify all pages and create sections.
- * Returns the number of sections created.
+ * Classify the next batch of pages. Returns:
+ * - "continue" if more pages remain (caller should self-call)
+ * - "done" if all pages are classified (sections have been created)
+ * - 0 if no sections were found (extraction should fail)
  */
-export async function runPass1(templateId: string): Promise<number> {
-  // Load the template
+export async function runPass1Batch(templateId: string): Promise<"continue" | "done" | 0> {
   const template = await prisma.inspectionTemplate.findUniqueOrThrow({
     where: { id: templateId },
   });
 
-  // Download the PDF and parse it once (avoids re-parsing per page)
+  // Load or initialize progress
+  let progress: Pass1Progress;
+  const meta = template.extractionMetadata as Record<string, unknown> | null;
+
+  if (meta?.pass1Progress) {
+    // Resume from saved progress
+    progress = meta.pass1Progress as Pass1Progress;
+  } else {
+    // First invocation — download PDF and determine pages
+    const pdfResponse = await fetch(template.sourceFileUrl);
+    if (!pdfResponse.ok) throw new Error("Failed to download PDF");
+    const pdfBytes = Buffer.from(await pdfResponse.arrayBuffer());
+    const pdf = await parsePdf(pdfBytes);
+
+    const pagesToProcess =
+      template.inspectionPages.length > 0
+        ? template.inspectionPages
+        : Array.from({ length: pdf.pageCount }, (_, i) => i);
+
+    progress = {
+      pagesToProcess,
+      classifiedSoFar: [],
+      nextBatchStart: 0,
+    };
+
+    console.log(
+      `[CMM Pass 1] Starting: ${pagesToProcess.length} pages for template ${templateId}`
+    );
+  }
+
+  // Determine this batch's pages
+  const batchPages = progress.pagesToProcess.slice(
+    progress.nextBatchStart,
+    progress.nextBatchStart + PAGES_PER_BATCH
+  );
+
+  if (batchPages.length === 0) {
+    // All pages already classified — finalize
+    return finalizePass1(templateId, progress);
+  }
+
+  console.log(
+    `[CMM Pass 1] Batch: pages ${progress.nextBatchStart + 1}–${progress.nextBatchStart + batchPages.length} of ${progress.pagesToProcess.length}`
+  );
+
+  // Download and parse the PDF for this batch
   const pdfResponse = await fetch(template.sourceFileUrl);
   if (!pdfResponse.ok) throw new Error("Failed to download PDF");
   const pdfBytes = Buffer.from(await pdfResponse.arrayBuffer());
   const pdf = await parsePdf(pdfBytes);
 
-  // Determine which pages to process
-  const pagesToProcess =
-    template.inspectionPages.length > 0
-      ? template.inspectionPages // Already 0-indexed from parsePageRanges
-      : Array.from({ length: pdf.pageCount }, (_, i) => i);
-
-  console.log(
-    `[CMM Pass 1] Processing ${pagesToProcess.length} pages for template ${templateId}`
-  );
-
-  // Classify each page — run in parallel batches of 10 to stay within
-  // the 300s serverless timeout. Sequential processing of 73 pages would
-  // take ~36 minutes; parallel batches of 10 finish in ~3 minutes.
-  const CONCURRENCY = 10;
-  const classifications: { pageIndex: number; result: PageClassification }[] = [];
-
-  async function classifyPage(pageIndex: number): Promise<{ pageIndex: number; result: PageClassification }> {
+  // Classify each page sequentially for maximum accuracy
+  for (const pageIndex of batchPages) {
     try {
       const pageBase64 = await pdf.extractPageAsBase64(pageIndex);
 
@@ -88,17 +134,16 @@ export async function runPass1(templateId: string): Promise<number> {
       });
 
       const parsed = JSON.parse(responseText) as PageClassification;
+      progress.classifiedSoFar.push({ pageIndex, result: parsed });
 
       console.log(
         `[CMM Pass 1] Page ${pageIndex + 1}: ${parsed.pageType}` +
           (parsed.figureNumber ? ` — Fig. ${parsed.figureNumber}` : "") +
           (parsed.subAssemblyTitle ? ` "${parsed.subAssemblyTitle}"` : "")
       );
-
-      return { pageIndex, result: parsed };
     } catch (error) {
       console.error(`[CMM Pass 1] Error classifying page ${pageIndex + 1}:`, error);
-      return {
+      progress.classifiedSoFar.push({
         pageIndex,
         result: {
           pageType: "ignore",
@@ -109,17 +154,46 @@ export async function runPass1(templateId: string): Promise<number> {
           partNumbers: [],
           notes: `Classification failed: ${error instanceof Error ? error.message : "unknown error"}`,
         },
-      };
+      });
     }
   }
 
-  // Process in batches of CONCURRENCY
-  for (let i = 0; i < pagesToProcess.length; i += CONCURRENCY) {
-    const batch = pagesToProcess.slice(i, i + CONCURRENCY);
-    const results = await Promise.all(batch.map(classifyPage));
-    classifications.push(...results);
-    console.log(`[CMM Pass 1] Batch complete: ${Math.min(i + CONCURRENCY, pagesToProcess.length)}/${pagesToProcess.length} pages`);
+  // Update progress pointer
+  progress.nextBatchStart += batchPages.length;
+
+  // Check if all pages are done
+  if (progress.nextBatchStart >= progress.pagesToProcess.length) {
+    // All pages classified — finalize
+    return finalizePass1(templateId, progress);
   }
+
+  // More pages to go — save progress and signal "continue"
+  await prisma.inspectionTemplate.update({
+    where: { id: templateId },
+    data: {
+      extractionMetadata: JSON.parse(JSON.stringify({
+        ...(meta || {}),
+        pass1Progress: progress,
+      })),
+    },
+  });
+
+  console.log(
+    `[CMM Pass 1] Batch saved: ${progress.classifiedSoFar.length}/${progress.pagesToProcess.length} pages classified`
+  );
+
+  return "continue";
+}
+
+/**
+ * All pages classified — group into sections, create DB records, return count.
+ */
+async function finalizePass1(templateId: string, progress: Pass1Progress): Promise<"done" | 0> {
+  const template = await prisma.inspectionTemplate.findUniqueOrThrow({
+    where: { id: templateId },
+  });
+
+  const classifications = progress.classifiedSoFar;
 
   // Group diagram pages by figure number
   const figureGroups = new Map<string, FigureGroup>();
@@ -143,13 +217,11 @@ export async function runPass1(templateId: string): Promise<number> {
         sheetNumber: result.sheetNumber || 1,
         classification: result,
       });
-      // Merge part numbers
       for (const pn of result.partNumbers) {
         if (!group.partNumbers.includes(pn)) {
           group.partNumbers.push(pn);
         }
       }
-      // Use the most descriptive title
       if (
         result.subAssemblyTitle &&
         result.subAssemblyTitle.length > group.title.length
@@ -159,11 +231,9 @@ export async function runPass1(templateId: string): Promise<number> {
     } else if (result.pageType === "inspection_text") {
       textPages.push({ pageIndex, result });
     }
-    // parts_list and ignore pages are skipped from extraction
   }
 
   // Link text pages to their nearest diagram section
-  // (text pages often contain checks, warnings, and tool lists that belong to nearby diagrams)
   for (const textPage of textPages) {
     let closestFigure: FigureGroup | null = null;
     let closestDistance = Infinity;
@@ -193,6 +263,10 @@ export async function runPass1(templateId: string): Promise<number> {
     (a, b) => (a.pages[0]?.pageIndex ?? 0) - (b.pages[0]?.pageIndex ?? 0)
   );
 
+  if (sortedGroups.length === 0) {
+    return 0;
+  }
+
   let sortOrder = 0;
   for (const group of sortedGroups) {
     const pageNumbers = [
@@ -221,10 +295,10 @@ export async function runPass1(templateId: string): Promise<number> {
     });
   }
 
-  // Store the full index in extractionMetadata
+  // Store the full index in extractionMetadata (replace pass1Progress with final data)
   const indexData = {
     completedAt: new Date().toISOString(),
-    totalPagesProcessed: pagesToProcess.length,
+    totalPagesProcessed: progress.pagesToProcess.length,
     diagramPages: classifications.filter((c) => c.result.pageType === "diagram").length,
     textPages: textPages.length,
     ignoredPages: classifications.filter(
@@ -251,8 +325,8 @@ export async function runPass1(templateId: string): Promise<number> {
   });
 
   console.log(
-    `[CMM Pass 1] Complete: ${sortedGroups.length} sections created from ${pagesToProcess.length} pages`
+    `[CMM Pass 1] Complete: ${sortedGroups.length} sections created from ${progress.pagesToProcess.length} pages`
   );
 
-  return sortedGroups.length;
+  return "done";
 }

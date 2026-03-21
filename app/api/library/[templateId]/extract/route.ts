@@ -10,7 +10,7 @@
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { runPass1 } from "@/lib/ai/cmm-extraction-pass1";
+import { runPass1Batch } from "@/lib/ai/cmm-extraction-pass1";
 import { extractSection } from "@/lib/ai/cmm-extraction-pass2";
 
 // Pro plan allows up to 300s per serverless function invocation
@@ -82,17 +82,18 @@ export async function POST(
       template.status === "pending_extraction" ||
       template.status === "extracting_index"
     ) {
-      // Run Pass 1 — classify pages and create sections
-      console.log(`[Extraction] Starting Pass 1 for template ${templateId}`);
+      // Run Pass 1 — classify pages one at a time for maximum accuracy.
+      // Large PDFs are split across multiple invocations via self-calling.
+      console.log(`[Extraction] Starting/continuing Pass 1 for template ${templateId}`);
 
       await prisma.inspectionTemplate.update({
         where: { id: templateId },
         data: { status: "extracting_index" },
       });
 
-      const sectionCount = await runPass1(templateId);
+      const result = await runPass1Batch(templateId);
 
-      if (sectionCount === 0) {
+      if (result === 0) {
         // No sections found — likely not a valid CMM
         await prisma.inspectionTemplate.update({
           where: { id: templateId },
@@ -108,22 +109,21 @@ export async function POST(
         });
       }
 
-      // Release lease and trigger next step
+      // Release lease
       await prisma.inspectionTemplate.update({
         where: { id: templateId },
         data: {
           extractionRunnerToken: null,
           extractionLeaseExpiresAt: null,
-          currentSectionIndex: 0,
+          ...(result === "done" ? { currentSectionIndex: 0 } : {}),
         },
       });
 
-      // Self-call to start Pass 2
+      // Self-call: either to continue Pass 1 or to start Pass 2
       triggerNextStep(templateId);
 
       return NextResponse.json({
-        status: "index_complete",
-        sectionsFound: sectionCount,
+        status: result === "continue" ? "indexing_batch_complete" : "index_complete",
       });
     }
 
