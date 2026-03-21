@@ -209,7 +209,7 @@ function SidebarBody({
           Settings
         </Link>
         <a
-          href="/docs"
+          href={`${process.env.NEXT_PUBLIC_BASE_PATH || ""}/docs`}
           target="_blank"
           rel="noopener noreferrer"
           className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-white/50 transition-colors hover:bg-white/6 hover:text-white/80"
