@@ -393,7 +393,7 @@ export default function LibraryClient({
                           <DropdownMenuContent align="end">
                             {showRetry && (
                               <DropdownMenuItem
-                                onClick={() => handleRetry(template.id)}
+                                onSelect={() => handleRetry(template.id)}
                               >
                                 <RefreshCw className="h-4 w-4" />
                                 Retry Extraction
@@ -402,7 +402,7 @@ export default function LibraryClient({
                             {showDelete && (
                               <DropdownMenuItem
                                 variant="destructive"
-                                onClick={() => setDeleteTarget(template)}
+                                onSelect={() => setDeleteTarget(template)}
                               >
                                 <Trash2 className="h-4 w-4" />
                                 Delete
