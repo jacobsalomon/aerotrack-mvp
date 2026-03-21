@@ -56,7 +56,6 @@ interface ItemListProps {
   items: InspectionItemData[];
   templateId: string;
   sectionId: string;
-  isAdmin: boolean;
   onItemsChanged: () => void;
 }
 
@@ -64,7 +63,6 @@ export default function ItemList({
   items,
   templateId,
   sectionId,
-  isAdmin,
   onItemsChanged,
 }: ItemListProps) {
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -122,17 +120,15 @@ export default function ItemList({
             {lowConfidenceCount} need review
           </span>
         )}
-        {isAdmin && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="ml-auto h-7 text-xs"
-            onClick={() => setShowAddForm(true)}
-          >
-            <Plus className="h-3 w-3 mr-1" />
-            Add Item
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="ml-auto h-7 text-xs"
+          onClick={() => setShowAddForm(true)}
+        >
+          <Plus className="h-3 w-3 mr-1" />
+          Add Item
+        </Button>
       </div>
 
       {/* Add item form */}
@@ -251,24 +247,20 @@ export default function ItemList({
                             {item.confidence < 0.7 && (
                               <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
                             )}
-                            {isAdmin && (
-                              <>
-                                <button
-                                  onClick={() => setEditingItemId(item.id)}
-                                  className="p-1 hover:bg-slate-100 rounded"
-                                  title="Edit"
-                                >
-                                  <Pencil className="h-3.5 w-3.5 text-slate-400" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteItem(item.id)}
-                                  className="p-1 hover:bg-red-50 rounded"
-                                  title="Delete"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5 text-red-400" />
-                                </button>
-                              </>
-                            )}
+                            <button
+                              onClick={() => setEditingItemId(item.id)}
+                              className="p-1 hover:bg-slate-100 rounded"
+                              title="Edit"
+                            >
+                              <Pencil className="h-3.5 w-3.5 text-slate-400" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteItem(item.id)}
+                              className="p-1 hover:bg-red-50 rounded"
+                              title="Delete"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                            </button>
                           </div>
                         </div>
                       </div>

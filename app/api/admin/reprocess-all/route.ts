@@ -14,14 +14,6 @@ export async function POST(request: Request) {
     const authResult = await requireAuth(request);
     if (authResult.error) return authResult.error;
 
-    // Only allow admin users
-    if (authResult.user.role !== "ADMIN") {
-      return NextResponse.json(
-        { success: false, error: "Admin access required" },
-        { status: 403 }
-      );
-    }
-
     const body = await request.json().catch(() => ({}));
     const retranscribe = body.retranscribe ?? false;
 

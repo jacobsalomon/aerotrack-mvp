@@ -42,10 +42,8 @@ interface TemplateData {
 
 export default function ReviewClient({
   template: initialTemplate,
-  isAdmin,
 }: {
   template: TemplateData;
-  isAdmin: boolean;
 }) {
   const router = useRouter();
   const [template, setTemplate] = useState(initialTemplate);
@@ -182,7 +180,7 @@ export default function ReviewClient({
           </div>
         </div>
 
-        {isAdmin && canApprove && (
+        {canApprove && (
           <Button onClick={handleApprove} disabled={approving} className="shrink-0">
             {approving ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -262,7 +260,7 @@ export default function ReviewClient({
                 <h2 className="text-sm font-semibold text-slate-700">
                   {activeSection.title}
                 </h2>
-                {isAdmin && activeSection.status !== "pending" && (
+                {activeSection.status !== "pending" && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -291,7 +289,6 @@ export default function ReviewClient({
                 items={activeSection.items}
                 templateId={template.id}
                 sectionId={activeSection.id}
-                isAdmin={isAdmin}
                 onItemsChanged={refreshData}
               />
             </div>
