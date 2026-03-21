@@ -444,6 +444,9 @@ model CaptureSession {
   signedOffAt                 DateTime?                       // When the inspection was signed off
   signOffNotes                String?                         // Optional notes from sign-off
 
+  // Layer 3: Post-session reconciliation results (matched/unmatched/conflicts summary)
+  reconciliationSummary       Json?
+
   // Relationships
   evidence        CaptureEvidence[]
   documents       CaptureDocument[]

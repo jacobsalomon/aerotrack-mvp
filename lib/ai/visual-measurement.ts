@@ -1,6 +1,9 @@
 // Extract measurement readings from video frames using Gemini
 // Analyzes video chunks for gauge readings, instrument displays,
 // torque wrench positions, part numbers, and other visual measurements.
+//
+// Layer 3: Accepts optional InspectionTemplate context so the AI can match
+// visible gauge readings to specific CMM inspection items.
 
 import { VIDEO_MODELS } from "./models";
 import { callWithFallback, callGemini } from "./provider";
@@ -13,6 +16,10 @@ export interface VisualMeasurement {
   confidence: number;
   rawExcerpt: string; // Description of what was seen
   timestampInChunk?: number; // Seconds into the video chunk
+  // Layer 3: Semantic identifiers for matching to InspectionTemplate items
+  calloutNumber?: string;
+  sectionName?: string;
+  matchConfidence?: number;
 }
 
 const MEASUREMENT_PROMPT = `Analyze this aerospace maintenance video for measurement readings.
@@ -37,10 +44,29 @@ Return a JSON object with a "measurements" array. Each needs:
 
 Return {"measurements": []} if no readable measurements found.`;
 
-// Extract measurements from a video chunk using Gemini's native video understanding
+// Layer 3: Additional prompt when InspectionTemplate context is provided
+const INSPECTION_TEMPLATE_SUFFIX = `
+
+CMM INSPECTION TEMPLATE MATCHING: The template items listed below show what measurements
+this inspection expects. For each measurement you extract from the video, also return:
+- calloutNumber: the template callout number if you can match the reading to a specific item
+- sectionName: the section name from the template
+- matchConfidence: 0-1 how confident you are in the template match
+Do NOT return database IDs — only human-readable identifiers from the template.
+When the match is ambiguous, set calloutNumber and sectionName to null.`;
+
+// Extract measurements from a video chunk using Gemini's native video understanding.
+// Layer 3: Pass optional templateContext (from getExtractionContext) to improve matching.
 export async function extractMeasurementsFromVideo(
-  videoUrl: string
+  videoUrl: string,
+  templateContext?: string
 ): Promise<VisualMeasurement[]> {
+  // Build the prompt, optionally appending template context
+  let prompt = MEASUREMENT_PROMPT;
+  if (templateContext) {
+    prompt += INSPECTION_TEMPLATE_SUFFIX + "\n\n" + templateContext;
+  }
+
   const result = await callWithFallback({
     models: VIDEO_MODELS,
     timeoutMs: 60000, // Video analysis can be slow
@@ -51,7 +77,7 @@ export async function extractMeasurementsFromVideo(
         contents: [
           {
             parts: [
-              { text: MEASUREMENT_PROMPT },
+              { text: prompt },
               {
                 fileData: {
                   mimeType: "video/mp4",
