@@ -161,15 +161,28 @@ export async function callWithFallback<T>(opts: {
 
 // ── Provider-specific API helpers ───────────────────────────────────
 
-// Call Google Gemini API (for video analysis, annotations, OCR)
+// Call Google Gemini API (for video analysis, annotations, OCR, extraction)
 export async function callGemini(opts: {
   model: string;
   contents: unknown[];
   generationConfig?: Record<string, unknown>;
+  systemInstruction?: { parts: { text: string }[] };
   timeoutMs?: number;
 }): Promise<string> {
   const apiKey = getApiKey("google");
   const base = getApiBase("google");
+
+  // Build request body — include systemInstruction if provided
+  const body: Record<string, unknown> = {
+    contents: opts.contents,
+    generationConfig: opts.generationConfig || {
+      temperature: 0.1,
+      responseMimeType: "application/json",
+    },
+  };
+  if (opts.systemInstruction) {
+    body.system_instruction = opts.systemInstruction;
+  }
 
   const response = await fetch(
     `${base}/v1beta/models/${opts.model}:generateContent?key=${apiKey}`,
@@ -177,13 +190,7 @@ export async function callGemini(opts: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       signal: AbortSignal.timeout(opts.timeoutMs || 60000),
-      body: JSON.stringify({
-        contents: opts.contents,
-        generationConfig: opts.generationConfig || {
-          temperature: 0.1,
-          responseMimeType: "application/json",
-        },
-      }),
+      body: JSON.stringify(body),
     }
   );
 

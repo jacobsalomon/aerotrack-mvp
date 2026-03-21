@@ -1,13 +1,18 @@
 // Pass 2: Deep extraction with dual-model consensus for 99%+ accuracy.
-// Sends each page individually to Gemini 2.5 Pro AND Claude Sonnet 4.6 in parallel,
-// then reconciles their outputs field-by-field. Items both models agree on get
-// confidence 1.0. Disagreements get flagged for human review.
+// Sends each page individually to Gemini 2.5 Pro AND Claude Sonnet in parallel,
+// then reconciles their outputs field-by-field. Uses responseSchema for Gemini
+// and system prompts for Claude to maximize extraction completeness.
 
 import { prisma } from "@/lib/db";
 import { extractSinglePageAsBase64 } from "@/lib/pdf-utils";
 import { callGemini } from "./provider";
 import { getApiKey, getApiBase } from "./models";
-import { PASS2_EXTRACTION_PROMPT, PASS2_CLAUDE_SUFFIX } from "./cmm-prompts";
+import {
+  PASS2_SYSTEM_INSTRUCTION,
+  PASS2_EXTRACTION_PROMPT,
+  PASS2_CLAUDE_ADDITIONS,
+  CMM_EXTRACTION_SCHEMA,
+} from "./cmm-prompts";
 import {
   validateExtractionResults,
   reconcileExtractions,
@@ -16,8 +21,9 @@ import {
   type DisagreementRecord,
 } from "./cmm-validation";
 
-// The JSON structure both models return
+// The JSON structure both models return (now includes pageAnalysis)
 interface ExtractionResponse {
+  pageAnalysis?: string;
   items: ExtractedItem[];
   sectionConfidence: number;
   extractionNotes: string;
@@ -35,13 +41,16 @@ interface PageExtractionResult {
 
 // ── Provider-specific single-page extraction helpers ──────────────────
 
-// Call Gemini 2.5 Pro with a single PDF page
+// Call Gemini 2.5 Pro with responseSchema for guaranteed structure
 async function extractWithGemini(
   pageBase64: string,
   prompt: string
 ): Promise<ExtractedItem[]> {
   const responseText = await callGemini({
     model: "gemini-2.5-pro",
+    systemInstruction: {
+      parts: [{ text: PASS2_SYSTEM_INSTRUCTION }],
+    },
     contents: [
       {
         role: "user",
@@ -51,7 +60,11 @@ async function extractWithGemini(
         ],
       },
     ],
-    generationConfig: { temperature: 0.1, responseMimeType: "application/json" },
+    generationConfig: {
+      temperature: 0,
+      responseMimeType: "application/json",
+      responseSchema: CMM_EXTRACTION_SCHEMA,
+    },
     timeoutMs: 240000, // 4 min — Gemini Pro can be slow on dense diagrams
   });
 
@@ -59,10 +72,13 @@ async function extractWithGemini(
   if (!parsed.items || !Array.isArray(parsed.items)) {
     throw new Error("Gemini response missing items array");
   }
+  if (parsed.pageAnalysis) {
+    console.log(`[Gemini] Page analysis: ${parsed.pageAnalysis.slice(0, 200)}...`);
+  }
   return parsed.items;
 }
 
-// Call Claude Sonnet 4.6 with a single PDF page
+// Call Claude Sonnet with system prompt for better extraction
 async function extractWithClaude(
   pageBase64: string,
   prompt: string
@@ -80,7 +96,8 @@ async function extractWithClaude(
     signal: AbortSignal.timeout(240000), // 4 min — match Gemini timeout
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 8192,
+      max_tokens: 16384, // Increased from 8192 for dense pages with pageAnalysis
+      system: PASS2_SYSTEM_INSTRUCTION, // Role + extraction authority in system prompt
       messages: [
         {
           role: "user",
@@ -93,11 +110,11 @@ async function extractWithClaude(
                 data: pageBase64,
               },
             },
-            { type: "text", text: prompt + PASS2_CLAUDE_SUFFIX },
+            { type: "text", text: prompt + PASS2_CLAUDE_ADDITIONS },
           ],
         },
       ],
-      temperature: 0.1,
+      temperature: 0,
     }),
   });
 
@@ -109,12 +126,15 @@ async function extractWithClaude(
   const data = await response.json();
   const rawText = data.content?.[0]?.text || "";
 
-  // Claude doesn't support responseMimeType, so strip markdown fences if present
+  // Strip markdown fences if present (Claude may still add them)
   const jsonText = rawText.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
 
   const parsed = JSON.parse(jsonText) as ExtractionResponse;
   if (!parsed.items || !Array.isArray(parsed.items)) {
     throw new Error("Claude response missing items array");
+  }
+  if (parsed.pageAnalysis) {
+    console.log(`[Claude] Page analysis: ${parsed.pageAnalysis.slice(0, 200)}...`);
   }
   return parsed.items;
 }
@@ -281,12 +301,12 @@ export async function extractSection(
         itemCount: validatedItems.length,
         extractionConfidence: sectionConfidence,
         rawExtractionResponse: JSON.parse(JSON.stringify({
-          method: "dual-model-consensus",
+          method: "dual-model-consensus-v2",
           pagesProcessed: section.pageNumbers.length,
           consensusPages: bothSucceeded,
           averageAgreementRate: avgAgreement,
           totalDisagreements: allDisagreements.length,
-          disagreements: allDisagreements.slice(0, 20), // Keep first 20 for review
+          disagreements: allDisagreements.slice(0, 20),
           pageResults: allPageResults.map((r) => ({
             page: r.pageIndex + 1,
             items: r.items.length,
