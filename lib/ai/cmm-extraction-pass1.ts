@@ -13,8 +13,10 @@ import { callGemini } from "./provider";
 import { PASS1_CLASSIFICATION_PROMPT } from "./cmm-prompts";
 
 // How many pages to classify per serverless invocation.
-// At ~4s per page, 40 pages ≈ 160s — well within 300s limit.
-const PAGES_PER_BATCH = 40;
+// Gemini 2.5 Flash takes ~5-10s per page for classification.
+// 15 pages × 10s = 150s + PDF download/parse overhead ≈ 180s.
+// Well within the 300s serverless limit with safety margin.
+const PAGES_PER_BATCH = 15;
 
 // The structure Gemini returns for each page
 interface PageClassification {
