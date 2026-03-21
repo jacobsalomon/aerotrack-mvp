@@ -14,9 +14,7 @@ import {
   Plus,
   RefreshCw,
   AlertTriangle,
-  Search,
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { NewJobDialog } from "./new-job-dialog";
 
 // ─── Status mapping (mechanic-friendly labels) ───────────────────────
