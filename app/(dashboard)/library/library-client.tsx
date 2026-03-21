@@ -6,14 +6,34 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   BookOpen,
   Clock,
   FileUp,
   Hash,
   Layers,
   Loader2,
+  MoreVertical,
+  RefreshCw,
+  Trash2,
   Upload,
 } from "lucide-react";
+import { toast } from "sonner";
 import UploadModal from "./upload-modal";
 
 interface TemplateInfo {
@@ -93,6 +113,17 @@ function statusBadge(
   }
 }
 
+// Statuses where "Retry Extraction" should be visible
+const RETRYABLE_STATUSES = [
+  "pending_extraction",
+  "extracting_index",
+  "extracting_details",
+  "extraction_failed",
+];
+
+// The basePath for multi-zone fetch URLs
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+
 export default function LibraryClient({
   templates: initialTemplates,
 }: {
@@ -100,6 +131,9 @@ export default function LibraryClient({
 }) {
   const [showUpload, setShowUpload] = useState(false);
   const [templates, setTemplates] = useState(initialTemplates);
+
+  // State for the delete confirmation dialog
+  const [deleteTarget, setDeleteTarget] = useState<TemplateInfo | null>(null);
 
   // Keep local state in sync when server data refreshes (e.g. after upload)
   useEffect(() => {
@@ -162,6 +196,52 @@ export default function LibraryClient({
     return () => clearInterval(interval);
   }, [processingTemplates.length, pollProgress]);
 
+  // Retry extraction — calls POST /api/library/{id}/retry
+  async function handleRetry(templateId: string) {
+    try {
+      const res = await fetch(`${basePath}/api/library/${templateId}/retry`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Retry failed");
+        return;
+      }
+      toast.success("Extraction restarted");
+      // Update local state so the card shows processing status immediately
+      setTemplates((prev) =>
+        prev.map((t) =>
+          t.id === templateId
+            ? { ...t, status: "pending_extraction", currentSectionIndex: 0, sectionCount: 0 }
+            : t
+        )
+      );
+    } catch {
+      toast.error("Failed to retry extraction");
+    }
+  }
+
+  // Delete template — calls DELETE /api/library/{id}
+  async function handleDelete(templateId: string) {
+    try {
+      const res = await fetch(`${basePath}/api/library/${templateId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Delete failed");
+        return;
+      }
+      toast.success("Template deleted");
+      // Remove from local state so it disappears immediately
+      setTemplates((prev) => prev.filter((t) => t.id !== templateId));
+    } catch {
+      toast.error("Failed to delete template");
+    } finally {
+      setDeleteTarget(null);
+    }
+  }
+
   // Split into active/processing and archived
   const activeTemplates = templates.filter((t) => t.status !== "archived");
   const archivedTemplates = templates.filter((t) => t.status === "archived");
@@ -216,6 +296,11 @@ export default function LibraryClient({
               "extracting_details",
             ].includes(template.status);
             const tp = progress[template.id];
+
+            // Should we show the three-dot menu? (not on active templates)
+            const showRetry = RETRYABLE_STATUSES.includes(template.status);
+            const showDelete = template.status !== "active";
+            const showMenu = showRetry || showDelete;
 
             const cardContent = (
               <Card
@@ -290,6 +375,44 @@ export default function LibraryClient({
                         <span>by {template.createdBy}</span>
                       </div>
                     </div>
+
+                    {/* Three-dot dropdown menu */}
+                    {showMenu && (
+                      <div
+                        onClick={(e) => e.preventDefault()}
+                        onClickCapture={(e) => e.stopPropagation()}
+                      >
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              className="shrink-0 p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+                              aria-label="Template actions"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {showRetry && (
+                              <DropdownMenuItem
+                                onClick={() => handleRetry(template.id)}
+                              >
+                                <RefreshCw className="h-4 w-4" />
+                                Retry Extraction
+                              </DropdownMenuItem>
+                            )}
+                            {showDelete && (
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onClick={() => setDeleteTarget(template)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Delete
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -366,6 +489,35 @@ export default function LibraryClient({
           }}
         />
       )}
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete template?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete &ldquo;{deleteTarget?.title}&rdquo;
+              and all extracted sections and items. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => {
+                if (deleteTarget) handleDelete(deleteTarget.id);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

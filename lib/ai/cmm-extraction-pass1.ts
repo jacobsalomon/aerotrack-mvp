@@ -54,15 +54,16 @@ export async function runPass1(templateId: string): Promise<number> {
     `[CMM Pass 1] Processing ${pagesToProcess.length} pages for template ${templateId}`
   );
 
-  // Classify each page
+  // Classify each page — run in parallel batches of 10 to stay within
+  // the 300s serverless timeout. Sequential processing of 73 pages would
+  // take ~36 minutes; parallel batches of 10 finish in ~3 minutes.
+  const CONCURRENCY = 10;
   const classifications: { pageIndex: number; result: PageClassification }[] = [];
 
-  for (const pageIndex of pagesToProcess) {
+  async function classifyPage(pageIndex: number): Promise<{ pageIndex: number; result: PageClassification }> {
     try {
-      // Extract single page from the pre-parsed PDF (no re-parsing)
       const pageBase64 = await pdf.extractPageAsBase64(pageIndex);
 
-      // Send to Gemini for classification
       const responseText = await callGemini({
         model: "gemini-2.5-flash",
         contents: [
@@ -87,17 +88,17 @@ export async function runPass1(templateId: string): Promise<number> {
       });
 
       const parsed = JSON.parse(responseText) as PageClassification;
-      classifications.push({ pageIndex, result: parsed });
 
       console.log(
         `[CMM Pass 1] Page ${pageIndex + 1}: ${parsed.pageType}` +
           (parsed.figureNumber ? ` — Fig. ${parsed.figureNumber}` : "") +
           (parsed.subAssemblyTitle ? ` "${parsed.subAssemblyTitle}"` : "")
       );
+
+      return { pageIndex, result: parsed };
     } catch (error) {
       console.error(`[CMM Pass 1] Error classifying page ${pageIndex + 1}:`, error);
-      // Continue with remaining pages — don't let one failure stop the whole index
-      classifications.push({
+      return {
         pageIndex,
         result: {
           pageType: "ignore",
@@ -108,8 +109,16 @@ export async function runPass1(templateId: string): Promise<number> {
           partNumbers: [],
           notes: `Classification failed: ${error instanceof Error ? error.message : "unknown error"}`,
         },
-      });
+      };
     }
+  }
+
+  // Process in batches of CONCURRENCY
+  for (let i = 0; i < pagesToProcess.length; i += CONCURRENCY) {
+    const batch = pagesToProcess.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(batch.map(classifyPage));
+    classifications.push(...results);
+    console.log(`[CMM Pass 1] Batch complete: ${Math.min(i + CONCURRENCY, pagesToProcess.length)}/${pagesToProcess.length} pages`);
   }
 
   // Group diagram pages by figure number
