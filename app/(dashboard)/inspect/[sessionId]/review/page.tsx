@@ -75,11 +75,14 @@ export default async function ReviewPage({ params }: PageProps) {
     where: { captureSessionId: sessionId, inspectionItemId: null },
   });
 
+  const isReconciling = !session.reconciliationSummary && !session.signedOffAt;
+
   return (
     <ReviewScreen
       session={JSON.parse(JSON.stringify(session))}
       component={component ? JSON.parse(JSON.stringify(component)) : null}
       unassignedCount={unassignedCount}
+      isReconciling={isReconciling}
     />
   );
 }

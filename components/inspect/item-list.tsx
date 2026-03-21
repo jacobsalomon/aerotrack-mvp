@@ -4,7 +4,7 @@
 // Shows items with progressive disclosure: collapsed → status dot + callout + name
 // Expanded → full spec, value entry, pass/fail buttons, notes
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { apiUrl } from "@/lib/api-url";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronRight, Image as ImageIcon, SkipForward } from "lucide-react";
@@ -51,8 +51,11 @@ interface Props {
   sessionId: string;
   sectionId: string;
   isReadOnly: boolean;
+  isOffline?: boolean;
   onItemCompleted: (itemId: string, status: string, result: string | null, measurement: ProgressRecord["measurement"]) => void;
   referenceImageUrls: string[];
+  targetItemId?: string | null;
+  onTargetItemHandled?: () => void;
 }
 
 export default function ItemList({
@@ -61,14 +64,29 @@ export default function ItemList({
   sessionId,
   sectionId,
   isReadOnly,
+  isOffline,
   onItemCompleted,
   referenceImageUrls,
+  targetItemId,
+  onTargetItemHandled,
 }: Props) {
+  const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [diagramOpen, setDiagramOpen] = useState(false);
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [keypadItemId, setKeypadItemId] = useState<string | null>(null);
   const [keypadValue, setKeypadValue] = useState("");
+
+  useEffect(() => {
+    if (!targetItemId) return;
+    setExpandedId(targetItemId);
+    const timer = setTimeout(() => {
+      const el = itemRefs.current.get(targetItemId);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      onTargetItemHandled?.();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [targetItemId, onTargetItemHandled]);
 
   // Pass/fail items can be completed with one tap
   const isPassFailType = (type: string) =>
@@ -185,7 +203,7 @@ export default function ItemList({
           const isPassFail = isPassFailType(item.itemType);
 
           return (
-            <div key={item.id} className="bg-white/5 rounded-lg border border-white/10">
+            <div key={item.id} ref={(el) => { if (el) itemRefs.current.set(item.id, el); }} className="bg-white/5 rounded-lg border border-white/10">
               {/* Collapsed row — always visible */}
               <button
                 onClick={() => setExpandedId(isExpanded ? null : item.id)}
@@ -217,7 +235,7 @@ export default function ItemList({
                 )}
 
                 {/* Pass/fail inline buttons (no expansion needed) */}
-                {isPassFail && status === "pending" && !isReadOnly ? (
+                {isPassFail && status === "pending" && !isReadOnly && !isOffline ? (
                   <div className="flex gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                     <Button
                       size="sm"
@@ -312,7 +330,7 @@ export default function ItemList({
                   )}
 
                   {/* Manual entry — opens numeric keypad */}
-                  {status === "pending" && !isPassFail && !isReadOnly && (
+                  {status === "pending" && !isPassFail && !isReadOnly && !isOffline && (
                     <div className="flex gap-2">
                       <Button
                         className="flex-1 h-14 text-lg bg-blue-600 hover:bg-blue-700"
