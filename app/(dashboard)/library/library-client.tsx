@@ -55,6 +55,8 @@ interface ExtractionProgress {
   totalSections: number;
   completedSections: number;
   totalItems: number;
+  pagesClassified: number;
+  pagesToClassify: number;
   currentSection: { title: string; figureNumber: string } | null;
 }
 
@@ -67,13 +69,18 @@ function statusBadge(
 ) {
   switch (status) {
     case "pending_extraction":
-    case "extracting_index":
+    case "extracting_index": {
+      const classified = progress?.pagesClassified ?? 0;
+      const total = progress?.pagesToClassify ?? 0;
       return (
         <Badge className="bg-blue-100 text-blue-700 border-blue-200">
           <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-          Indexing pages...
+          {classified > 0
+            ? `Classifying pages ${classified}/${total}`
+            : "Starting extraction..."}
         </Badge>
       );
+    }
     case "extracting_details": {
       const completed = progress?.completedSections ?? currentSectionIndex;
       const total = progress?.totalSections ?? sectionCount;
