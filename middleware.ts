@@ -78,6 +78,6 @@ export default async function middleware(request: NextRequest) {
 // E.g., /aerovision/demo becomes /demo in the matcher.
 export const config = {
   matcher: [
-    "/((?!login|register|forgot-password|reset-password|api/auth|api/mobile|api/capture|api/clear-session|api/health|api/library/.*/extract|_next/static|_next/image|favicon.ico).*)",
+    "/((?!login|register|forgot-password|reset-password|api/auth|api/mobile|api/capture|api/clear-session|api/health|api/library/.*/extract|api/library/retry-stuck|_next/static|_next/image|favicon.ico).*)",
   ],
 };
