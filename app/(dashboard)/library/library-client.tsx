@@ -78,10 +78,8 @@ function statusBadge(status: string, currentSectionIndex: number, sectionCount: 
 
 export default function LibraryClient({
   templates,
-  isAdmin,
 }: {
   templates: TemplateInfo[];
-  isAdmin: boolean;
 }) {
   const [showUpload, setShowUpload] = useState(false);
 
@@ -101,12 +99,10 @@ export default function LibraryClient({
             from your CMM diagrams.
           </p>
         </div>
-        {isAdmin && (
-          <Button onClick={() => setShowUpload(true)} className="shrink-0 ml-4">
-            <Upload className="h-4 w-4 mr-2" />
-            Upload CMM
-          </Button>
-        )}
+        <Button onClick={() => setShowUpload(true)} className="shrink-0 ml-4">
+          <Upload className="h-4 w-4 mr-2" />
+          Upload CMM
+        </Button>
       </div>
 
       {/* Template cards */}
@@ -120,15 +116,13 @@ export default function LibraryClient({
             <p className="text-sm text-slate-500 mb-4">
               Upload your first Component Maintenance Manual to get started.
             </p>
-            {isAdmin && (
-              <Button
-                variant="outline"
-                onClick={() => setShowUpload(true)}
-              >
-                <FileUp className="h-4 w-4 mr-2" />
-                Upload your first CMM
-              </Button>
-            )}
+            <Button
+              variant="outline"
+              onClick={() => setShowUpload(true)}
+            >
+              <FileUp className="h-4 w-4 mr-2" />
+              Upload your first CMM
+            </Button>
           </CardContent>
         </Card>
       ) : (

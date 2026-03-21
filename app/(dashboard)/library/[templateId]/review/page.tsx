@@ -34,13 +34,6 @@ export default async function ReviewPage({
     redirect("/library");
   }
 
-  // Check if user is admin
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true },
-  });
-  const isAdmin = user?.role === "ADMIN";
-
   return (
     <ReviewClient
       template={{
@@ -83,7 +76,6 @@ export default async function ReviewPage({
           })),
         })),
       }}
-      isAdmin={isAdmin}
     />
   );
 }

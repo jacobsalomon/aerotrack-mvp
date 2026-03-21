@@ -23,14 +23,6 @@ export default async function LibraryPage() {
     },
   });
 
-  // Check if user is admin (can upload/delete)
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true },
-  });
-
-  const isAdmin = user?.role === "ADMIN";
-
   return (
     <LibraryClient
       templates={templates.map((t) => ({
@@ -45,7 +37,6 @@ export default async function LibraryPage() {
         createdBy: t.createdBy.name ?? t.createdBy.email ?? "Unknown",
         currentSectionIndex: t.currentSectionIndex,
       }))}
-      isAdmin={isAdmin}
     />
   );
 }
