@@ -10,19 +10,64 @@ import { getReferenceDataForPart, formatReferenceDataForPrompt } from "@/lib/ref
 import { prisma } from "@/lib/db";
 import type { SpecItem } from "@/lib/measurement-ledger";
 
-// ── Document context cache (per session, avoids repeated DB queries) ──
+// ── Document context cache (per session + section, avoids repeated DB queries) ──
 const contextCache = new Map<string, { context: string; loadedAt: number }>();
 const CONTEXT_CACHE_TTL = 60_000; // 60 seconds
 
-// Load document context for a session — includes target form fields,
-// measurement specs, and reference data when available.
-// This tells the extraction AI what measurements to expect.
-export async function getExtractionContext(sessionId: string): Promise<string> {
-  // Check cache first
-  const cached = contextCache.get(sessionId);
-  if (cached && Date.now() - cached.loadedAt < CONTEXT_CACHE_TTL) {
-    return cached.context;
+// Item types that have numeric specs worth matching against
+const NUMERIC_ITEM_TYPES = new Set([
+  "torque_spec", "dimensional_spec", "dimension_check",
+  "clearance", "runout", "endplay", "backlash", "pressure_check",
+]);
+
+// Format a single InspectionItem as a context line for the AI prompt
+function formatInspectionItemLine(item: {
+  parameterName: string;
+  itemCallout: string | null;
+  itemType: string | null;
+  specValueLow: number | null;
+  specValueHigh: number | null;
+  specUnit: string | null;
+}): string {
+  let line = `- ${item.parameterName}`;
+  if (item.itemCallout) line += ` (callout #${item.itemCallout})`;
+  line += `: `;
+  if (item.specValueLow != null && item.specValueHigh != null) {
+    line += `${item.specValueLow}-${item.specValueHigh} ${item.specUnit || ""}`;
+  } else if (item.specValueLow != null) {
+    line += `>= ${item.specValueLow} ${item.specUnit || ""}`;
+  } else if (item.specValueHigh != null) {
+    line += `<= ${item.specValueHigh} ${item.specUnit || ""}`;
+  } else {
+    line += `(no spec range)`;
   }
+  if (item.itemType) line += ` [${item.itemType}]`;
+  return line;
+}
+
+// Invalidate the context cache for a session (call when activeInspectionSectionId changes)
+export function invalidateExtractionContextCache(sessionId: string): void {
+  for (const key of contextCache.keys()) {
+    if (key.startsWith(sessionId)) {
+      contextCache.delete(key);
+    }
+  }
+}
+
+// Load document context for a session — includes target form fields,
+// measurement specs, reference data, and InspectionTemplate items when available.
+// This tells the extraction AI what measurements to expect.
+//
+// Options:
+//   fullTemplate: true — load ALL sections/items (for reconciliation pass, ~15K tokens)
+//   fullTemplate: false/default — load active section only + one-line summaries of other sections (~3K tokens)
+export async function getExtractionContext(
+  sessionId: string,
+  options?: { fullTemplate?: boolean }
+): Promise<string> {
+  // Cache key includes section ID so switching sections invalidates automatically
+  const fullTemplate = options?.fullTemplate ?? false;
+  const cacheKeySuffix = fullTemplate ? ":full" : "";
 
   const session = await prisma.captureSession.findUnique({
     where: { id: sessionId },
@@ -32,10 +77,19 @@ export async function getExtractionContext(sessionId: string): Promise<string> {
       componentId: true,
       sessionType: true,
       activeInspectionSectionId: true,
+      inspectionTemplateId: true,
     },
   });
 
   if (!session) return "";
+
+  // Build cache key with section context so section changes auto-invalidate
+  const sectionPart = session.activeInspectionSectionId || "none";
+  const cacheKey = `${sessionId}:${sectionPart}${cacheKeySuffix}`;
+  const cached = contextCache.get(cacheKey);
+  if (cached && Date.now() - cached.loadedAt < CONTEXT_CACHE_TTL) {
+    return cached.context;
+  }
 
   const sections: string[] = [];
 
@@ -103,42 +157,94 @@ export async function getExtractionContext(sessionId: string): Promise<string> {
     sections.push(`COMPONENT: ${component.description} (P/N: ${component.partNumber})`);
   }
 
-  // Layer 2: If this is an inspection session, include the active section's pending items
-  // This gives the AI much better context — it knows exactly what specs to listen for
-  if (session.sessionType === "inspection" && session.activeInspectionSectionId) {
-    const pendingItems = await prisma.inspectionItem.findMany({
-      where: {
-        sectionId: session.activeInspectionSectionId,
-        inspectionProgress: {
-          none: {
-            captureSessionId: sessionId,
-            status: { in: ["done", "problem"] },
+  // Layer 3: Load InspectionTemplate items for inspection sessions
+  // Provides the AI with exact specs to match measurements against
+  if (session.sessionType === "inspection" && session.inspectionTemplateId) {
+    if (fullTemplate) {
+      // RECONCILIATION MODE: Load ALL sections and their numeric items
+      // Token budget: ~9,000-15,000 tokens for a 200-400 item template
+      const templateSections = await prisma.inspectionSection.findMany({
+        where: { templateId: session.inspectionTemplateId },
+        orderBy: { sortOrder: "asc" },
+        include: {
+          items: {
+            where: { itemType: { in: [...NUMERIC_ITEM_TYPES] } },
+            orderBy: { sortOrder: "asc" },
           },
         },
-      },
-      orderBy: { sortOrder: "asc" },
-      take: 50,
-    });
+      });
 
-    if (pendingItems.length > 0) {
-      sections.push("\nACTIVE INSPECTION ITEMS (listen for these specific measurements):");
-      for (const item of pendingItems) {
-        let line = `- ${item.parameterName}`;
-        if (item.itemCallout) line += ` (callout #${item.itemCallout})`;
-        if (item.specValueLow != null && item.specValueHigh != null) {
-          line += `: ${item.specValueLow}-${item.specValueHigh} ${item.specUnit || ""}`;
+      sections.push("\nINSPECTION TEMPLATE (all sections — reconciliation pass):");
+      for (const section of templateSections) {
+        if (section.items.length === 0) continue;
+        sections.push(`\n## Section: ${section.title} (Fig ${section.figureNumber || "N/A"})`);
+        for (const item of section.items) {
+          sections.push(formatInspectionItemLine(item));
         }
-        if (item.itemType) line += ` [${item.itemType}]`;
-        sections.push(line);
       }
-      sections.push("\nIf the technician calls out an item number (e.g., 'item 290'), include the callout number in your extraction output.");
+    } else if (session.activeInspectionSectionId) {
+      // REAL-TIME MODE: Load active section items + one-line summaries of other sections
+      // Token budget: ~1,500-3,000 tokens
+
+      // Active section: full item details (only numeric types)
+      const activeItems = await prisma.inspectionItem.findMany({
+        where: {
+          sectionId: session.activeInspectionSectionId,
+          itemType: { in: [...NUMERIC_ITEM_TYPES] },
+        },
+        orderBy: { sortOrder: "asc" },
+      });
+
+      if (activeItems.length > 0) {
+        // Get the section name for context
+        const activeSection = await prisma.inspectionSection.findUnique({
+          where: { id: session.activeInspectionSectionId },
+          select: { title: true, figureNumber: true },
+        });
+        const sectionLabel = activeSection
+          ? `${activeSection.title} (Fig ${activeSection.figureNumber || "N/A"})`
+          : "Current Section";
+
+        sections.push(`\nACTIVE INSPECTION SECTION: ${sectionLabel}`);
+        sections.push("Items to match measurements against:");
+        for (const item of activeItems) {
+          sections.push(formatInspectionItemLine(item));
+        }
+      }
+
+      // Other sections: one-line summary each (section name + item count)
+      const otherSections = await prisma.inspectionSection.findMany({
+        where: {
+          templateId: session.inspectionTemplateId,
+          id: { not: session.activeInspectionSectionId },
+        },
+        orderBy: { sortOrder: "asc" },
+        select: { title: true, figureNumber: true, itemCount: true },
+      });
+
+      if (otherSections.length > 0) {
+        sections.push("\nOther sections in this template:");
+        for (const s of otherSections) {
+          sections.push(`- ${s.title} (Fig ${s.figureNumber || "N/A"}) — ${s.itemCount} items`);
+        }
+      }
     }
+
+    // Add inspection-specific instructions for the AI
+    sections.push(
+      "\nINSPECTION MATCHING INSTRUCTIONS:" +
+      "\n- When the technician says a callout number (e.g., 'item 290', 'three-ten'), return it as calloutNumber" +
+      "\n- When you can match a measurement to a specific item above, return the sectionName and calloutNumber" +
+      "\n- When the match is ambiguous (multiple items could fit), set calloutNumber and sectionName to null" +
+      "\n- Return matchConfidence (0-1) indicating how confident you are in the template item match" +
+      "\n- Do NOT return database IDs — only human-readable identifiers from the template"
+    );
   }
 
   const context = sections.join("\n\n");
 
   // Cache the result
-  contextCache.set(sessionId, { context, loadedAt: Date.now() });
+  contextCache.set(cacheKey, { context, loadedAt: Date.now() });
 
   return context;
 }
@@ -151,6 +257,11 @@ export interface ExtractedMeasurement {
   confidence: number;
   rawExcerpt: string;
   timestampInChunk?: number; // Seconds into this audio chunk
+  // Layer 3: Semantic identifiers for matching to InspectionTemplate items
+  // The AI returns human-readable callout/section names — code resolves to DB records
+  calloutNumber?: string;     // e.g., "290" — from the CMM template
+  sectionName?: string;       // e.g., "Carrier Shaft Assembly" — from the template
+  matchConfidence?: number;   // 0-1, how confident the AI is in the template match
 }
 
 const SYSTEM_PROMPT = `You extract measurement data from aerospace maintenance audio transcripts.
@@ -183,6 +294,21 @@ form fields that this inspection session is expected to produce. Use this to:
 3. Still capture measurements NOT in the expected list — just prefer expected names when they fit
 4. If you cannot determine a specific parameter name, use a descriptive name rather than
    "Unspecified dimension" — describe what the speaker was measuring based on context
+
+CMM INSPECTION TEMPLATE MATCHING: When "ACTIVE INSPECTION SECTION" or "INSPECTION TEMPLATE"
+context is provided, each item has a callout number (e.g., #290), parameter name, and spec range.
+For each measurement you extract, also return these fields:
+- calloutNumber: the template callout number if the technician says it (e.g., "item 290" → "290",
+  "three-ten" → "310"). Prefer exact callout matches. Set to null if no callout number was spoken.
+- sectionName: the section name from the template that best matches this measurement. Set to null
+  if ambiguous or unknown.
+- matchConfidence: 0-1 how confident you are that this measurement maps to a specific template item.
+  Set to 1.0 for exact callout matches, 0.7-0.9 for strong parameter name matches,
+  0.3-0.6 for weak/partial matches, and 0.0 if you cannot match it to any template item.
+IMPORTANT: Do NOT return database IDs. Only return human-readable identifiers (callout numbers,
+section names, parameter names) exactly as they appear in the template context above.
+When the match is ambiguous (multiple template items could match), set calloutNumber and
+sectionName to null — the assignment engine will handle it.
 
 COMPOUND MEASUREMENTS: When a measurement is expressed as an arithmetic expression
 (e.g., "147 plus 127.9", "3 and a half inches", "12 + 8.5 mm"), extract it as:
