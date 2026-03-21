@@ -26,6 +26,7 @@ export async function GET(
       totalPages: true,
       currentSectionIndex: true,
       organizationId: true,
+      extractionMetadata: true,
       sections: {
         select: {
           id: true,
@@ -57,6 +58,17 @@ export async function GET(
   const currentSection = template.sections.find((s) => s.status === "extracting")
     || template.sections.find((s) => s.status === "pending");
 
+  // During Pass 1, report page classification progress from extractionMetadata
+  const meta = template.extractionMetadata as Record<string, unknown> | null;
+  const pass1Progress = meta?.pass1Progress as {
+    pagesToProcess: number[];
+    classifiedSoFar: unknown[];
+    nextBatchStart: number;
+  } | undefined;
+
+  const pagesClassified = pass1Progress?.classifiedSoFar?.length ?? 0;
+  const pagesToClassify = pass1Progress?.pagesToProcess?.length ?? template.totalPages;
+
   return NextResponse.json({
     status: template.status,
     totalPages: template.totalPages,
@@ -64,6 +76,9 @@ export async function GET(
     completedSections,
     failedSections,
     totalItems,
+    // Pass 1 progress (page classification)
+    pagesClassified,
+    pagesToClassify,
     currentSection: currentSection
       ? { title: currentSection.title, figureNumber: currentSection.figureNumber }
       : null,
