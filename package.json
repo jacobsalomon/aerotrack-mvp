@@ -6,6 +6,7 @@
     "predev": "npm run prisma:generate",
     "dev": "next dev --turbopack",
     "build": "NODE_OPTIONS='--max-old-space-size=8192' next build",
+    "typecheck": "tsc --noEmit",
     "vercel:preview": "vercel",
     "vercel:prod": "vercel deploy --prod --yes",
     "vercel:env:pull": "vercel env pull .env.local",
