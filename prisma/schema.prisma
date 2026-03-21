@@ -46,6 +46,7 @@ model User {
   captureSessions     CaptureSession[]
   reviewedDocuments   CaptureDocument[]  @relation("reviewer")
   auditLog            AuditLogEntry[]
+  createdTemplates    InspectionTemplate[]
 
   @@index([organizationId])
 }
@@ -155,6 +156,7 @@ model Component {
   documents    Document[]
   exceptions   Exception[]
   measurements Measurement[]
+  inspectionTemplates ComponentInspectionTemplate[]
 }
 
 // ──────────────────────────────────────────────────────
@@ -360,6 +362,7 @@ model Organization {
   auditLog        AuditLogEntry[]
   inviteCodes     InviteCode[]
   orgDocuments    OrgDocument[]
+  inspectionTemplates InspectionTemplate[]
 }
 
 // ──────────────────────────────────────────────────────
@@ -526,6 +529,8 @@ model ComponentManual {
   pageCount     Int?                                    // Number of pages (for context window estimation)
   uploadedAt    DateTime @default(now())
   createdAt     DateTime @default(now())
+
+  inspectionTemplates InspectionTemplate[]
 }
 
 // ──────────────────────────────────────────────────────
@@ -792,4 +797,159 @@ model ServiceBulletin {
   status            String    @default("ACTIVE") // ACTIVE, SUPERSEDED, COMPLETED
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
+}
+
+// ══════════════════════════════════════════════════════
+// CMM INSPECTION TEMPLATES — Parse CMM PDFs into structured templates
+// that guide technicians through inspections.
+// Layer 1: upload, AI extraction, admin review/approval.
+// ══════════════════════════════════════════════════════
+
+// ──────────────────────────────────────────────────────
+// InspectionTemplate — a parsed CMM document stored as a reusable template.
+// Contains hierarchical sections (sub-assemblies) with items (specs, checks, tools).
+// Status tracks the extraction pipeline: pending → extracting → review_ready → active.
+// ──────────────────────────────────────────────────────
+model InspectionTemplate {
+  id                      String    @id @default(cuid())
+  organizationId          String
+  organization            Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  componentManualId       String?                         // Optional link to existing ComponentManual record
+  componentManual         ComponentManual? @relation(fields: [componentManualId], references: [id], onDelete: SetNull)
+  createdById             String
+  createdBy               User @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  title                   String                          // e.g., "IDG Inspection — Collins Aerospace"
+  sourceFileUrl           String                          // Vercel Blob URL of uploaded PDF
+  sourceFileName          String                          // Original filename
+  revisionDate            DateTime?                       // CMM revision date
+  partNumbersCovered      String[]                        // Part numbers this template applies to (for auto-linking)
+  status                  String    @default("pending_extraction")
+                                                          // pending_extraction, extracting_index, extracting_details,
+                                                          // review_ready, active, archived, extraction_failed
+  totalPages              Int                             // Total pages in uploaded PDF
+  inspectionPages         Int[]                           // Which pages are inspection sheets (empty = all)
+  extractionMetadata      Json?                           // Pass 1 index, timestamps, models used, cost
+  rawExtractionResponses  Json?                           // Raw AI responses for debugging/re-parsing
+  version                 Int       @default(1)
+
+  // Extraction job state (lease-based, modeled on SessionProcessingJob)
+  extractionRunnerToken   String?                         // Random token held by the current extraction worker
+  extractionLeaseExpiresAt DateTime?                      // Lease expires after 2 minutes
+  currentSectionIndex     Int       @default(0)           // Which section is being processed next
+
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  // Relationships
+  sections                InspectionSection[]
+  linkedComponents        ComponentInspectionTemplate[]
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([createdById])
+}
+
+// ──────────────────────────────────────────────────────
+// InspectionSection — one sub-assembly within a template.
+// Each section maps to a figure number in the CMM (e.g., "Figure 816 — Variable Unit").
+// Multi-sheet figures are grouped into one section with multiple page references.
+// ──────────────────────────────────────────────────────
+model InspectionSection {
+  id                          String    @id @default(cuid())
+  templateId                  String
+  template                    InspectionTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  organizationId              String                      // Denormalized for query performance
+  title                       String                      // e.g., "Assembly of End Housing Unit"
+  figureNumber                String                      // e.g., "816"
+  sheetInfo                   String?                     // e.g., "Sheet 2 of 3"
+  pageNumbers                 Int[]                       // Which PDF pages this section spans
+  referenceImageUrls          String[]                    // Blob URLs for diagram images (for future use)
+  status                      String    @default("pending")
+                                                          // pending, extracting, extracted, failed, reviewed
+  pageClassification          String?                     // diagram, inspection_text, parts_list, mixed
+  configurationApplicability  String[]                    // Empty = all configs; some figures are config-specific
+  sortOrder                   Int                         // Display order in the template
+  itemCount                   Int       @default(0)       // Denormalized count of items
+  extractionConfidence        Float     @default(0)       // 0-1 overall confidence for this section
+  rawExtractionResponse       Json?                       // Raw AI response for re-parsing
+  notes                       String?                     // Reviewer annotations
+
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+
+  // Relationships
+  items                       InspectionItem[]
+
+  @@index([templateId])
+  @@index([organizationId])
+}
+
+// ──────────────────────────────────────────────────────
+// InspectionItem — a single spec, check, or requirement within a section.
+// Extracted from CMM diagrams by AI. Each item has a type (torque_spec, visual_check, etc.)
+// and stores both imperial and metric values where applicable.
+// ──────────────────────────────────────────────────────
+model InspectionItem {
+  id                          String    @id @default(cuid())
+  sectionId                   String
+  section                     InspectionSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  itemType                    String                      // torque_spec, dimension_check, dimensional_spec,
+                                                          // visual_check, procedural_check, safety_wire,
+                                                          // tool_requirement, matched_set, general_note,
+                                                          // replace_if_disturbed
+  itemCallout                 String?                     // Diagram callout number, e.g., "290", "310A"
+  partNumber                  String?                     // Actual P/N from IPL if known (nullable, for future IPL integration)
+  parameterName               String                      // e.g., "End Housing Bolt Torque"
+  specification               String                      // Full human-readable spec, e.g., "51-56 LB-IN (5.8-6.3 N-m)"
+
+  // Parsed numeric values for validation (imperial)
+  specValueLow                Float?                      // Parsed low value, e.g., 51
+  specValueHigh               Float?                      // Parsed high value, e.g., 56
+  specUnit                    String?                     // e.g., "LB-IN"
+
+  // Parsed numeric values (metric)
+  specValueLowMetric          Float?                      // e.g., 5.8
+  specValueHighMetric         Float?                      // e.g., 6.3
+  specUnitMetric              String?                     // e.g., "N-m"
+
+  // References and requirements
+  toolsRequired               String[]                    // e.g., ["AGE10037", "BLS-34347"]
+  checkReference              String?                     // e.g., "CHECK 23"
+  repairReference             String?                     // e.g., "REPAIR 6, 25"
+  specialAssemblyRef          String?                     // e.g., "SPECIAL ASSEMBLY FIGURE 823"
+  configurationApplicability  String[]                    // Empty = all configs
+  sequenceGroup               String?                     // For Layer 3 ordering (nullable, future use)
+  notes                       String?                     // Cautions, warnings, special instructions
+
+  // Metadata
+  sortOrder                   Int                         // Display order within the section
+  confidence                  Float     @default(0)       // 0-1 confidence score
+
+  // Edit tracking
+  editedById                  String?                     // User who last edited this item during review
+  editedAt                    DateTime?                   // When the item was last manually edited
+
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+
+  @@index([sectionId])
+}
+
+// ──────────────────────────────────────────────────────
+// ComponentInspectionTemplate — join table linking components to their templates.
+// Created when a template is approved (auto-linked by matching part numbers).
+// Used by Layer 2 to suggest the right template for a work order.
+// ──────────────────────────────────────────────────────
+model ComponentInspectionTemplate {
+  id          String    @id @default(cuid())
+  componentId String
+  component   Component @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  templateId  String
+  template    InspectionTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@unique([componentId, templateId])
+  @@index([componentId])
+  @@index([templateId])
 }
