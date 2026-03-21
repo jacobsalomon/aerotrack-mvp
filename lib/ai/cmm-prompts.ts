@@ -112,3 +112,11 @@ CONFIDENCE:
 - Below 0.5: guessing — flag these
 
 CRITICAL: Extract EVERY item visible on the page. Missing a torque spec or tool requirement could cause a safety issue. When in doubt, include it with lower confidence rather than omitting it.`;
+
+// Additional instructions appended to the prompt when calling Claude.
+// Claude tends to extract fewer items than Gemini — this nudges it toward completeness.
+export const PASS2_CLAUDE_SUFFIX = `
+
+IMPORTANT: Return ONLY raw JSON. Do NOT wrap in markdown code fences or add any text outside the JSON object.
+
+COMPLETENESS CHECK: Before returning, count ALL callout numbers visible on this page. Verify your items list accounts for each one. If you see a callout number on the drawing that is not in your output, add it with your best interpretation.`;
