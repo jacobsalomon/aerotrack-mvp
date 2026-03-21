@@ -145,6 +145,17 @@ export default function ReviewScreen({ session, component, unassignedCount }: Pr
               </div>
             ))}
           </div>
+          {/* Evidence Audit link */}
+          <div className="pt-2 border-t border-white/10">
+            <Button
+              variant="ghost"
+              className="w-full text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+              onClick={() => router.push(`/inspect/${session.id}/audit`)}
+            >
+              <FileCheck className="h-4 w-4 mr-2" />
+              Evidence Provenance Audit
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
