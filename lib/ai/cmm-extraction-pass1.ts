@@ -13,10 +13,15 @@ import { callGemini } from "./provider";
 import { PASS1_CLASSIFICATION_PROMPT } from "./cmm-prompts";
 
 // How many pages to classify per serverless invocation.
-// Gemini 2.5 Flash takes ~5-10s per page for classification.
-// 15 pages × 10s = 150s + PDF download/parse overhead ≈ 180s.
-// Well within the 300s serverless limit with safety margin.
-const PAGES_PER_BATCH = 15;
+// With 5 concurrent Gemini calls at ~7s each, we process ~5 pages every 7s.
+// 35 pages = 7 rounds × 7s = ~50s of AI time + PDF overhead ≈ 80s total.
+// Well within the 300s serverless limit.
+const PAGES_PER_BATCH = 35;
+
+// Light parallelism for Pass 1 only — each page is classified independently
+// so concurrent calls don't affect accuracy. Pass 2 stays sequential because
+// dual-model consensus benefits from isolated execution.
+const PASS1_CONCURRENCY = 5;
 
 // The structure Gemini returns for each page
 interface PageClassification {
@@ -107,8 +112,10 @@ export async function runPass1Batch(templateId: string): Promise<"continue" | "d
   const pdfBytes = Buffer.from(await pdfResponse.arrayBuffer());
   const pdf = await parsePdf(pdfBytes);
 
-  // Classify each page sequentially for maximum accuracy
-  for (const pageIndex of batchPages) {
+  // Classify pages with light parallelism (PASS1_CONCURRENCY concurrent calls).
+  // Each page is classified independently — no shared context between pages —
+  // so concurrency doesn't affect accuracy. Pass 2 stays fully sequential.
+  async function classifyPage(pageIndex: number): Promise<{ pageIndex: number; result: PageClassification }> {
     try {
       const pageBase64 = await pdf.extractPageAsBase64(pageIndex);
 
@@ -136,16 +143,17 @@ export async function runPass1Batch(templateId: string): Promise<"continue" | "d
       });
 
       const parsed = JSON.parse(responseText) as PageClassification;
-      progress.classifiedSoFar.push({ pageIndex, result: parsed });
 
       console.log(
         `[CMM Pass 1] Page ${pageIndex + 1}: ${parsed.pageType}` +
           (parsed.figureNumber ? ` — Fig. ${parsed.figureNumber}` : "") +
           (parsed.subAssemblyTitle ? ` "${parsed.subAssemblyTitle}"` : "")
       );
+
+      return { pageIndex, result: parsed };
     } catch (error) {
       console.error(`[CMM Pass 1] Error classifying page ${pageIndex + 1}:`, error);
-      progress.classifiedSoFar.push({
+      return {
         pageIndex,
         result: {
           pageType: "ignore",
@@ -156,8 +164,15 @@ export async function runPass1Batch(templateId: string): Promise<"continue" | "d
           partNumbers: [],
           notes: `Classification failed: ${error instanceof Error ? error.message : "unknown error"}`,
         },
-      });
+      };
     }
+  }
+
+  // Process in mini-batches of PASS1_CONCURRENCY
+  for (let i = 0; i < batchPages.length; i += PASS1_CONCURRENCY) {
+    const chunk = batchPages.slice(i, i + PASS1_CONCURRENCY);
+    const results = await Promise.all(chunk.map(classifyPage));
+    progress.classifiedSoFar.push(...results);
   }
 
   // Update progress pointer
