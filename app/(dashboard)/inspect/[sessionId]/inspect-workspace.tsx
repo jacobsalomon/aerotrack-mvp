@@ -231,7 +231,7 @@ export default function InspectWorkspace({ session, component }: Props) {
 
   // ── Navigate to review ──
   function handleReview() {
-    router.push(`/inspect/${session.id}/review`);
+    router.push(`/jobs/${session.id}/review`);
   }
 
   function handleNavigateToItem(sectionId: string, itemId: string) {

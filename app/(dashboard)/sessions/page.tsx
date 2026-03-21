@@ -227,7 +227,7 @@ export default function SessionsPage() {
         throw new Error(body?.error || "Failed to create session");
       }
       const session = await res.json();
-      router.push(`/sessions/${session.id}`);
+      router.push(`/jobs/${session.id}`);
     } catch (err) {
       console.error("Failed to start session:", err);
       setCreateError(err instanceof Error ? err.message : "Failed to start session");
@@ -448,7 +448,7 @@ export default function SessionsPage() {
                       <TableRow
                         key={session.id}
                         className="cursor-pointer transition-colors hover:bg-slate-50"
-                        onClick={() => router.push(`/sessions/${session.id}`)}
+                        onClick={() => router.push(`/jobs/${session.id}`)}
                       >
                         <TableCell>
                           <span

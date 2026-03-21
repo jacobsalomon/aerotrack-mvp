@@ -32,6 +32,13 @@ const nextConfig: NextConfig = {
         destination: "/aerovision/:path*",
         permanent: true,
       },
+      // Unified Jobs routing — redirect old Sessions and Inspect URLs
+      { source: "/sessions", destination: "/jobs", permanent: false },
+      { source: "/sessions/:id", destination: "/jobs/:id", permanent: false },
+      { source: "/inspect", destination: "/jobs", permanent: false },
+      { source: "/inspect/:id", destination: "/jobs/:id", permanent: false },
+      { source: "/inspect/:id/review", destination: "/jobs/:id/review", permanent: false },
+      { source: "/inspect/:id/audit", destination: "/jobs/:id/audit", permanent: false },
     ];
   },
 

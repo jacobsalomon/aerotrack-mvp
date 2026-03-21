@@ -152,7 +152,7 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
     <div className="min-h-screen bg-zinc-950 p-4 max-w-4xl mx-auto pb-20">
       {/* Back button */}
       <div className="mb-4">
-        <Button variant="ghost" onClick={() => router.push(`/inspect/${session.id}`)} className="text-white/50 hover:text-white">
+        <Button variant="ghost" onClick={() => router.push(`/jobs/${session.id}`)} className="text-white/50 hover:text-white">
           ← Back to Inspection
         </Button>
       </div>
@@ -218,7 +218,7 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
             <Button
               variant="ghost"
               className="w-full text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
-              onClick={() => router.push(`/inspect/${session.id}/audit`)}
+              onClick={() => router.push(`/jobs/${session.id}/audit`)}
             >
               <FileCheck className="h-4 w-4 mr-2" />
               Evidence Provenance Audit

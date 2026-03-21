@@ -434,8 +434,8 @@ export default function SessionDetailPage() {
   if (error || !session) {
     return (
       <div className="py-12">
-        <Link href="/sessions" className="inline-flex items-center gap-1 text-sm mb-6" style={{ color: "rgb(100, 100, 100)" }}>
-          <ArrowLeft className="h-4 w-4" /> Back to Sessions
+        <Link href="/jobs" className="inline-flex items-center gap-1 text-sm mb-6" style={{ color: "rgb(100, 100, 100)" }}>
+          <ArrowLeft className="h-4 w-4" /> Back to Jobs
         </Link>
         <Card className="border shadow-sm" style={{ borderColor: "rgb(253, 230, 138)", backgroundColor: "rgba(255, 251, 235, 0.92)" }}>
           <CardContent className="px-6 py-10 text-center">
@@ -457,7 +457,7 @@ export default function SessionDetailPage() {
                 Retry
               </Button>
               <Button asChild variant="outline">
-                <Link href="/sessions">Back to Sessions</Link>
+                <Link href="/jobs">Back to Jobs</Link>
               </Button>
             </div>
             <p className="mt-5 text-xs font-mono" style={{ color: "rgb(180, 83, 9)" }}>
@@ -499,8 +499,8 @@ export default function SessionDetailPage() {
 
     return (
       <div className="max-w-xl mx-auto py-16 text-center">
-        <Link href="/sessions" className="inline-flex items-center gap-1 text-sm mb-8 hover:underline" style={{ color: "rgb(100, 100, 100)" }}>
-          <ArrowLeft className="h-4 w-4" /> Back to Sessions
+        <Link href="/jobs" className="inline-flex items-center gap-1 text-sm mb-8 hover:underline" style={{ color: "rgb(100, 100, 100)" }}>
+          <ArrowLeft className="h-4 w-4" /> Back to Jobs
         </Link>
         <div className="mb-6">
           <Loader2 className="h-10 w-10 animate-spin mx-auto" style={{ color: "rgb(147, 51, 234)" }} />
@@ -633,8 +633,8 @@ export default function SessionDetailPage() {
       )}
 
       {/* Back link */}
-      <Link href="/sessions" className="inline-flex items-center gap-1 text-sm mb-6 hover:underline" style={{ color: "rgb(100, 100, 100)" }}>
-        <ArrowLeft className="h-4 w-4" /> Back to Sessions
+      <Link href="/jobs" className="inline-flex items-center gap-1 text-sm mb-6 hover:underline" style={{ color: "rgb(100, 100, 100)" }}>
+        <ArrowLeft className="h-4 w-4" /> Back to Jobs
       </Link>
 
       {/* ═══ HEADER ═══ */}
