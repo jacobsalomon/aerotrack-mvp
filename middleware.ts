@@ -72,11 +72,12 @@ export default async function middleware(request: NextRequest) {
 // - /api/mobile/* (mobile app uses API key auth, not sessions)
 // - /api/capture/* (capture endpoints use API key auth)
 // - /api/clear-session (emergency cookie clearing endpoint)
+// - /api/library/*/extract (server-to-server extraction, uses x-internal-secret header)
 //
 // Because basePath is /aerovision, the middleware sees paths WITHOUT the prefix.
 // E.g., /aerovision/demo becomes /demo in the matcher.
 export const config = {
   matcher: [
-    "/((?!login|register|forgot-password|reset-password|api/auth|api/mobile|api/capture|api/clear-session|api/health|_next/static|_next/image|favicon.ico).*)",
+    "/((?!login|register|forgot-password|reset-password|api/auth|api/mobile|api/capture|api/clear-session|api/health|api/library/.*/extract|_next/static|_next/image|favicon.ico).*)",
   ],
 };

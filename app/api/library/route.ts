@@ -131,11 +131,15 @@ export async function POST(request: Request) {
       ? `https://${process.env.VERCEL_URL}`
       : "http://localhost:3000";
     const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+    const secret = process.env.INTERNAL_API_SECRET || process.env.NEXTAUTH_SECRET || "";
 
     // Fire-and-forget: trigger extraction asynchronously
     fetch(`${baseUrl}${basePath}/api/library/${template.id}/extract`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-internal-secret": secret,
+      },
     }).catch((err) => {
       console.error("[Library] Failed to trigger extraction:", err);
     });

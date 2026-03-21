@@ -100,6 +100,11 @@ export default function LibraryClient({
 }) {
   const [showUpload, setShowUpload] = useState(false);
   const [templates, setTemplates] = useState(initialTemplates);
+
+  // Keep local state in sync when server data refreshes (e.g. after upload)
+  useEffect(() => {
+    setTemplates(initialTemplates);
+  }, [initialTemplates]);
   const [progress, setProgress] = useState<Record<string, ExtractionProgress>>({});
 
   // Check if any templates are currently being processed
@@ -334,7 +339,33 @@ export default function LibraryClient({
       )}
 
       {/* Upload modal */}
-      {showUpload && <UploadModal onClose={() => setShowUpload(false)} />}
+      {showUpload && (
+        <UploadModal
+          onClose={() => setShowUpload(false)}
+          onUploaded={(t) => {
+            // Add the new template to the top of the list immediately
+            // so the user sees it with a "processing" badge right away.
+            setTemplates((prev) => {
+              if (prev.some((existing) => existing.id === t.id)) return prev;
+              return [
+                {
+                  id: t.id,
+                  title: t.title,
+                  status: t.status,
+                  partNumbersCovered: [],
+                  revisionDate: null,
+                  totalPages: 0,
+                  sectionCount: 0,
+                  createdAt: new Date().toISOString(),
+                  createdBy: "",
+                  currentSectionIndex: 0,
+                },
+                ...prev,
+              ];
+            });
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -17,7 +17,13 @@ import {
 import { FileUp, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-export default function UploadModal({ onClose }: { onClose: () => void }) {
+export default function UploadModal({
+  onClose,
+  onUploaded,
+}: {
+  onClose: () => void;
+  onUploaded?: (template: { id: string; title: string; status: string }) => void;
+}) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -77,6 +83,13 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
       }
 
       toast.success("CMM uploaded — extraction starting");
+
+      // Tell the parent about the new template so it shows up immediately
+      // with a "processing" badge — no need to wait for a full page refresh.
+      if (onUploaded && data.template) {
+        onUploaded(data.template);
+      }
+
       onClose();
       router.refresh();
     } catch (err) {
