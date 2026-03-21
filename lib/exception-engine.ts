@@ -13,6 +13,7 @@
 // ──────────────────────────────────────────────────────
 
 import { prisma } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import { hasNonCompliantADs } from "@/lib/ad-sb-tracker";
 
 // ── Types ────────────────────────────────────────────
@@ -120,13 +121,13 @@ export async function scanComponent(componentId: string) {
   const newExceptions = [];
 
   for (const issue of issues) {
-    const evidenceStr = JSON.stringify(issue.evidence);
+    const evidenceData = issue.evidence;
 
     // Check if this exact exception already exists (same type + same evidence)
     const alreadyExists = existingExceptions.some(
       (ex) =>
         ex.exceptionType === issue.exceptionType &&
-        ex.evidence === evidenceStr &&
+        JSON.stringify(ex.evidence) === JSON.stringify(evidenceData) &&
         ex.status !== "resolved" &&
         ex.status !== "false_positive"
     );
@@ -139,7 +140,7 @@ export async function scanComponent(componentId: string) {
           severity: issue.severity,
           title: issue.title,
           description: issue.description,
-          evidence: evidenceStr,
+          evidence: evidenceData as unknown as Prisma.InputJsonValue,
         },
       });
       newExceptions.push(created);

@@ -162,10 +162,10 @@ export async function runSessionAnalysisStage(
         await prisma.sessionAnalysis.create({
           data: {
             sessionId,
-            actionLog: JSON.stringify(analysis.actionLog),
-            partsIdentified: JSON.stringify(analysis.partsIdentified),
-            procedureSteps: JSON.stringify(analysis.procedureSteps),
-            anomalies: JSON.stringify(analysis.anomalies),
+            actionLog: analysis.actionLog,
+            partsIdentified: analysis.partsIdentified,
+            procedureSteps: analysis.procedureSteps,
+            anomalies: analysis.anomalies,
             confidence: clampConfidence(analysis.confidence),
             modelUsed: analysis.modelUsed,
             costEstimate: null,
@@ -205,7 +205,7 @@ export async function runSessionAnalysisStage(
 export async function runSessionDraftingStage(
   sessionId: string
 ): Promise<DraftingStageResult> {
-  const existingDocs = await prisma.documentGeneration2.findMany({
+  const existingDocs = await prisma.captureDocument.findMany({
     where: { sessionId },
     select: { documentType: true },
   });
@@ -237,21 +237,15 @@ export async function runSessionDraftingStage(
 
     const photoExtractions = updatedSession.evidence
       .filter((e) => e.type === "PHOTO" && e.aiExtraction)
-      .map((e) => {
-        try {
-          return JSON.parse(e.aiExtraction!);
-        } catch {
-          return { raw: e.aiExtraction };
-        }
-      });
+      .map((e) => e.aiExtraction as Record<string, unknown>);
 
     let videoAnalysis: Record<string, unknown> | null = null;
     if (updatedSession.analysis) {
       videoAnalysis = {
-        actionLog: JSON.parse(updatedSession.analysis.actionLog),
-        partsIdentified: JSON.parse(updatedSession.analysis.partsIdentified),
-        procedureSteps: JSON.parse(updatedSession.analysis.procedureSteps),
-        anomalies: JSON.parse(updatedSession.analysis.anomalies),
+        actionLog: updatedSession.analysis.actionLog as unknown[],
+        partsIdentified: updatedSession.analysis.partsIdentified as unknown[],
+        procedureSteps: updatedSession.analysis.procedureSteps as unknown[],
+        anomalies: updatedSession.analysis.anomalies as unknown[],
       };
     }
 
@@ -343,14 +337,14 @@ export async function runSessionDraftingStage(
     const savedTypes: string[] = [];
     for (const doc of generated.documents || []) {
       try {
-        await prisma.documentGeneration2.create({
+        await prisma.captureDocument.create({
           data: {
             sessionId,
             documentType: doc.documentType,
-            contentJson: JSON.stringify(doc.contentJson),
+            contentJson: doc.contentJson as unknown as Prisma.InputJsonValue,
             status: "draft",
             confidence: clampConfidence(doc.confidence),
-            lowConfidenceFields: JSON.stringify(doc.lowConfidenceFields || []),
+            lowConfidenceFields: (doc.lowConfidenceFields || []) as unknown as Prisma.InputJsonValue,
           },
         });
       } catch (error) {

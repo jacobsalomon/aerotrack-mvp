@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { safeParseJson } from "@/lib/utils";
+// Json fields are already parsed by Prisma — no safeParseJson needed
 
 type RawJson = Record<string, unknown>;
 
@@ -425,8 +425,10 @@ function dedupeDiscrepancies(discrepancies: FieldDiscrepancy[]): FieldDiscrepanc
   return Array.from(map.values());
 }
 
-function parseVerification(value: string | null | undefined): Record<string, unknown> | null {
-  return safeParseJson<Record<string, unknown> | null>(value, null);
+// Json fields are already parsed by Prisma — just cast
+function parseVerification(value: unknown): Record<string, unknown> | null {
+  if (value == null) return null;
+  return value as Record<string, unknown>;
 }
 
 function buildCaptureEvidenceLookup(
@@ -437,7 +439,7 @@ function buildCaptureEvidenceLookup(
     mimeType: string;
     capturedAt: Date;
     transcription: string | null;
-    aiExtraction: string | null;
+    aiExtraction: unknown;
   }>
 ): EvidenceLookup {
   return buildEvidenceLookup(
@@ -448,7 +450,7 @@ function buildCaptureEvidenceLookup(
       mimeType: item.mimeType,
       capturedAt: item.capturedAt.toISOString(),
       transcriptText: item.transcription,
-      structuredData: safeParseJson(item.aiExtraction, item.aiExtraction),
+      structuredData: item.aiExtraction,
     }))
   );
 }
@@ -461,7 +463,7 @@ function buildLegacyEvidenceLookup(
     mimeType: string;
     capturedAt: Date;
     transcription: string | null;
-    structuredData: string | null;
+    structuredData: unknown;
     fileName: string;
   }>
 ): EvidenceLookup {
@@ -473,7 +475,7 @@ function buildLegacyEvidenceLookup(
       mimeType: item.mimeType,
       capturedAt: item.capturedAt.toISOString(),
       transcriptText: item.transcription,
-      structuredData: safeParseJson(item.structuredData, item.structuredData),
+      structuredData: item.structuredData,
       metadata: { fileName: item.fileName },
     }))
   );
@@ -548,7 +550,7 @@ function buildResponse(opts: {
 export async function getDocumentProvenance(
   documentId: string
 ): Promise<DocumentProvenanceResponse | null> {
-  const captureDocument = await prisma.documentGeneration2.findUnique({
+  const captureDocument = await prisma.captureDocument.findUnique({
     where: { id: documentId },
     include: {
       session: {
@@ -567,11 +569,8 @@ export async function getDocumentProvenance(
       sourceModel: "capture_session",
       documentType: captureDocument.documentType,
       title: null,
-      fields: safeParseJson<Record<string, unknown>>(captureDocument.contentJson, {}),
-      provenanceRaw: safeParseJson<Record<string, unknown>>(
-        captureDocument.provenanceJson || captureDocument.evidenceLineage,
-        {}
-      ),
+      fields: (captureDocument.contentJson as Record<string, unknown>) ?? {},
+      provenanceRaw: ((captureDocument.provenanceJson || captureDocument.evidenceLineage) as Record<string, unknown>) ?? {},
       verification: parseVerification(captureDocument.verificationJson),
       lookup: buildCaptureEvidenceLookup(captureDocument.session.evidence),
       sessionId: captureDocument.sessionId,
@@ -600,8 +599,8 @@ export async function getDocumentProvenance(
     sourceModel: "generated_document",
     documentType: generatedDocument.docType,
     title: generatedDocument.title,
-    fields: safeParseJson<Record<string, unknown>>(generatedDocument.content, {}),
-    provenanceRaw: safeParseJson<Record<string, unknown>>(generatedDocument.provenanceJson, {}),
+    fields: (() => { try { return JSON.parse(generatedDocument.content) as Record<string, unknown>; } catch { return {}; } })(),
+    provenanceRaw: (generatedDocument.provenanceJson as Record<string, unknown>) ?? {},
     verification: null,
     lookup: buildLegacyEvidenceLookup(generatedDocument.event.evidence),
     componentId: generatedDocument.event.componentId,

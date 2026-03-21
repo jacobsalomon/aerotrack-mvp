@@ -50,7 +50,7 @@ export interface ProcessingStageRecord {
   startedAt: Date | string | null;
   completedAt: Date | string | null;
   lastError: string | null;
-  errorMetadata: string | null;
+  errorMetadata: unknown;
   latencyMs: number | null;
 }
 

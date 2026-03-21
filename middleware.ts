@@ -19,6 +19,18 @@ const authMiddleware = nextAuth.auth;
 // from corrupted JWT tokens. If auth takes longer than 5 seconds,
 // clear the session cookie and redirect to login.
 export default async function middleware(request: NextRequest) {
+  // API routes get 401 JSON instead of login page redirect
+  const { pathname } = request.nextUrl;
+  if (pathname.startsWith("/api/")) {
+    const SESSION_COOKIE = "__Secure-authjs.session-token";
+    if (!request.cookies.has(SESSION_COOKIE) && !request.cookies.has("authjs.session-token")) {
+      return NextResponse.json(
+        { error: "Unauthorized", message: "Session required. Log in at /aerovision/login" },
+        { status: 401 }
+      );
+    }
+  }
+
   const SESSION_COOKIE = "__Secure-authjs.session-token";
   const hasSessionCookie = request.cookies.has(SESSION_COOKIE);
 

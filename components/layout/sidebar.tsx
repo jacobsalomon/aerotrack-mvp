@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ComponentType } from "react";
 import {
+  BookOpen,
   FileCheck,
   FileText,
   LogOut,
@@ -43,6 +44,12 @@ const supportNavItems: NavItem[] = [
     href: "/forms",
     label: "Forms",
     icon: FileText,
+  },
+  {
+    href: "/library",
+    label: "Library",
+    icon: BookOpen,
+    description: "CMM inspection templates",
   },
   {
     href: "/technicians",

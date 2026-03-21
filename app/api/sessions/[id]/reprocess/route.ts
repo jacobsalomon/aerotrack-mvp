@@ -39,6 +39,20 @@ export async function POST(request: Request, { params }: RouteParams) {
       );
     }
 
+    // Cross-org isolation: verify the session belongs to the authenticated user's org
+    if (!authResult.user.organizationId) {
+      return NextResponse.json(
+        { success: false, error: "No organization assigned" },
+        { status: 403 }
+      );
+    }
+    if (session.organizationId !== authResult.user.organizationId) {
+      return NextResponse.json(
+        { success: false, error: "Session not found" },
+        { status: 404 }
+      );
+    }
+
     // Parse options from request body
     const body = await request.json().catch(() => ({}));
     const retranscribe = body.retranscribe ?? false; // Re-run speech-to-text too (slower)

@@ -2,7 +2,8 @@
 // Chain: Claude Sonnet 4.6 → GPT-5.4 → cached fallback
 
 import { prisma } from "@/lib/db";
-import { safeParseJson } from "@/lib/utils";
+import { Prisma } from "@/generated/prisma/client";
+
 import type { ModelConfig } from "./models";
 import { VERIFICATION_MODELS } from "./models";
 import { callAnthropic, callOpenAI, callOpenRouter, callWithFallback } from "./provider";
@@ -472,7 +473,7 @@ export async function verifyDocuments(
 
   const photoExtractions = session.evidence
     .filter((evidence) => evidence.type === "PHOTO" && evidence.aiExtraction)
-    .map((evidence) => safeParseJson<Record<string, unknown>>(evidence.aiExtraction, { raw: evidence.aiExtraction }));
+    .map((evidence) => (evidence.aiExtraction as Record<string, unknown>) ?? { raw: evidence.aiExtraction });
 
   const audioChunks = session.evidence
     .filter((evidence) => evidence.type === "AUDIO_CHUNK" && evidence.transcription)
@@ -483,26 +484,23 @@ export async function verifyDocuments(
 
   const videoAnalysis = session.analysis
     ? {
-        actionLog: safeParseJson(session.analysis.actionLog, [] as unknown[]),
-        partsIdentified: safeParseJson(session.analysis.partsIdentified, [] as unknown[]),
-        procedureSteps: safeParseJson(session.analysis.procedureSteps, [] as unknown[]),
-        anomalies: safeParseJson(session.analysis.anomalies, [] as unknown[]),
+        actionLog: (session.analysis.actionLog as unknown[]) ?? [],
+        partsIdentified: (session.analysis.partsIdentified as unknown[]) ?? [],
+        procedureSteps: (session.analysis.procedureSteps as unknown[]) ?? [],
+        anomalies: (session.analysis.anomalies as unknown[]) ?? [],
         confidence: session.analysis.confidence,
       }
     : null;
 
   const documentsToVerify: ParsedDocumentForVerification[] = session.documents.map((doc) => {
-    const provenanceJson = safeParseJson<Record<string, unknown>>(
-      doc.provenanceJson || doc.evidenceLineage,
-      {}
-    );
+    const provenanceJson = ((doc.provenanceJson || doc.evidenceLineage) as Record<string, unknown>) ?? {};
 
     return {
       id: doc.id,
       documentType: doc.documentType,
-      contentJson: safeParseJson<Record<string, unknown>>(doc.contentJson, {}),
+      contentJson: (doc.contentJson as Record<string, unknown>) ?? {},
       confidence: clampScore(doc.confidence),
-      lowConfidenceFields: safeParseJson<string[]>(doc.lowConfidenceFields, []),
+      lowConfidenceFields: (doc.lowConfidenceFields as string[]) ?? [],
       provenanceJson,
       knownDiscrepancies: extractKnownDiscrepancies(doc.documentType, provenanceJson),
     };
@@ -656,12 +654,10 @@ Review the full document set, compare each document to the evidence, and return 
   const sessionStatus = "verified";
   await prisma.$transaction(async (tx) => {
     for (const doc of session.documents) {
-      await tx.documentGeneration2.update({
+      await tx.captureDocument.update({
         where: { id: doc.id },
         data: {
-          verificationJson: JSON.stringify(
-            buildPerDocumentVerificationPayload(verification, doc.documentType)
-          ),
+          verificationJson: buildPerDocumentVerificationPayload(verification, doc.documentType) as unknown as Prisma.InputJsonValue,
           verifiedAt: now,
         },
       });
@@ -679,7 +675,7 @@ Review the full document set, compare each document to the evidence, and return 
         action: "documents_verified",
         entityType: "CaptureSession",
         entityId: sessionId,
-        metadata: JSON.stringify({
+        metadata: {
           model,
           verified: verification.verified,
           overallConfidence: verification.overallConfidence,
@@ -694,7 +690,7 @@ Review the full document set, compare each document to the evidence, and return 
           latencyMs,
           fallbackUsed: result.fallbackUsed,
           fallbackReason: result.fallbackUsed ? "primary model failed" : null,
-        }),
+        },
       },
     });
   });

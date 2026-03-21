@@ -44,7 +44,15 @@ export async function POST(request: Request) {
       );
     }
 
-    // Sign a JWT with all user claims (badge/org are optional for testing)
+    // Require org membership — orgless users can't do anything useful
+    if (!user.organizationId) {
+      return NextResponse.json(
+        { success: false, error: "Your account is not assigned to an organization. Please join one at the web dashboard first." },
+        { status: 403 }
+      );
+    }
+
+    // Sign a JWT with all user claims
     const token = await new SignJWT({
       sub: user.id,
       userId: user.id,

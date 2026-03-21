@@ -215,6 +215,54 @@ export const VERIFICATION_MODELS: ModelConfig[] = [
   },
 ];
 
+// ── CMM Index Models (Pass 1 — fast page classification) ──────────────
+export const CMM_INDEX_MODELS: ModelConfig[] = [
+  {
+    id: "gemini-2.5-flash",
+    provider: "google",
+    displayName: "Gemini 2.5 Flash",
+    inputCostPer1M: 0.25,
+    outputCostPer1M: 1.5,
+    contextWindow: 1_000_000,
+    supportsImages: true,
+    supportsJsonOutput: true,
+  },
+];
+
+// ── CMM Extraction Models (Pass 2 — detailed spec extraction) ─────────
+export const CMM_EXTRACTION_MODELS: ModelConfig[] = [
+  {
+    id: "gemini-2.5-pro",
+    provider: "google",
+    displayName: "Gemini 2.5 Pro",
+    inputCostPer1M: 1.25,
+    outputCostPer1M: 10.0,
+    contextWindow: 1_000_000,
+    supportsImages: true,
+    supportsJsonOutput: true,
+  },
+  {
+    id: "gpt-5.4",
+    provider: "openai",
+    displayName: "GPT-5.4 (fallback extraction)",
+    inputCostPer1M: 2.50,
+    outputCostPer1M: 10.0,
+    contextWindow: 128_000,
+    supportsImages: true,
+    supportsJsonOutput: true,
+  },
+  {
+    id: "claude-sonnet-4-6-20250514",
+    provider: "anthropic",
+    displayName: "Claude Sonnet 4.6 (last resort extraction)",
+    inputCostPer1M: 3.0,
+    outputCostPer1M: 15.0,
+    contextWindow: 200_000,
+    supportsImages: true,
+    supportsJsonOutput: true,
+  },
+];
+
 // ── Helper to get API key for a provider ────────────────────────────
 export function getApiKey(provider: AIProvider): string {
   const keyMap: Record<AIProvider, string> = {

@@ -7,6 +7,7 @@
 export const maxDuration = 30;
 
 import { prisma } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import { authenticateRequest } from "@/lib/mobile-auth";
 import { analyzeImageWithFallback } from "@/lib/ai/openai";
 import { NextResponse } from "next/server";
@@ -134,7 +135,7 @@ export async function POST(request: Request) {
     if (evidenceId) {
       await prisma.captureEvidence.update({
         where: { id: evidenceId },
-        data: { aiExtraction: JSON.stringify(extraction) },
+        data: { aiExtraction: extraction as unknown as Prisma.InputJsonValue },
       });
     }
 
@@ -177,7 +178,7 @@ export async function POST(request: Request) {
         action: "image_analyzed",
         entityType: "CaptureEvidence",
         entityId: evidenceId || null,
-        metadata: JSON.stringify({
+        metadata: {
           model: extraction.model,
           partNumber: extraction.partNumber,
           serialNumber: extraction.serialNumber,
@@ -185,7 +186,7 @@ export async function POST(request: Request) {
           componentMatched: !!componentMatch,
           fallbackUsed: !!extraction.fallbackUsed,
           fallbackReason: extraction.fallbackReason || null,
-        }),
+        },
       },
     });
 

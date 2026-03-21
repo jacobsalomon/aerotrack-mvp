@@ -7,7 +7,13 @@ export async function GET(request: Request) {
   const authResult = await requireAuth(request);
   if (authResult.error) return authResult.error;
 
+  // Cross-org isolation: only return users in the authenticated user's org
+  if (!authResult.user.organizationId) {
+    return NextResponse.json({ error: "No organization assigned" }, { status: 403 });
+  }
+
   const users = await prisma.user.findMany({
+    where: { organizationId: authResult.user.organizationId },
     select: {
       id: true,
       name: true,

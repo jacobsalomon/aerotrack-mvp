@@ -36,16 +36,15 @@ export async function POST(req: NextRequest) {
       if (session) {
         const photos = session.evidence
           .filter((e) => e.type === "PHOTO" && e.aiExtraction)
-          .map((e) => { try { return JSON.parse(e.aiExtraction!); } catch { return { raw: e.aiExtraction }; } });
+          .map((e) => e.aiExtraction);
 
         let videoAnalysis: Record<string, unknown> | null = null;
         if (session.analysis) {
-          const safeParse = (s: string, fallback: unknown = []) => { try { return JSON.parse(s); } catch { return fallback; } };
           videoAnalysis = {
-            actionLog: safeParse(session.analysis.actionLog),
-            partsIdentified: safeParse(session.analysis.partsIdentified),
-            procedureSteps: safeParse(session.analysis.procedureSteps),
-            anomalies: safeParse(session.analysis.anomalies),
+            actionLog: session.analysis.actionLog,
+            partsIdentified: session.analysis.partsIdentified,
+            procedureSteps: session.analysis.procedureSteps,
+            anomalies: session.analysis.anomalies,
             confidence: session.analysis.confidence,
           };
         }

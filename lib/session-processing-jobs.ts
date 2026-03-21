@@ -1,4 +1,5 @@
 import { after } from "next/server";
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import {
   PROCESSING_STAGE_SEQUENCE,
@@ -107,7 +108,7 @@ export async function ensureSessionProcessingJob(
           action: "session_processing_enqueued",
           entityType: "CaptureSession",
           entityId: sessionId,
-          metadata: JSON.stringify({ forceRetry: false }),
+          metadata: { forceRetry: false },
         },
       });
 
@@ -132,7 +133,7 @@ export async function ensureSessionProcessingJob(
           startedAt: null,
           completedAt: null,
           lastError: null,
-          errorMetadata: null,
+          errorMetadata: Prisma.DbNull,
           latencyMs: null,
         },
       });
@@ -163,7 +164,7 @@ export async function ensureSessionProcessingJob(
           action: "session_processing_retried",
           entityType: "CaptureSession",
           entityId: sessionId,
-          metadata: JSON.stringify({ failedStage }),
+          metadata: { failedStage },
         },
       });
 
@@ -208,7 +209,7 @@ export async function scheduleSessionProcessingIfNeeded(session: {
       startedAt: Date | string | null;
       completedAt: Date | string | null;
       lastError: string | null;
-      errorMetadata: string | null;
+      errorMetadata: unknown;
       latencyMs: number | null;
     }>;
     leaseExpiresAt?: Date | null;
@@ -450,7 +451,7 @@ async function markStageInProgress(
         attemptCount: { increment: 1 },
         startedAt: now,
         lastError: null,
-        errorMetadata: null,
+        errorMetadata: Prisma.DbNull,
       },
     });
 
@@ -489,7 +490,7 @@ async function markStageCompleted(args: {
         status: "completed",
         completedAt: now,
         latencyMs: args.latencyMs,
-        errorMetadata: JSON.stringify(args.metadata),
+        errorMetadata: args.metadata ? (args.metadata as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
       },
     });
 
@@ -519,10 +520,10 @@ async function markStageCompleted(args: {
           action: `session_stage_${args.stage}_completed`,
           entityType: "CaptureSession",
           entityId: args.sessionId,
-          metadata: JSON.stringify({
+          metadata: {
             latencyMs: args.latencyMs,
             ...((typeof args.metadata === "object" && args.metadata) || {}),
-          }),
+          },
         },
       });
     }
@@ -543,10 +544,10 @@ async function markStageFailed(args: {
       data: {
         status: "failed",
         lastError: args.error,
-        errorMetadata: JSON.stringify({
+        errorMetadata: {
           failedAt: now.toISOString(),
           latencyMs: args.latencyMs,
-        }),
+        },
         latencyMs: args.latencyMs,
       },
     });
@@ -580,10 +581,10 @@ async function markStageFailed(args: {
           action: `session_stage_${args.stage}_failed`,
           entityType: "CaptureSession",
           entityId: args.sessionId,
-          metadata: JSON.stringify({
+          metadata: {
             latencyMs: args.latencyMs,
             error: args.error,
-          }),
+          },
         },
       });
     }
@@ -655,10 +656,10 @@ async function buildSessionPackage(sessionId: string) {
     where: { sessionId },
     create: {
       sessionId,
-      manifestJson: JSON.stringify(manifest),
+      manifestJson: manifest,
     },
     update: {
-      manifestJson: JSON.stringify(manifest),
+      manifestJson: manifest,
       status: "ready",
     },
   });

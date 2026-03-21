@@ -20,6 +20,7 @@ export async function GET(
   const session = await prisma.captureSession.findUnique({
     where: { id },
     select: {
+      organizationId: true,
       orgDocument: {
         select: { id: true, fileUrl: true, formFieldsJson: true },
       },
@@ -33,6 +34,14 @@ export async function GET(
     );
   }
 
+  // Cross-org isolation: verify the session belongs to the authenticated user's org
+  if (!authResult.user.organizationId) {
+    return NextResponse.json({ error: "No organization assigned" }, { status: 403 });
+  }
+  if (session.organizationId !== authResult.user.organizationId) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const doc = session.orgDocument;
 
   // Allow ?refresh=true to force re-extraction (clears the cache)
@@ -41,11 +50,7 @@ export async function GET(
 
   // Return cached result if we already extracted fields (unless refreshing)
   if (doc.formFieldsJson && !forceRefresh) {
-    try {
-      return NextResponse.json(JSON.parse(doc.formFieldsJson));
-    } catch {
-      // Cache is corrupt — fall through to re-extract
-    }
+    return NextResponse.json(doc.formFieldsJson);
   }
 
   // Extract fields from the PDF using Gemini vision

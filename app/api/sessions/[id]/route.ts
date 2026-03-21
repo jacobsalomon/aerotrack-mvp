@@ -82,6 +82,14 @@ export async function GET(
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
+    // Cross-org isolation: verify the session belongs to the authenticated user's org
+    if (!authResult.user.organizationId) {
+      return NextResponse.json({ error: "No organization assigned" }, { status: 403 });
+    }
+    if (session.organizationId !== authResult.user.organizationId) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
     await scheduleSessionProcessingIfNeeded(session);
 
     return NextResponse.json(decorateSessionWithProgress(session));
@@ -104,6 +112,14 @@ export async function PATCH(
   const session = await prisma.captureSession.findUnique({ where: { id } });
   if (!session) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+
+  // Cross-org isolation: verify the session belongs to the authenticated user's org
+  if (!authResult.user.organizationId) {
+    return NextResponse.json({ error: "No organization assigned" }, { status: 403 });
+  }
+  if (session.organizationId !== authResult.user.organizationId) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   try {

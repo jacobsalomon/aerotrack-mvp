@@ -47,14 +47,14 @@ export async function POST(request: Request) {
         organizationId: auth.user.organizationId,
         name,
         componentPartNumber: componentPartNumber || null,
-        specItemsJson: JSON.stringify(specItems),
+        specItemsJson: specItems,
         status: status || "draft",
       },
     });
 
     return NextResponse.json({
       success: true,
-      data: { ...spec, specItems: JSON.parse(spec.specItemsJson) },
+      data: { ...spec, specItems: spec.specItemsJson },
     }, { status: 201 });
   } catch (error) {
     console.error("Create measurement spec error:", error);
@@ -87,7 +87,7 @@ export async function GET(request: Request) {
       success: true,
       data: specs.map((s) => ({
         ...s,
-        specItems: JSON.parse(s.specItemsJson),
+        specItems: s.specItemsJson,
       })),
     });
   } catch (error) {

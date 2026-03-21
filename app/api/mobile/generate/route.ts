@@ -81,7 +81,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (session.userId !== auth.user.id) {
+    if (session.userId !== auth.user.id || session.organizationId !== auth.user.organizationId) {
       return NextResponse.json(
         { success: false, error: "Not authorized for this session" },
         { status: 403 }
@@ -96,7 +96,7 @@ export async function POST(request: Request) {
     }
 
     // Check for existing documents to prevent duplicates on retry
-    const existingDocs = await prisma.documentGeneration2.findMany({
+    const existingDocs = await prisma.captureDocument.findMany({
       where: { sessionId },
     });
     if (existingDocs.length > 0) {
@@ -104,13 +104,12 @@ export async function POST(request: Request) {
         success: true,
         cached: true,
         data: {
-          documents: existingDocs.map((doc) => {
-            let contentJson, lowConfidenceFields, provenanceJson;
-            try { contentJson = JSON.parse(doc.contentJson); } catch { contentJson = {}; }
-            try { lowConfidenceFields = JSON.parse(doc.lowConfidenceFields || "[]"); } catch { lowConfidenceFields = []; }
-            try { provenanceJson = JSON.parse(doc.provenanceJson || "{}"); } catch { provenanceJson = {}; }
-            return { ...doc, contentJson, lowConfidenceFields, provenanceJson };
-          }),
+          documents: existingDocs.map((doc) => ({
+            ...doc,
+            contentJson: doc.contentJson ?? {},
+            lowConfidenceFields: doc.lowConfidenceFields ?? [],
+            provenanceJson: doc.provenanceJson ?? {},
+          })),
           summary: "Documents already generated for this session",
           discrepancies: [],
           sessionStatus: session.status,
@@ -123,25 +122,16 @@ export async function POST(request: Request) {
     // 1. Photo OCR extractions
     const photoExtractions = session.evidence
       .filter((e) => e.type === "PHOTO" && e.aiExtraction)
-      .map((e) => {
-        try {
-          return JSON.parse(e.aiExtraction!);
-        } catch {
-          return { raw: e.aiExtraction };
-        }
-      });
+      .map((e) => e.aiExtraction as Record<string, unknown>);
 
     // 2. Video analysis (from deep analysis Pass 2, if available)
     let videoAnalysis: Record<string, unknown> | null = null;
     if (session.analysis) {
-      const safeParse = (s: string, fallback: unknown = []) => {
-        try { return JSON.parse(s); } catch { return fallback; }
-      };
       videoAnalysis = {
-        actionLog: safeParse(session.analysis.actionLog),
-        partsIdentified: safeParse(session.analysis.partsIdentified),
-        procedureSteps: safeParse(session.analysis.procedureSteps),
-        anomalies: safeParse(session.analysis.anomalies),
+        actionLog: session.analysis.actionLog as unknown[],
+        partsIdentified: session.analysis.partsIdentified as unknown[],
+        procedureSteps: session.analysis.procedureSteps as unknown[],
+        anomalies: session.analysis.anomalies as unknown[],
         confidence: session.analysis.confidence,
       };
     }
@@ -248,24 +238,22 @@ export async function POST(request: Request) {
       const docDiscrepancies = doc.discrepancies || [];
       let saved;
       try {
-        saved = await prisma.documentGeneration2.create({
+        saved = await prisma.captureDocument.create({
           data: {
             sessionId,
             documentType: doc.documentType,
-            contentJson: JSON.stringify(doc.contentJson),
+            contentJson: doc.contentJson as unknown as Prisma.InputJsonValue,
             status: "draft",
             confidence: clampConfidence(doc.confidence),
-            lowConfidenceFields: JSON.stringify(doc.lowConfidenceFields || []),
-            evidenceLineage: doc.evidenceLineage
-              ? JSON.stringify(doc.evidenceLineage)
-              : null,
-            provenanceJson: JSON.stringify(docProvenance),
+            lowConfidenceFields: (doc.lowConfidenceFields || []) as unknown as Prisma.InputJsonValue,
+            evidenceLineage: doc.evidenceLineage ? (doc.evidenceLineage as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
+            provenanceJson: docProvenance ? (docProvenance as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
           },
         });
       } catch (error) {
         if (!isUniqueConstraintError(error)) throw error;
 
-        const existing = await prisma.documentGeneration2.findFirst({
+        const existing = await prisma.captureDocument.findFirst({
           where: {
             sessionId,
             documentType: doc.documentType,
@@ -276,27 +264,10 @@ export async function POST(request: Request) {
         saved = existing;
       }
 
-      let parsedContentJson: unknown = doc.contentJson;
-      let parsedLowConfidenceFields: unknown = doc.lowConfidenceFields || [];
-      let parsedEvidenceLineage: unknown = doc.evidenceLineage || null;
-      let parsedProvenanceJson: unknown = docProvenance;
-
-      try {
-        parsedContentJson = JSON.parse(saved.contentJson);
-      } catch {}
-      try {
-        parsedLowConfidenceFields = JSON.parse(saved.lowConfidenceFields || "[]");
-      } catch {}
-      try {
-        parsedEvidenceLineage = saved.evidenceLineage
-          ? JSON.parse(saved.evidenceLineage)
-          : null;
-      } catch {}
-      try {
-        parsedProvenanceJson = saved.provenanceJson
-          ? JSON.parse(saved.provenanceJson)
-          : {};
-      } catch {}
+      const parsedContentJson = saved.contentJson ?? doc.contentJson;
+      const parsedLowConfidenceFields = saved.lowConfidenceFields ?? doc.lowConfidenceFields ?? [];
+      const parsedEvidenceLineage = saved.evidenceLineage ?? null;
+      const parsedProvenanceJson = saved.provenanceJson ?? docProvenance;
 
       savedDocuments.push({
         ...saved,
@@ -325,7 +296,7 @@ export async function POST(request: Request) {
         action: "documents_generated",
         entityType: "CaptureSession",
         entityId: sessionId,
-        metadata: JSON.stringify({
+        metadata: {
           model: result.modelUsed,
           documentCount: savedDocuments.length,
           documentTypes: savedDocuments.map((d) => d.documentType),
@@ -340,7 +311,7 @@ export async function POST(request: Request) {
             hasAudioTranscript: !!audioTranscript,
             hasCmmReference: !!cmmReference,
           },
-        }),
+        },
       },
     });
 
