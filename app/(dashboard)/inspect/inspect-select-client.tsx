@@ -161,7 +161,7 @@ export default function InspectSelectClient() {
 
       const data = await res.json();
       if (res.ok && data.success) {
-        router.push(`/inspect/${data.data.sessionId}`);
+        router.push(`/jobs/${data.data.sessionId}`);
       } else {
         setSearchError(data.error || "Failed to create inspection session");
       }

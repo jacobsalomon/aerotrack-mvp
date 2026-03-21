@@ -6,7 +6,6 @@ import { useState, type ComponentType } from "react";
 import {
   BookOpen,
   ClipboardCheck,
-  FileCheck,
   FileText,
   LogOut,
   Menu,
@@ -33,16 +32,10 @@ type NavItem = {
 
 const primaryNavItems: NavItem[] = [
   {
-    href: "/sessions",
-    label: "Sessions",
-    icon: FileCheck,
-    description: "Capture and review work",
-  },
-  {
-    href: "/inspect",
-    label: "Inspect",
+    href: "/jobs",
+    label: "Jobs",
     icon: ClipboardCheck,
-    description: "CMM-guided inspections",
+    description: "Your work orders and inspections",
   },
 ];
 
@@ -54,7 +47,7 @@ const supportNavItems: NavItem[] = [
   },
   {
     href: "/library",
-    label: "Library",
+    label: "Templates",
     icon: BookOpen,
     description: "CMM inspection templates",
   },

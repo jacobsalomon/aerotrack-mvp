@@ -1,17 +1,18 @@
-// /inspect/[sessionId]/review — Inspection review page
-// Shows full summary, problems, findings, section-by-section breakdown, and sign-off button
+// /jobs/[id]/review — Review page for both inspection and capture sessions
+// Inspection: renders ReviewScreen with full summary, findings, sign-off
+// Capture: redirects to the session detail (review happens inline there)
 
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import ReviewScreen from "@/components/inspect/review-screen";
 
-type PageProps = { params: Promise<{ sessionId: string }> };
+type PageProps = { params: Promise<{ id: string }> };
 
-export default async function ReviewPage({ params }: PageProps) {
-  const { sessionId } = await params;
+export default async function JobReviewPage({ params }: PageProps) {
+  const { id } = await params;
 
   const session = await prisma.captureSession.findUnique({
-    where: { id: sessionId },
+    where: { id },
     include: {
       user: {
         select: { id: true, name: true, firstName: true, lastName: true, badgeNumber: true },
@@ -57,8 +58,13 @@ export default async function ReviewPage({ params }: PageProps) {
     },
   });
 
-  if (!session || session.sessionType !== "inspection") {
-    redirect("/inspect");
+  if (!session) {
+    redirect("/jobs");
+  }
+
+  // For capture sessions, review happens inline on the detail page
+  if (session.sessionType !== "inspection") {
+    redirect(`/jobs/${id}`);
   }
 
   // Load component if linked
@@ -72,7 +78,7 @@ export default async function ReviewPage({ params }: PageProps) {
 
   // Count unassigned measurements
   const unassignedCount = await prisma.measurement.count({
-    where: { captureSessionId: sessionId, inspectionItemId: null },
+    where: { captureSessionId: id, inspectionItemId: null },
   });
 
   const isReconciling = !session.reconciliationSummary && !session.signedOffAt;

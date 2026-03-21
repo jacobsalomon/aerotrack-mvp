@@ -72,7 +72,7 @@ export async function GET(request: Request) {
     const components = componentIds.length
       ? await prisma.component.findMany({
           where: { id: { in: componentIds } },
-          select: { id: true, partNumber: true, description: true },
+          select: { id: true, partNumber: true, serialNumber: true, description: true },
         })
       : [];
     const componentMap = Object.fromEntries(components.map((c) => [c.id, c]));
@@ -98,7 +98,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { description, targetFormType, orgDocumentId } = body;
+    const { description, targetFormType, orgDocumentId, workOrderRef } = body;
     const user = authResult.user;
 
     // Look up user profile by the logged-in user's email
@@ -160,6 +160,7 @@ export async function POST(request: Request) {
         description: description || "Web capture session",
         targetFormType: orgDocumentId ? null : (targetFormType || null),
         orgDocumentId: orgDocumentId || null,
+        workOrderRef: workOrderRef || null,
         status: "capturing",
       },
     });

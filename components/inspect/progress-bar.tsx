@@ -3,10 +3,11 @@
 // Sticky progress bar at top of inspection workspace
 // Shows: completion percentage, item counts, problems, config variant, review button
 
+import { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { AlertTriangle, ClipboardCheck, Eye, Lock } from "lucide-react";
+import { AlertTriangle, Eye, Lock } from "lucide-react";
 
 interface Props {
   summary: {
@@ -24,6 +25,7 @@ interface Props {
   isReadOnly: boolean;
   unassignedCount: number;
   onReview: () => void;
+  searchSlot?: ReactNode;
 }
 
 export default function ProgressBar({
@@ -35,6 +37,7 @@ export default function ProgressBar({
   isReadOnly,
   unassignedCount,
   onReview,
+  searchSlot,
 }: Props) {
   const completedCount = summary.done + summary.skipped;
   const pct = summary.total > 0 ? Math.round((completedCount / summary.total) * 100) : 0;
@@ -54,6 +57,7 @@ export default function ProgressBar({
           </span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
+          {searchSlot}
           {isReadOnly && (
             <Badge variant="outline" className="border-yellow-500/50 text-yellow-500 text-xs">
               <Lock className="h-3 w-3 mr-1" /> Signed Off

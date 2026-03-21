@@ -9,6 +9,9 @@ import { apiUrl } from "@/lib/api-url";
 import SectionTabs from "@/components/inspect/section-tabs";
 import ItemList from "@/components/inspect/item-list";
 import ProgressBar from "@/components/inspect/progress-bar";
+import NetworkBanner, { useOnlineStatus } from "@/components/inspect/network-banner";
+import NextItemButton from "@/components/inspect/next-item-button";
+import ItemSearch from "@/components/inspect/item-search";
 
 // Types matching what the server component passes down
 interface InspectionItem {
@@ -106,6 +109,7 @@ interface Props {
 
 export default function InspectWorkspace({ session, component }: Props) {
   const router = useRouter();
+  const isOnline = useOnlineStatus();
   const template = session.inspectionTemplate;
   const sections = template?.sections || [];
   const isReadOnly = !!session.signedOffAt;
@@ -223,9 +227,18 @@ export default function InspectWorkspace({ session, component }: Props) {
     }, 500);
   }
 
+  const [targetItemId, setTargetItemId] = useState<string | null>(null);
+
   // ── Navigate to review ──
   function handleReview() {
-    router.push(`/inspect/${session.id}/review`);
+    router.push(`/jobs/${session.id}/review`);
+  }
+
+  function handleNavigateToItem(sectionId: string, itemId: string) {
+    if (sectionId !== activeSectionId) {
+      handleSectionChange(sectionId);
+    }
+    setTargetItemId(itemId);
   }
 
   if (!template) {
@@ -238,7 +251,8 @@ export default function InspectWorkspace({ session, component }: Props) {
 
   return (
     <div className="min-h-screen flex flex-col bg-zinc-950">
-      {/* Progress bar at top */}
+      <NetworkBanner />
+
       <ProgressBar
         summary={summary}
         configVariant={session.configurationVariant}
@@ -248,6 +262,13 @@ export default function InspectWorkspace({ session, component }: Props) {
         isReadOnly={isReadOnly}
         unassignedCount={unassignedCount}
         onReview={handleReview}
+        searchSlot={
+          <ItemSearch
+            sections={sections}
+            progressMap={progressMap}
+            onSelect={handleNavigateToItem}
+          />
+        }
       />
 
       {/* Section tabs */}
@@ -267,10 +288,23 @@ export default function InspectWorkspace({ session, component }: Props) {
           sessionId={session.id}
           sectionId={activeSectionId}
           isReadOnly={isReadOnly}
+          isOffline={!isOnline}
           onItemCompleted={handleItemCompleted}
           referenceImageUrls={activeSection?.referenceImageUrls || []}
+          targetItemId={targetItemId}
+          onTargetItemHandled={() => setTargetItemId(null)}
         />
       </div>
+
+      {!isReadOnly && (
+        <NextItemButton
+          sections={sections}
+          activeSectionId={activeSectionId}
+          progressMap={progressMap}
+          onNavigate={handleNavigateToItem}
+          disabled={!isOnline}
+        />
+      )}
     </div>
   );
 }
