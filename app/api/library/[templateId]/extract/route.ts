@@ -24,7 +24,7 @@ export async function POST(
 ) {
   // This endpoint is excluded from session middleware because it's called
   // server-to-server (fire-and-forget). Verify a shared secret instead.
-  const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET || process.env.NEXTAUTH_SECRET;
+  const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
   const authHeader = _request.headers.get("x-internal-secret");
   if (!INTERNAL_SECRET || authHeader !== INTERNAL_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -244,7 +244,7 @@ function triggerNextStep(templateId: string) {
       ? `https://${process.env.VERCEL_URL}`
       : "http://localhost:3000");
   const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
-  const secret = process.env.INTERNAL_API_SECRET || process.env.NEXTAUTH_SECRET || "";
+  const secret = process.env.INTERNAL_API_SECRET || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "";
 
   fetch(`${baseUrl}${basePath}/api/library/${templateId}/extract`, {
     method: "POST",
