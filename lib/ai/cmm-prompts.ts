@@ -1,8 +1,9 @@
 // Prompts for CMM inspection sheet extraction.
 // Separated into their own file so we can iterate on them quickly
-// during US-008 prompt validation without touching extraction logic.
+// during prompt validation without touching extraction logic.
 
-// Pass 1: classify each page and identify sub-assemblies
+// ── Pass 1: classify each page and identify sub-assemblies ──────────
+
 export const PASS1_CLASSIFICATION_PROMPT = `You are an aerospace CMM (Component Maintenance Manual) expert analyzing inspection sheet pages.
 
 For this page, identify:
@@ -30,93 +31,307 @@ RULES:
 - Extract the sub-assembly title from figure captions (e.g., "ASSEMBLY OF END HOUSING UNIT")
 - Extract any part number patterns (typically 6-7 digit numbers, sometimes with letter suffixes)`;
 
-// Pass 2: deep extraction of specs, tools, and checks from a sub-assembly
-export const PASS2_EXTRACTION_PROMPT = `You are an expert aerospace inspector analyzing CMM inspection sheet diagrams. Extract EVERY specification, check, tool requirement, and note from this sub-assembly diagram.
+// ── Pass 2: deep extraction with systematic scan + few-shot examples ──
 
-Context: This is Figure {figureNumber} — "{sectionTitle}" from a CMM for part numbers {partNumbers}.
+// System instruction for the extraction role (used as system prompt for Claude,
+// systemInstruction for Gemini)
+export const PASS2_SYSTEM_INSTRUCTION = `You are a meticulous, certified aerospace inspector with 20+ years of experience interpreting Component Maintenance Manual (CMM) diagrams. You analyze inspection sheet pages with safety-critical precision. Missing a single torque spec or tool requirement could cause an aircraft incident.
 
-Return JSON matching this exact structure:
-{
-  "items": [
-    {
-      "itemType": "torque_spec" | "dimension_check" | "dimensional_spec" | "visual_check" | "procedural_check" | "safety_wire" | "tool_requirement" | "matched_set" | "general_note" | "replace_if_disturbed",
-      "itemCallout": "290",
-      "partNumber": null,
-      "parameterName": "End Housing Bolt Torque",
-      "specification": "51-56 LB-IN (5.8-6.3 N-m)",
-      "specValueLow": 51,
-      "specValueHigh": 56,
-      "specUnit": "LB-IN",
-      "specValueLowMetric": 5.8,
-      "specValueHighMetric": 6.3,
-      "specUnitMetric": "N-m",
-      "toolsRequired": ["AGE10037", "BLS-34347"],
-      "checkReference": "CHECK 23",
-      "repairReference": "REPAIR 6, 25",
-      "specialAssemblyRef": "SPECIAL ASSEMBLY FIGURE 823",
-      "configurationApplicability": [],
-      "notes": "REPLACE O-RINGS IF DISTURBED",
-      "confidence": 0.95
-    }
-  ],
-  "sectionConfidence": 0.9,
-  "extractionNotes": "any issues or ambiguities encountered"
-}
+Your task: extract EVERY specification, check, tool requirement, and note from the provided CMM diagram page into a structured JSON format. You must be exhaustive — it is far better to include an item with lower confidence than to omit it.`;
 
-EXTRACTION RULES — read carefully:
+// The main extraction prompt with context placeholders, naming convention,
+// itemType definitions, few-shot examples, and output schema.
+export const PASS2_EXTRACTION_PROMPT = `CONTEXT: This is Figure {figureNumber} — "{sectionTitle}" from a CMM for part numbers {partNumbers}.
 
-TORQUE SPECS:
-- Extract BOTH imperial and metric values when both are shown (e.g., "51-56 LB-IN (5.8-6.3 N-m)")
-- If only one unit is shown, leave the other unit fields as null
+STEP 1 — SYSTEMATIC PAGE SCAN:
+Before extracting items, scan the ENTIRE page systematically:
+- Top-left to top-right: all callout numbers, leader lines, and annotations
+- Middle-left to middle-right: all torque specs, dimensional notes, tool callouts
+- Bottom-left to bottom-right: all text boxes, warnings, cautions, notes
+- Margins and insets: any supplementary information, cross-references, or configuration notes
+Write your findings in the "pageAnalysis" field of the JSON output.
+
+STEP 2 — STRUCTURED EXTRACTION:
+For each item found in your scan, create a JSON entry following the schema and rules below.
+
+ITEM TYPE DEFINITIONS (use ONLY these values):
+- "torque_spec": An instruction to tighten a fastener to a specific torque value with a numerical range.
+- "dimension_check": An instruction to measure a dimension (length, diameter, runout, clearance) — often with a CHECK reference.
+- "dimensional_spec": A passive dimensional statement on the drawing, not an explicit check instruction.
+- "visual_check": An instruction to visually inspect for damage, wear, corrosion, or correct assembly.
+- "procedural_check": A check to verify a process (e.g., "Ensure part is seated", "Verify rotation").
+- "safety_wire": Any instruction related to safety wire or lockwire installation/inspection.
+- "tool_requirement": A standalone callout for a required tool, fixture, or equipment. NOT for tools alongside a torque spec.
+- "matched_set": Parts marked as matched sets that must not be interchanged.
+- "replace_if_disturbed": An instruction to replace a part (gasket, o-ring, self-locking nut) if removed or disturbed.
+- "general_note": Any important note, warning, caution, or instruction that does not fit the categories above.
+
+PARAMETER NAMING CONVENTION (CRITICAL for consistency):
+Use the format: "Item [callout] [Component Description] [Parameter Type]"
+Examples:
+- "Item 290 End Housing Bolt Torque"
+- "Item 110 Shaft End Play Check"
+- "Item 50 O-Ring Replacement"
+- For items without a callout number, omit "Item [callout]": "Assembly Part Number Reference"
+
+EXTRACTION RULES:
+
+Torque Specs:
+- Extract BOTH imperial and metric values when both shown (e.g., "51-56 LB-IN (5.8-6.3 N-m)")
+- If only one unit shown, leave the other fields as null
 - Parse ranges into specValueLow and specValueHigh
-- For single values (e.g., "55 LB-IN"), set both low and high to the same value
-- Common units: LB-IN, LB-FT, N-m, N-cm
+- For single values, set both low and high to that value
 
-DIMENSIONAL SPECS:
+Dimensional Specs:
 - Clearances, fits, gaps, runouts, endplay measurements
 - e.g., "0.010 INCH MAXIMUM" → specValueLow: 0, specValueHigh: 0.010, specUnit: "INCH"
 
-TOOL REQUIREMENTS:
+Tool Requirements:
 - Extract ALL tool/fixture identifiers: AGE, WCS, DJS, FDS, PES, BLS, AKS, HTS numbers
-- A single step may require multiple tools — list them all in toolsRequired
-- Set itemType to "tool_requirement" ONLY for standalone tool callouts, NOT for tools mentioned alongside a torque spec (those go in the torque spec's toolsRequired)
-- For tool_requirement items, put the tool IDs in the specification field too (e.g., "PES-34398-1, HTS-34395") — never leave specification empty
+- Tools mentioned alongside a torque spec go in that spec's toolsRequired, NOT as a separate tool_requirement item
+- For standalone tool_requirement items, put tool IDs in the specification field too
 
-CHECK AND REPAIR REFERENCES:
+Check/Repair References:
 - "REFER TO CHECK 23" → checkReference: "CHECK 23"
 - "REFER TO REPAIR 6, 25" → repairReference: "REPAIR 6, 25"
-- Include the full reference text
 
-SAFETY WIRE:
-- "SAFETY WIRE" or "LOCKWIRE" callouts → itemType: "safety_wire"
-- Note the specific items that need safety wiring
+Configuration-Specific Items:
+- "P/N 1709614C CONFIGURATION" → configurationApplicability: ["1709614C"]
+- If applies to all configurations, leave as empty array
 
-MATCHED SETS:
-- Items marked as matched sets or paired assemblies → itemType: "matched_set"
-
-CONFIGURATION-SPECIFIC ITEMS:
-- Items that only apply to certain part number configurations
-- e.g., "P/N 1709614C CONFIGURATION" → configurationApplicability: ["1709614C"]
-- If an item applies to all configurations, leave configurationApplicability as empty array
-
-CAUTIONS / WARNINGS / NOTES:
-- Text boxes with "CAUTION:", "WARNING:", "NOTE:" → itemType depends on content:
-  - "REPLACE O-RINGS IF DISTURBED" → "replace_if_disturbed"
-  - "MAKE SURE PUMPS ROTATE FREELY" → "procedural_check"
-  - General information → "general_note"
-
-CONFIDENCE:
+Confidence Scoring:
 - 0.9-1.0: clearly visible, unambiguous spec
 - 0.7-0.9: readable but some interpretation needed
 - 0.5-0.7: partially obscured or ambiguous
-- Below 0.5: guessing — flag these
+- Below 0.5: guessing — include but flag
 
-CRITICAL: Extract EVERY item visible on the page. Missing a torque spec or tool requirement could cause a safety issue. When in doubt, include it with lower confidence rather than omitting it.`;
+FEW-SHOT EXAMPLES:
 
-// Additional instructions appended to the prompt when calling Claude.
-// Claude tends to extract fewer items than Gemini — this nudges it toward completeness.
-export const PASS2_CLAUDE_SUFFIX = `
+Example 1 — Torque Spec with Tool:
+Source text on diagram: "290 TORQUE 51-56 LB-IN (5.8-6.3 N-m) USE AGE10037"
+Extracted item:
+{
+  "itemType": "torque_spec",
+  "itemCallout": "290",
+  "parameterName": "Item 290 End Housing Bolt Torque",
+  "specification": "51-56 LB-IN (5.8-6.3 N-m)",
+  "specValueLow": 51,
+  "specValueHigh": 56,
+  "specUnit": "LB-IN",
+  "specValueLowMetric": 5.8,
+  "specValueHighMetric": 6.3,
+  "specUnitMetric": "N-m",
+  "toolsRequired": ["AGE10037"],
+  "checkReference": null,
+  "repairReference": null,
+  "specialAssemblyRef": null,
+  "configurationApplicability": [],
+  "notes": null,
+  "confidence": 0.98
+}
 
-IMPORTANT: Return ONLY raw JSON. Do NOT wrap in markdown code fences or add any text outside the JSON object.
+Example 2 — Standalone Tool Requirement:
+Source text on diagram: "USE TOOL DJS-34414 TO HEAT BEARING SUPPORT"
+Extracted item:
+{
+  "itemType": "tool_requirement",
+  "itemCallout": "180",
+  "parameterName": "Item 180 Bearing Support Heating Fixture",
+  "specification": "DJS-34414",
+  "specValueLow": null,
+  "specValueHigh": null,
+  "specUnit": null,
+  "specValueLowMetric": null,
+  "specValueHighMetric": null,
+  "specUnitMetric": null,
+  "toolsRequired": ["DJS-34414"],
+  "checkReference": null,
+  "repairReference": null,
+  "specialAssemblyRef": null,
+  "configurationApplicability": [],
+  "notes": "Heat bearing support assembly for installation",
+  "confidence": 0.95
+}
 
-COMPLETENESS CHECK: Before returning, count ALL callout numbers visible on this page. Verify your items list accounts for each one. If you see a callout number on the drawing that is not in your output, add it with your best interpretation.`;
+Example 3 — Replace If Disturbed:
+Source text: Note box reading "REPLACE O-RINGS IF DISTURBED"
+Extracted item:
+{
+  "itemType": "replace_if_disturbed",
+  "itemCallout": null,
+  "parameterName": "O-Ring Replacement If Disturbed",
+  "specification": "REPLACE O-RINGS IF DISTURBED",
+  "specValueLow": null,
+  "specValueHigh": null,
+  "specUnit": null,
+  "specValueLowMetric": null,
+  "specValueHighMetric": null,
+  "specUnitMetric": null,
+  "toolsRequired": null,
+  "checkReference": null,
+  "repairReference": null,
+  "specialAssemblyRef": null,
+  "configurationApplicability": [],
+  "notes": null,
+  "confidence": 0.99
+}
+
+OUTPUT FORMAT:
+Return a single JSON object with this structure:
+{
+  "pageAnalysis": "Detailed inventory of everything visible on this page — list every callout number, every torque value, every tool ID, every text box, every note you can see.",
+  "items": [ ... ],
+  "sectionConfidence": 0.9,
+  "extractionNotes": "Any ambiguities, illegible text, or items you are uncertain about."
+}`;
+
+// Additional instructions for Claude — appended to the user message.
+// Addresses Claude's tendency to find fewer items and its JSON output format.
+export const PASS2_CLAUDE_ADDITIONS = `
+
+IMPORTANT OUTPUT FORMAT: Return ONLY raw JSON. Do NOT wrap in markdown code fences, do NOT add any text before or after the JSON object.
+
+COMPLETENESS VERIFICATION: Before finalizing your response, perform this check:
+1. Count every callout number visible on the page (circled numbers with leader lines)
+2. Count every torque value visible (numbers followed by LB-IN, LB-FT, N-m, etc.)
+3. Count every tool identifier visible (AGE, WCS, DJS, FDS, PES, BLS, AKS, HTS prefixes)
+4. Count every text box (CAUTION, WARNING, NOTE boxes)
+5. Verify your items array accounts for ALL of the above. If any are missing, add them now.`;
+
+// ── Gemini responseSchema — enforces JSON structure at the API level ──
+
+// This schema tells Gemini exactly what shape to return. Field descriptions
+// act as inline instructions. The pageAnalysis field is first, forcing the
+// model to reason through the page before generating items.
+export const CMM_EXTRACTION_SCHEMA = {
+  type: "object",
+  properties: {
+    pageAnalysis: {
+      type: "string",
+      description: "A thorough inventory of everything visible on this CMM diagram page. List every callout number, torque value, tool ID, text box, note, and cross-reference you can see. This analysis must be complete before generating items.",
+    },
+    items: {
+      type: "array",
+      description: "Array of every extracted specification, check, tool requirement, and note from the page.",
+      items: {
+        type: "object",
+        properties: {
+          itemType: {
+            type: "string",
+            enum: [
+              "torque_spec",
+              "dimension_check",
+              "dimensional_spec",
+              "visual_check",
+              "procedural_check",
+              "safety_wire",
+              "tool_requirement",
+              "matched_set",
+              "general_note",
+              "replace_if_disturbed",
+            ],
+            description: "The category of this inspection item.",
+          },
+          itemCallout: {
+            type: "string",
+            nullable: true,
+            description: "The callout number on the diagram pointing to this part (e.g., '290', '15'). Null if no specific callout.",
+          },
+          partNumber: {
+            type: "string",
+            nullable: true,
+            description: "Part number if explicitly associated with this item. Usually null.",
+          },
+          parameterName: {
+            type: "string",
+            description: "Descriptive name in the format 'Item [callout] [Component] [Type]'. Example: 'Item 290 End Housing Bolt Torque'.",
+          },
+          specification: {
+            type: "string",
+            description: "The exact specification text from the diagram. For torque specs include both units: '51-56 LB-IN (5.8-6.3 N-m)'. For tool items, include the tool ID. Never empty.",
+          },
+          specValueLow: {
+            type: "number",
+            nullable: true,
+            description: "Lower bound of the spec range in imperial units. Null if not a numeric spec.",
+          },
+          specValueHigh: {
+            type: "number",
+            nullable: true,
+            description: "Upper bound of the spec range in imperial units. For single values, same as specValueLow.",
+          },
+          specUnit: {
+            type: "string",
+            nullable: true,
+            description: "Imperial unit: LB-IN, LB-FT, INCH, PSI, etc. Null if not applicable.",
+          },
+          specValueLowMetric: {
+            type: "number",
+            nullable: true,
+            description: "Lower bound in metric units (N-m, mm, etc.). Null if not shown.",
+          },
+          specValueHighMetric: {
+            type: "number",
+            nullable: true,
+            description: "Upper bound in metric units. Null if not shown.",
+          },
+          specUnitMetric: {
+            type: "string",
+            nullable: true,
+            description: "Metric unit: N-m, N-cm, MM, etc. Null if not applicable.",
+          },
+          toolsRequired: {
+            type: "array",
+            nullable: true,
+            items: { type: "string" },
+            description: "Array of tool/fixture IDs required (AGE, WCS, DJS, FDS, PES, BLS, AKS, HTS numbers). Null or empty if none.",
+          },
+          checkReference: {
+            type: "string",
+            nullable: true,
+            description: "Reference to a CHECK in the CMM text (e.g., 'CHECK 23'). Null if none.",
+          },
+          repairReference: {
+            type: "string",
+            nullable: true,
+            description: "Reference to a REPAIR procedure (e.g., 'REPAIR 6, 25'). Null if none.",
+          },
+          specialAssemblyRef: {
+            type: "string",
+            nullable: true,
+            description: "Reference to a special assembly figure (e.g., 'SPECIAL ASSEMBLY FIGURE 823'). Null if none.",
+          },
+          configurationApplicability: {
+            type: "array",
+            items: { type: "string" },
+            description: "Part number configurations this item applies to. Empty array if applies to all.",
+          },
+          notes: {
+            type: "string",
+            nullable: true,
+            description: "Additional notes, warnings, or context for this item. Null if none.",
+          },
+          confidence: {
+            type: "number",
+            description: "Confidence score 0.0-1.0. 0.9+ for clear specs, 0.7-0.9 for readable but interpreted, below 0.7 for ambiguous.",
+          },
+        },
+        required: [
+          "itemType",
+          "parameterName",
+          "specification",
+          "confidence",
+        ],
+      },
+    },
+    sectionConfidence: {
+      type: "number",
+      description: "Overall confidence for the entire page extraction, 0.0-1.0.",
+    },
+    extractionNotes: {
+      type: "string",
+      description: "Any ambiguities, illegible text, partially obscured areas, or difficulties encountered.",
+    },
+  },
+  required: ["pageAnalysis", "items", "sectionConfidence", "extractionNotes"],
+};

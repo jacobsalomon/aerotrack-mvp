@@ -14,7 +14,13 @@ import * as path from "path";
 import { extractPdfPages, extractSinglePageAsBase64, getPdfPageCount } from "../lib/pdf-utils";
 import { callGemini } from "../lib/ai/provider";
 import { getApiKey, getApiBase } from "../lib/ai/models";
-import { PASS1_CLASSIFICATION_PROMPT, PASS2_EXTRACTION_PROMPT } from "../lib/ai/cmm-prompts";
+import {
+  PASS1_CLASSIFICATION_PROMPT,
+  PASS2_SYSTEM_INSTRUCTION,
+  PASS2_EXTRACTION_PROMPT,
+  PASS2_CLAUDE_ADDITIONS,
+  CMM_EXTRACTION_SCHEMA,
+} from "../lib/ai/cmm-prompts";
 import { validateExtractionResults, reconcileExtractions, type ExtractedItem } from "../lib/ai/cmm-validation";
 
 const PDF_PATH = path.join(process.env.HOME || "~", "Downloads", "Inspection Sheets.pdf");
@@ -30,7 +36,7 @@ interface PageClassification {
   notes: string | null;
 }
 
-// Call Claude Sonnet for extraction (same as production code)
+// Call Claude Sonnet for extraction (matches production code)
 async function extractWithClaude(pageBase64: string, prompt: string): Promise<ExtractedItem[]> {
   const apiKey = getApiKey("anthropic");
   const apiBase = getApiBase("anthropic");
@@ -42,10 +48,11 @@ async function extractWithClaude(pageBase64: string, prompt: string): Promise<Ex
       "Content-Type": "application/json",
       "anthropic-version": "2023-06-01",
     },
-    signal: AbortSignal.timeout(90000),
+    signal: AbortSignal.timeout(240000),
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 8192,
+      max_tokens: 16384,
+      system: PASS2_SYSTEM_INSTRUCTION,
       messages: [
         {
           role: "user",
@@ -54,11 +61,11 @@ async function extractWithClaude(pageBase64: string, prompt: string): Promise<Ex
               type: "document",
               source: { type: "base64", media_type: "application/pdf", data: pageBase64 },
             },
-            { type: "text", text: prompt },
+            { type: "text", text: prompt + PASS2_CLAUDE_ADDITIONS },
           ],
         },
       ],
-      temperature: 0.1,
+      temperature: 0,
     }),
   });
 
@@ -199,6 +206,7 @@ async function main() {
           (async () => {
             const text = await callGemini({
               model: "gemini-2.5-pro",
+              systemInstruction: { parts: [{ text: PASS2_SYSTEM_INSTRUCTION }] },
               contents: [
                 {
                   role: "user",
@@ -208,8 +216,12 @@ async function main() {
                   ],
                 },
               ],
-              generationConfig: { temperature: 0.1, responseMimeType: "application/json" },
-              timeoutMs: 90000,
+              generationConfig: {
+                temperature: 0,
+                responseMimeType: "application/json",
+                responseSchema: CMM_EXTRACTION_SCHEMA,
+              },
+              timeoutMs: 240000,
             });
             const parsed = JSON.parse(text) as { items: ExtractedItem[] };
             return parsed.items || [];
