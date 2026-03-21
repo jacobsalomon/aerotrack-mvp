@@ -51,8 +51,10 @@ export async function recordMeasurement({
   });
 
   if (!session) throw new Error("Session not found");
-  if (session.status !== "capturing") {
-    throw new Error("Session is not actively capturing");
+  // Allow recording measurements during capture AND inspection sessions
+  const allowedStatuses = ["capturing", "inspecting", "reviewing"];
+  if (!allowedStatuses.includes(session.status)) {
+    throw new Error("Session is not actively capturing or inspecting");
   }
 
   // Compute tolerance status (no spec matching for now — can be added later)
