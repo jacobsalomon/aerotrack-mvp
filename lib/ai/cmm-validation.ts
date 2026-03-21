@@ -203,10 +203,18 @@ function numericMatch(a: number | null | undefined, b: number | null | undefined
   return diff < 0.5 || (maxVal > 0 && diff / maxVal < 0.01);
 }
 
+// Determine confidence for an unmatched item (found by only one model).
+// If it passes structural validation cleanly, it gets 0.85 (single-model accuracy is 99%+).
+// If it has validation issues, it stays at 0.7.
+function unmatchedConfidence(item: ExtractedItem): number {
+  const { issues } = validateItem(item);
+  return issues.length === 0 ? 0.85 : 0.7;
+}
+
 /**
  * Reconcile extractions from two AI models for the same page.
  * Items both models agree on get confidence 1.0.
- * Items from only one model get confidence 0.7.
+ * Unmatched items get 0.85 (if structurally valid) or 0.7.
  * Items where models disagree on values get confidence 0.5.
  */
 export function reconcileExtractions(
@@ -217,36 +225,46 @@ export function reconcileExtractions(
   const mergedItems: ExtractedItem[] = [];
   const matchedB = new Set<number>(); // Track which B items got matched
 
-  // For each item from model A, try to find a matching item from model B
-  for (const a of itemsA) {
-    let bestMatch: { index: number; item: ExtractedItem } | null = null;
-
+  // Try to match item A against all unmatched B items using 3 strategies
+  function findMatch(a: ExtractedItem): { index: number; item: ExtractedItem } | null {
     for (let j = 0; j < itemsB.length; j++) {
       if (matchedB.has(j)) continue;
       const b = itemsB[j];
 
-      // Match by callout number first (strongest signal)
-      const calloutMatch = a.itemCallout && b.itemCallout &&
-        normalizeForComparison(a.itemCallout) === normalizeForComparison(b.itemCallout);
+      // Strategy 1: Match by callout number (strongest signal)
+      if (a.itemCallout && b.itemCallout &&
+          normalizeForComparison(a.itemCallout) === normalizeForComparison(b.itemCallout)) {
+        return { index: j, item: b };
+      }
 
-      // Match by parameter name (fuzzy)
-      const nameMatch = parameterNamesMatch(a.parameterName, b.parameterName);
+      // Strategy 2: Match by fuzzy parameter name + same type
+      if (a.itemType === b.itemType && parameterNamesMatch(a.parameterName, b.parameterName)) {
+        return { index: j, item: b };
+      }
 
-      // Match by type + callout, or by name
-      if (calloutMatch || (nameMatch && a.itemType === b.itemType)) {
-        bestMatch = { index: j, item: b };
-        break;
+      // Strategy 3: Match by spec values + same type (catches different names, same numbers)
+      if (a.itemType === b.itemType &&
+          a.specValueLow != null && b.specValueLow != null &&
+          numericMatch(a.specValueLow, b.specValueLow) &&
+          numericMatch(a.specValueHigh, b.specValueHigh)) {
+        return { index: j, item: b };
       }
     }
+    return null;
+  }
 
-    if (!bestMatch) {
-      // Only model A found this item — keep it with reduced confidence
-      mergedItems.push({ ...a, confidence: 0.7 });
+  // For each item from model A, try to find a matching item from model B
+  for (const a of itemsA) {
+    const match = findMatch(a);
+
+    if (!match) {
+      // Only model A found this item — confidence based on structural validity
+      mergedItems.push({ ...a, confidence: unmatchedConfidence(a) });
       continue;
     }
 
-    matchedB.add(bestMatch.index);
-    const b = bestMatch.item;
+    matchedB.add(match.index);
+    const b = match.item;
 
     // Both models found the item — compare field by field
     let agreed = true;
@@ -308,14 +326,66 @@ export function reconcileExtractions(
   // Add items only model B found (not matched to any A item)
   for (let j = 0; j < itemsB.length; j++) {
     if (!matchedB.has(j)) {
-      mergedItems.push({ ...itemsB[j], confidence: 0.7 });
+      mergedItems.push({ ...itemsB[j], confidence: unmatchedConfidence(itemsB[j]) });
     }
   }
 
-  // Calculate agreement rate: items where both agreed / total matched pairs
+  // Calculate agreement rate: count disagreeing ITEMS, not individual fields
   const totalPairs = matchedB.size;
-  const agreedPairs = totalPairs - disagreements.filter(d => d.resolved === "flagged").length;
+  const disagreedItems = new Set(
+    disagreements.filter(d => d.resolved === "flagged").map(d => d.parameterName)
+  );
+  const agreedPairs = totalPairs - disagreedItems.size;
   const agreementRate = totalPairs > 0 ? agreedPairs / totalPairs : 0;
 
   return { items: mergedItems, agreementRate, disagreements };
+}
+
+// ── Cross-Page Deduplication ──────────────────────────────────────────
+
+/**
+ * Remove duplicate items that appear on multiple pages of the same section.
+ * Keeps the item with higher confidence; merges notes and tools from both.
+ */
+export function deduplicateItems(items: ExtractedItem[]): ExtractedItem[] {
+  const seen = new Map<string, ExtractedItem>();
+  let dedupCount = 0;
+
+  for (const item of items) {
+    // Build a dedup key — callout+type for items with callouts, name+spec for others
+    const key = item.itemCallout
+      ? `${normalizeForComparison(item.itemCallout)}|${item.itemType}`
+      : `${normalizeForComparison(item.parameterName)}|${normalizeForComparison(item.specification)}`;
+
+    const existing = seen.get(key);
+    if (!existing) {
+      seen.set(key, item);
+      continue;
+    }
+
+    dedupCount++;
+
+    // Merge: keep the higher-confidence item, but absorb data from the other
+    const keeper = item.confidence >= existing.confidence ? item : existing;
+    const donor = item.confidence >= existing.confidence ? existing : item;
+
+    const merged: ExtractedItem = {
+      ...keeper,
+      // Merge supplementary fields from both
+      toolsRequired: (keeper.toolsRequired?.length || 0) >= (donor.toolsRequired?.length || 0)
+        ? keeper.toolsRequired : donor.toolsRequired,
+      checkReference: keeper.checkReference || donor.checkReference,
+      repairReference: keeper.repairReference || donor.repairReference,
+      specialAssemblyRef: keeper.specialAssemblyRef || donor.specialAssemblyRef,
+      notes: keeper.notes || donor.notes,
+    };
+
+    seen.set(key, merged);
+  }
+
+  if (dedupCount > 0) {
+    console.log(`[Dedup] Removed ${dedupCount} duplicate items across pages`);
+  }
+
+  return Array.from(seen.values());
 }

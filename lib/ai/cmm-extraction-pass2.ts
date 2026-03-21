@@ -7,10 +7,11 @@ import { prisma } from "@/lib/db";
 import { extractSinglePageAsBase64 } from "@/lib/pdf-utils";
 import { callGemini } from "./provider";
 import { getApiKey, getApiBase } from "./models";
-import { PASS2_EXTRACTION_PROMPT } from "./cmm-prompts";
+import { PASS2_EXTRACTION_PROMPT, PASS2_CLAUDE_SUFFIX } from "./cmm-prompts";
 import {
   validateExtractionResults,
   reconcileExtractions,
+  deduplicateItems,
   type ExtractedItem,
   type DisagreementRecord,
 } from "./cmm-validation";
@@ -92,7 +93,7 @@ async function extractWithClaude(
                 data: pageBase64,
               },
             },
-            { type: "text", text: prompt },
+            { type: "text", text: prompt + PASS2_CLAUDE_SUFFIX },
           ],
         },
       ],
@@ -227,11 +228,12 @@ export async function extractSection(
       );
     }
 
-    // Merge all page results into one list
+    // Merge all page results and remove cross-page duplicates
     const allItems = allPageResults.flatMap((r) => r.items);
+    const dedupedItems = deduplicateItems(allItems);
 
-    // Run structural validation on merged items
-    const { validatedItems, sectionConfidence } = validateExtractionResults(allItems);
+    // Run structural validation on deduped items
+    const { validatedItems, sectionConfidence } = validateExtractionResults(dedupedItems);
 
     // Delete any existing items for this section (in case of re-extraction)
     await prisma.inspectionItem.deleteMany({ where: { sectionId } });
