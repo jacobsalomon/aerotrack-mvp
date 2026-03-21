@@ -6,6 +6,9 @@ import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { extractSection } from "@/lib/ai/cmm-extraction-pass2";
 
+// Vercel Pro plan allows up to 300s — consensus extraction needs time for both models
+export const maxDuration = 300;
+
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ templateId: string; sectionId: string }> }

@@ -13,7 +13,10 @@ import { randomUUID } from "crypto";
 import { runPass1 } from "@/lib/ai/cmm-extraction-pass1";
 import { extractSection } from "@/lib/ai/cmm-extraction-pass2";
 
-const LEASE_DURATION_MS = 2 * 60 * 1000; // 2-minute lease
+// Vercel Pro plan allows up to 300s per invocation
+export const maxDuration = 300;
+
+const LEASE_DURATION_MS = 5 * 60 * 1000; // 5-minute lease (matches maxDuration)
 
 export async function POST(
   _request: Request,

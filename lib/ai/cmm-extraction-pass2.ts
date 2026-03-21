@@ -51,7 +51,7 @@ async function extractWithGemini(
       },
     ],
     generationConfig: { temperature: 0.1, responseMimeType: "application/json" },
-    timeoutMs: 90000, // Single page — Gemini Pro can be slow on dense diagrams
+    timeoutMs: 240000, // 4 min — Gemini Pro can be slow on dense diagrams
   });
 
   const parsed = JSON.parse(responseText) as ExtractionResponse;
@@ -76,7 +76,7 @@ async function extractWithClaude(
       "Content-Type": "application/json",
       "anthropic-version": "2023-06-01",
     },
-    signal: AbortSignal.timeout(90000),
+    signal: AbortSignal.timeout(240000), // 4 min — match Gemini timeout
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
       max_tokens: 8192,
