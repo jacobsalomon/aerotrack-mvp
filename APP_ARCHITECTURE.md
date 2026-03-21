@@ -1,392 +1,497 @@
-# AeroTrack MVP — Application Architecture
+# AeroVision MVP — Application Architecture
 
 ## What Is This App?
 
-AeroTrack is an AI-powered system that **automates aviation maintenance paperwork**. When a mechanic overhauls an airplane part, they currently spend 60-90 minutes filling out FAA forms by hand. AeroTrack lets them just **work** — capturing photos, voice notes, and measurements — and the AI writes all the paperwork for them.
+AeroVision is an AI-powered system that **automates aviation maintenance paperwork**. When a mechanic overhauls an airplane part, they currently spend 60-90 minutes filling out FAA forms by hand. AeroVision lets them just **work** — the smart glasses observe what they're doing, and the AI writes all the paperwork automatically. The mechanic reviews and signs. No narration, no extra steps.
 
 **Core pitch:** *"The mechanic works. The paperwork writes itself."*
+
+**First client:** SilverWings, an MRO shop with 120 employees. Starting with measurement capture flowing into Quantum (their existing system).
 
 ---
 
 ## The Big Picture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        AeroTrack MVP                                │
-│                                                                     │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐  │
-│  │  SMART       │  │  WEB APP     │  │  EXECUTIVE DEMO          │  │
-│  │  GLASSES     │  │  (Dashboard) │  │  (Pitch to HEICO)        │  │
-│  │  DEMO        │  │              │  │                          │  │
-│  │  /glasses-   │  │  /dashboard  │  │  /demo                   │  │
-│  │  demo        │  │  /capture    │  │  (7-step guided tour)    │  │
-│  │              │  │  /parts      │  │                          │  │
-│  │  Shows what  │  │  /integrity  │  │  Shows the business      │  │
-│  │  a mechanic  │  │  /knowledge  │  │  case with ROI           │  │
-│  │  sees through│  │  /analytics  │  │  calculator              │  │
-│  │  AR glasses  │  │              │  │                          │  │
-│  └──────┬───────┘  └──────┬───────┘  └────────────┬─────────────┘  │
-│         │                 │                        │                │
-│         └─────────────────┼────────────────────────┘                │
-│                           │                                         │
-│                    ┌──────▼───────┐                                 │
-│                    │   AI ENGINE  │                                 │
-│                    │   (Claude)   │                                 │
-│                    │              │                                 │
-│                    │ • Reads docs │                                 │
-│                    │ • Parses     │                                 │
-│                    │   voice      │                                 │
-│                    │ • Generates  │                                 │
-│                    │   FAA forms  │                                 │
-│                    └──────┬───────┘                                 │
-│                           │                                         │
-│                    ┌──────▼───────┐                                 │
-│                    │   DATABASE   │                                 │
-│                    │   (SQLite)   │                                 │
-│                    │              │                                 │
-│                    │ 17 components│                                 │
-│                    │ 100+ events  │                                 │
-│                    │ Evidence,    │                                 │
-│                    │ documents,   │                                 │
-│                    │ exceptions   │                                 │
-│                    └──────────────┘                                 │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                        AeroVision MVP                                │
+│                                                                      │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐   │
+│  │  iOS APP     │  │  WEB APP     │  │  CMM TEMPLATE ENGINE     │   │
+│  │  (Companion) │  │  (Dashboard) │  │  (Inspection Templates)  │   │
+│  │              │  │              │  │                          │   │
+│  │  Captures    │  │  /jobs       │  │  /library                │   │
+│  │  photos,     │  │  /forms      │  │  Upload CMM PDFs →       │   │
+│  │  video,      │  │  /technicians│  │  AI extracts sections,   │   │
+│  │  audio on    │  │  /settings   │  │  tolerances, checklists  │   │
+│  │  the shop    │  │              │  │                          │   │
+│  │  floor       │  │  Review &    │  │  Powers guided           │   │
+│  │              │  │  approve     │  │  inspections             │   │
+│  │              │  │  AI-drafted  │  │                          │   │
+│  │              │  │  documents   │  │                          │   │
+│  └──────┬───────┘  └──────┬───────┘  └────────────┬─────────────┘   │
+│         │                 │                        │                 │
+│         └─────────────────┼────────────────────────┘                 │
+│                           │                                          │
+│                    ┌──────▼───────┐                                  │
+│                    │  AI ENGINE   │                                  │
+│                    │  (Multi-     │                                  │
+│                    │   Provider)  │                                  │
+│                    │              │                                  │
+│                    │ • GPT-5.4   │                                  │
+│                    │ • Claude 4.6│                                  │
+│                    │ • Gemini 2.5│                                  │
+│                    │ • ElevenLabs│                                  │
+│                    │   Scribe    │                                  │
+│                    └──────┬───────┘                                  │
+│                           │                                          │
+│                    ┌──────▼───────┐                                  │
+│                    │  DATABASE    │                                  │
+│                    │  (Neon       │                                  │
+│                    │   Postgres)  │                                  │
+│                    │              │                                  │
+│                    │ 39 models    │                                  │
+│                    │ Components,  │                                  │
+│                    │ sessions,    │                                  │
+│                    │ templates,   │                                  │
+│                    │ measurements │                                  │
+│                    └──────────────┘                                  │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Every Page in the App
 
-Think of the app like a building with different rooms. Here's what's in each room:
+The app has two types of pages: **protected** (behind login + sidebar) and **public** (standalone).
+
+### Protected Pages (behind sidebar)
 
 ```
-HOME PAGE (/)
-│   Dark landing page. Three doors to enter:
-│   "Dashboard" · "Capture Tool" · "Glasses Demo"
+JOBS (/jobs)  ← The main page. Where all the work lives.
+│   Unified list of all work orders and inspections.
+│   • Two types: "Freeform Capture" and "Guided Inspection"
+│   • Status badges: In Progress, Ready to Review, Complete, Cancelled
+│   • Shows: Work Order #, Component (P/N + S/N), Mechanic, Type
+│   • Create new jobs with the "New Job" button
+│
+├── JOB DETAIL (/jobs/[id])
+│       Opens the right workspace based on job type:
+│       • Freeform → Session detail with evidence, AI analysis, documents
+│       • Guided → CMM-guided inspection workspace with checklist items
+│       Sub-pages:
+│       • /jobs/[id]/audit — Full audit trail of everything that happened
+│       • /jobs/[id]/review — Supervisor review and sign-off
+│
+├── FORMS (/forms)
+│       Form builder and testing tools
+│
+├── TEMPLATES (/library)
+│   │   CMM inspection template management:
+│   │   • Upload CMM PDFs (up to 500 pages)
+│   │   • AI extracts sections, measurements, tolerances, checklists
+│   │   • Review and approve templates before use
+│   │   • Templates link to specific part numbers
+│   │
+│   └── TEMPLATE REVIEW (/library/[templateId]/review)
+│           Detailed view of extracted sections and items
+│           • Edit/reextract individual sections
+│           • Approve or reject the full template
+│
+├── TEAM (/technicians)
+│       Manage your shop's mechanics:
+│       • Add technicians with badge numbers
+│       • FAA license verification
+│       • Assign techs to inspection jobs
+│
+├── SETTINGS (/settings)
+│       Organization-wide configuration:
+│       • Org name display
+│       • AI Agent Instructions (markdown-formatted)
+│       • Instructions get injected into ALL AI prompts
+│         (transcription, measurement extraction, doc generation)
 │
 ├── DASHBOARD (/dashboard)
-│   │   Fleet overview — see ALL your parts at a glance
-│   │   • Search/filter by part number, serial number, status
-│   │   • Pie chart showing how many parts are serviceable vs in-repair
-│   │   • Click any part → goes to its detail page
-│   │
-│   ├── PARTS DETAIL (/parts/[id])
-│   │       Everything about one specific part:
-│   │       • Full lifecycle timeline (manufactured → installed → repaired → etc.)
-│   │       • All evidence (photos, voice notes, measurements)
-│   │       • Compliance documents (8130-3, Form 337, 8010-4)
-│   │       • Download PDFs of any document
-│   │       • Alerts and exceptions flagged for this part
-│   │
-│   ├── CAPTURE TOOL (/capture)
-│   │   │   Where the real work happens. Two ways to start:
-│   │   │   • SCAN: Point camera at a document → AI reads it
-│   │   │   • MANUAL: Type in part number + serial number
-│   │   │
-│   │   └── OVERHAUL WORKFLOW (/capture/work/[componentId])
-│   │           6-step guided process:
-│   │           ┌─────────┐  ┌──────────┐  ┌─────────┐
-│   │           │ RECEIVE  │→ │ TEARDOWN │→ │ INSPECT │→
-│   │           │ Checklist│  │ Photos   │  │ Measure │
-│   │           └─────────┘  └──────────┘  └─────────┘
-│   │           ┌─────────┐  ┌──────────┐  ┌─────────┐
-│   │        → │ REPAIR   │→ │  TEST    │→ │ RELEASE │
-│   │           │ Parts    │  │ Pass/Fail│  │ AI makes│
-│   │           │ replaced │  │ results  │  │ all the │
-│   │           └─────────┘  └──────────┘  │ forms!  │
-│   │                                       └─────────┘
-│   │
-│   ├── INTEGRITY (/integrity)
-│   │       The "detective" — scans all parts for problems:
-│   │       • Missing paperwork
-│   │       • Serial numbers that don't match
-│   │       • Cycle counts that went backwards (suspicious!)
-│   │       • Unsigned documents
-│   │       • Date inconsistencies
-│   │       Color-coded: 🔴 Critical  🟡 Warning  🔵 Info
-│   │
-│   ├── KNOWLEDGE (/knowledge)
-│   │       Wisdom library — captures what experienced mechanics know
-│   │       • "When you see scoring on the turbine blades..."
-│   │       • Searchable by topic, part family, expert
-│   │       • Links to CMM (Component Maintenance Manual) references
-│   │
-│   └── ANALYTICS (/analytics)
-│           Fleet-wide charts (mock data for now):
-│           • No Fault Found rates
-│           • Mean Time Between Removals
-│           • Turnaround time by facility
-│           • Record quality (digital vs scanned vs missing)
+│       Fleet overview — all components at a glance
+│       • Search/filter by part number, serial number, status
+│       • Status breakdown chart
+│       • Click any part → part detail page
 │
-├── GLASSES DEMO (/glasses-demo)
-│       43-second simulation of what a mechanic sees through smart glasses:
-│       Phase 1: Green terminal screen → "Press Start"
-│       Phase 2: HUD overlay — crosshairs, part ID, live voice transcription,
-│                findings list, measurements, BOM checklist
-│       Phase 3: "Generating documentation..." (3.5 sec progress bar)
-│       Phase 4: Three FAA forms appear, fully filled out
-│       → "View Part Details" button links to /parts/demo-hpc7-overhaul
+├── PARTS DETAIL (/parts/[id])
+│       Everything about one specific component:
+│       • Full lifecycle timeline
+│       • All evidence (photos, voice notes, measurements)
+│       • Compliance documents (8130-3, Work Order, Findings)
+│       • Download PDFs
+│       • Alerts and exceptions
 │
-└── EXECUTIVE DEMO (/demo)
-        7-step guided pitch for showing HEICO:
-        Step 1: The Problem (animated stats: $180M cost, 15% error rate)
-        Step 2: The Mechanic's View (link to glasses demo)
-        Step 3: Evidence → Documents (watch AI generate forms)
-        Step 4: The Digital Thread (compare clean vs gapped part history)
-        Step 5: Fleet Intelligence (live exception scan)
-        Step 6: The HEICO Opportunity (editable ROI calculator)
-        Step 7: Try It Yourself (links to all features)
+└── ANALYTICS (/analytics)
+        Fleet-wide charts and metrics
+```
+
+### Public Pages (no login required)
+
+```
+LOGIN (/login)              Email + password authentication
+REGISTER (/register)        Create account + join/create organization
+JOIN ORG (/join-org)         Join existing org with invite code
+FORGOT PASSWORD              Password reset flow
+GLASSES DEMO (/glasses-demo) Smart glasses simulation (4 phases)
+DOCS (/docs)                 User guide and help documentation
 ```
 
 ---
 
 ## The Database — What Data Lives Here
 
-Think of the database as a filing cabinet. Here are the drawers:
+The database uses **PostgreSQL** (hosted on Neon) with **39 models** managed by Prisma.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     DATABASE (SQLite)                        │
-│                                                             │
-│  ┌─────────────────┐      ┌──────────────────┐             │
-│  │   COMPONENT     │      │  LIFECYCLE EVENT │             │
-│  │   (The Part)    │──1:N─│  (What happened) │             │
-│  │                 │      │                  │             │
-│  │ • Part Number   │      │ • Type (mfg,     │             │
-│  │ • Serial Number │      │   install, repair│             │
-│  │ • Description   │      │   test, etc.)    │             │
-│  │ • OEM           │      │ • Date           │             │
-│  │ • Status        │      │ • Facility       │             │
-│  │ • Total Hours   │      │ • Who did it     │             │
-│  │ • Total Cycles  │      │ • Hours/Cycles   │             │
-│  │ • Is Life-      │      │   at this point  │             │
-│  │   Limited?      │      │ • Notes          │             │
-│  └─────────────────┘      └────────┬─────────┘             │
-│                                    │                        │
-│                    ┌───────────────┼───────────────┐        │
-│                    │               │               │        │
-│              ┌─────▼─────┐  ┌─────▼─────┐  ┌─────▼─────┐  │
-│              │ EVIDENCE  │  │ GENERATED │  │  PARTS    │  │
-│              │           │  │ DOCUMENT  │  │ CONSUMED  │  │
-│              │ • Photo   │  │           │  │           │  │
-│              │ • Video   │  │ • 8130-3  │  │ • Part #  │  │
-│              │ • Voice   │  │ • Work    │  │ • Serial #│  │
-│              │   Note    │  │   Order   │  │ • Qty     │  │
-│              │ • Doc     │  │ • Findings│  │ • Vendor  │  │
-│              │   Scan    │  │ • Form 337│  │           │  │
-│              │ • Measure │  │ • 8010-4  │  │ What sub- │  │
-│              │   -ment   │  │           │  │ parts were│  │
-│              │           │  │ The FAA   │  │ used in   │  │
-│              │ Raw proof │  │ forms AI  │  │ the repair│  │
-│              │ captured  │  │ generates │  │           │  │
-│              └───────────┘  └───────────┘  └───────────┘  │
-│                                                             │
-│  ┌─────────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │   EXCEPTION     │  │    ALERT     │  │  KNOWLEDGE   │  │
-│  │                 │  │              │  │   ENTRY      │  │
-│  │ Auto-detected   │  │ Manual flags │  │              │  │
-│  │ problems:       │  │ raised by    │  │ Mechanic     │  │
-│  │ • Missing docs  │  │ humans:      │  │ wisdom:      │  │
-│  │ • # mismatches  │  │ • Counterfeit│  │ • Tips       │  │
-│  │ • Cycle gaps    │  │   suspect    │  │ • Gotchas    │  │
-│  │ • Date errors   │  │ • Overdue    │  │ • "When you  │  │
-│  │ • Unsigned docs │  │   inspection │  │   see this,  │  │
-│  │                 │  │ • Provenance │  │   do that"   │  │
-│  │ Severity:       │  │   gap        │  │              │  │
-│  │ 🔴🟡🔵         │  │              │  │ Searchable   │  │
-│  └─────────────────┘  └──────────────┘  └──────────────┘  │
-│                                                             │
-│  ┌─────────────────┐                                       │
-│  │   DOCUMENT      │                                       │
-│  │   (Source)      │                                       │
-│  │                 │                                       │
-│  │ Original docs   │                                       │
-│  │ that exist in   │                                       │
-│  │ the real world: │                                       │
-│  │ • CMMs          │                                       │
-│  │ • Service       │                                       │
-│  │   Bulletins     │                                       │
-│  │ • Certificates  │                                       │
-│  │ • Legacy paper  │                                       │
-│  │   records       │                                       │
-│  └─────────────────┘                                       │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## The 17 Demo Components (Your Test Data)
-
-Each represents a real-world scenario a maintenance shop would face:
-
-```
- #  │ Part                          │ Scenario / Story
-────┼───────────────────────────────┼──────────────────────────────────────
- 1  │ Parker HPC-7 Pump             │ "Perfect History" — clean traceability
- 2  │ Parker HPC-7 Pump             │ "The Gap" — 14-month documentation hole
- 3  │ Parker HPC-7 Pump             │ Currently in repair (demo workflow)
- 4  │ Hamilton Sundstrand FCU       │ Previously quarantined, repaired
- 5  │ Honeywell GTCP36-150 APU     │ Large complex component
- 6  │ Collins WXR-840 Radar         │ Avionics with software
- 7  │ Safran CFM56 Compressor       │ Engine module — high value
- 8  │ Parker 3411 Fuel Valve        │ Simple component, clean history
- 9  │ Parker HPC-7 (Demo)           │ Glasses demo component (deterministic ID)
-────┼───────────────────────────────┼──────────────────────────────────────
-    │        ↑ EXISTED BEFORE       │
-    │        ↓ ADDED THIS SESSION   │
-────┼───────────────────────────────┼──────────────────────────────────────
-10  │ Honeywell 131-9A APU          │ "Workhorse" — JetBlue→Air India, 2 overhauls
-11  │ Safran MLG Retract Actuator   │ "Life Limit" — at 93% of 20K cycle limit ⚠️
-12  │ Collins AHC-3000 AHRS         │ "AD Required" — needs firmware update per FAA
-13  │ Parker Fuel Manifold           │ "Broker Chain" — 3 broker transfers 🔄
-14  │ Eaton Hydraulic Accumulator    │ "Shelf Life Expired" — quarantined 🔴
-15  │ Hamilton Sundstrand IDG       │ "Cross-Border" — FAA→EASA jurisdiction
-16  │ Moog Servo Valve               │ "Fleet SB" — service bulletin compliance
-17  │ Collins Transponder            │ "Unauthorized Mod" — non-approved connector 🚨
+┌──────────────────────────────────────────────────────────────────┐
+│                    DATABASE (Neon Postgres)                       │
+│                                                                  │
+│  ── CORE TRACKING ──────────────────────────────────────────     │
+│                                                                  │
+│  ┌─────────────────┐      ┌──────────────────┐                  │
+│  │   COMPONENT     │      │  LIFECYCLE EVENT │                  │
+│  │   (The Part)    │──1:N─│  (What happened) │                  │
+│  │                 │      │                  │                  │
+│  │ • Part Number   │      │ • Type (mfg,     │                  │
+│  │ • Serial Number │      │   install, repair│                  │
+│  │ • Description   │      │   overhaul, test,│                  │
+│  │ • OEM           │      │   release, etc.) │                  │
+│  │ • Status        │      │ • Date           │                  │
+│  │ • Total Hours   │      │ • Facility       │                  │
+│  │ • Total Cycles  │      │ • Who did it     │                  │
+│  │ • Is Life-      │      │ • Hours/Cycles   │                  │
+│  │   Limited?      │      │ • Notes          │                  │
+│  │ • Location      │      │                  │                  │
+│  │ • Aircraft      │      │                  │                  │
+│  │ • Operator      │      │                  │                  │
+│  └─────────────────┘      └────────┬─────────┘                  │
+│                                    │                             │
+│                    ┌───────────────┼───────────────┐             │
+│              ┌─────▼─────┐  ┌─────▼─────┐  ┌─────▼─────┐      │
+│              │ EVIDENCE  │  │ GENERATED │  │  PARTS    │      │
+│              │           │  │ DOCUMENT  │  │ CONSUMED  │      │
+│              │ • Photo   │  │           │  │           │      │
+│              │ • Video   │  │ • 8130-3  │  │ • Part #  │      │
+│              │ • Voice   │  │ • Work    │  │ • Serial #│      │
+│              │   Note    │  │   Order   │  │ • Qty     │      │
+│              │ • Doc     │  │ • Findings│  │ • Vendor  │      │
+│              │   Scan    │  │ • 8010-4  │  │           │      │
+│              │ • Measure │  │           │  │           │      │
+│              │   -ment   │  │           │  │           │      │
+│              └───────────┘  └───────────┘  └───────────┘      │
+│                                                                  │
+│  ── CAPTURE & INSPECTION ───────────────────────────────────     │
+│                                                                  │
+│  ┌─────────────────────┐    ┌──────────────────────┐            │
+│  │  CAPTURE SESSION    │    │  CAPTURE EVIDENCE    │            │
+│  │                     │    │                      │            │
+│  │ • sessionType:      │1:N │ • PHOTO, VIDEO,      │            │
+│  │   "capture" or      │────│   AUDIO_CHUNK        │            │
+│  │   "inspection"      │    │ • fileUrl (Blob)     │            │
+│  │ • status (pipeline) │    │ • transcription      │            │
+│  │ • workOrderRef      │    │ • aiExtraction       │            │
+│  │ • templateId        │    │ • GPS coordinates    │            │
+│  │ • configVariant     │    │                      │            │
+│  │ • signedOffBy/At    │    └──────────────────────┘            │
+│  └─────────────────────┘                                        │
+│                                                                  │
+│  ── CMM TEMPLATES ──────────────────────────────────────────     │
+│                                                                  │
+│  ┌─────────────────────┐    ┌──────────────────┐                │
+│  │ INSPECTION TEMPLATE │    │ INSPECTION       │                │
+│  │                     │    │ SECTION          │                │
+│  │ • title             │1:N │                  │                │
+│  │ • partNumbersCovered│────│ • figureNumber   │                │
+│  │ • configOptions     │    │ • referenceImages│                │
+│  │ • revisionDate      │    │ • config applic. │                │
+│  │ • totalPages        │    │                  │                │
+│  │ • status (draft →   │    │  ┌──────────────┐│                │
+│  │   processing →      │    │  │ INSPECTION   ││                │
+│  │   ready → approved) │    │  │ ITEM         ││                │
+│  └─────────────────────┘    │  │              ││                │
+│                              │  │ • go_no_go   ││                │
+│                              │  │ • measurement││                │
+│                              │  │ • text_entry ││                │
+│                              │  │ • tolerances ││                │
+│                              │  └──────────────┘│                │
+│                              └──────────────────┘                │
+│                                                                  │
+│  ── MEASUREMENTS ───────────────────────────────────────────     │
+│                                                                  │
+│  ┌─────────────────────┐    ┌──────────────────┐                │
+│  │ MEASUREMENT SPEC    │    │ MEASUREMENT      │                │
+│  │                     │    │                  │                │
+│  │ • partNumber        │    │ • value          │                │
+│  │ • specName          │    │ • unit           │                │
+│  │ • nominalValue      │    │ • source         │                │
+│  │ • tolerances        │    │ • sessionId      │                │
+│  │ • units             │    │ • componentId    │                │
+│  └─────────────────────┘    └──────────────────┘                │
+│                                                                  │
+│  ── AUTH & ORG ─────────────────────────────────────────────     │
+│                                                                  │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐     │
+│  │ ORGANIZATION   │  │ USER           │  │ INVITE CODE    │     │
+│  │                │  │                │  │                │     │
+│  │ • name         │  │ • email        │  │ • code         │     │
+│  │ • FAA cert #   │  │ • role         │  │ • "SLVR-8K2M"  │     │
+│  │ • address      │  │ • badgeNumber  │  │ • usesLeft     │     │
+│  │ • agentInstr.  │  │ • faaLicense   │  │                │     │
+│  └────────────────┘  └────────────────┘  └────────────────┘     │
+│                                                                  │
+│  ── INTEGRITY ──────────────────────────────────────────────     │
+│                                                                  │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐     │
+│  │ EXCEPTION      │  │ ALERT          │  │ AUDIT LOG      │     │
+│  │ (auto-detected)│  │ (manual flags) │  │                │     │
+│  │ Missing docs,  │  │ Counterfeit,   │  │ Who did what,  │     │
+│  │ # mismatches,  │  │ overdue insp., │  │ when           │     │
+│  │ cycle gaps     │  │ provenance gap │  │                │     │
+│  └────────────────┘  └────────────────┘  └────────────────┘     │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## How the AI Pipeline Works
 
-This is the "magic" — turning mechanic work into FAA-compliant documents:
+Turning mechanic work into FAA-compliant documents using multiple AI providers with automatic fallbacks:
 
 ```
 MECHANIC CAPTURES EVIDENCE                    AI PROCESSES
-┌──────────────────────┐                     ┌──────────────────┐
-│                      │                     │                  │
-│  📸 Takes photos     │                     │  Claude Vision   │
-│  🎤 Records voice    │ ──── sent to ────→  │  reads photos,   │
-│  📏 Logs measurements│                     │  transcribes     │
-│  📋 Checks boxes     │                     │  voice, parses   │
-│                      │                     │  measurements    │
-└──────────────────────┘                     └────────┬─────────┘
-                                                      │
-                                                      ▼
-                                             ┌──────────────────┐
-                                             │  AI generates    │
-                                             │  3 documents:    │
-                                             │                  │
-                                             │  1. FAA 8130-3   │
-                                             │     (Release     │
-                                             │      Certificate)│
-                                             │                  │
-                                             │  2. Work Order   │
-                                             │     (What was    │
-                                             │      done)       │
-                                             │                  │
-                                             │  3. Findings     │
-                                             │     Report       │
-                                             │     (What was    │
-                                             │      found)      │
-                                             └────────┬─────────┘
-                                                      │
-                                                      ▼
-                                             ┌──────────────────┐
-                                             │  Mechanic        │
-                                             │  reviews forms,  │
-                                             │  signs digitally │
-                                             │                  │
-                                             │  Documents get   │
-                                             │  SHA-256 hashed  │
-                                             │  (tamper-proof)  │
-                                             └──────────────────┘
+┌──────────────────────┐                     ┌──────────────────────┐
+│                      │                     │                      │
+│  Takes photos        │                     │  TRANSCRIPTION       │
+│  Records audio       │ ──── sent to ────→  │  ElevenLabs Scribe   │
+│  Captures video      │                     │  (fallback: GPT-4o)  │
+│  Logs measurements   │                     │                      │
+│                      │                     │  PHOTO OCR            │
+└──────────────────────┘                     │  GPT-5.4 → Gemini    │
+                                             │  → Claude 4.6        │
+                                             │                      │
+                                             │  VIDEO ANALYSIS       │
+                                             │  Gemini 2.5 Pro      │
+                                             │                      │
+                                             │  DOC GENERATION       │
+                                             │  GPT-5.4 → Claude    │
+                                             │  → Gemini 2.5 Pro    │
+                                             └──────────┬───────────┘
+                                                        │
+                                                        ▼
+                                             ┌──────────────────────┐
+                                             │  AI generates        │
+                                             │  3 documents:        │
+                                             │                      │
+                                             │  1. FAA 8130-3       │
+                                             │     (Release cert)   │
+                                             │                      │
+                                             │  2. Work Order       │
+                                             │     (What was done)  │
+                                             │                      │
+                                             │  3. Findings Report  │
+                                             │     (What was found) │
+                                             └──────────┬───────────┘
+                                                        │
+                                                        ▼
+                                             ┌──────────────────────┐
+                                             │  VERIFICATION        │
+                                             │  Claude 4.6 checks   │
+                                             │  docs for accuracy   │
+                                             │                      │
+                                             │  Mechanic reviews    │
+                                             │  and signs digitally │
+                                             └──────────────────────┘
 
-                              ⏱️ 60-90 minutes of paperwork → ~30 seconds
+                              60-90 minutes of paperwork → ~30 seconds
 ```
 
 ---
 
-## The Integrity Engine (Exception Detection)
+## CMM Template Extraction Pipeline
 
-Think of this as an automated auditor that checks every part for problems:
+This is the system for turning paper Component Maintenance Manuals into digital inspection checklists:
 
 ```
-             "SCAN ALL"
-                 │
-                 ▼
-    ┌────────────────────────┐
-    │   For each component:  │
-    │                        │
-    │   ✓ Serial numbers     │──→  Do they match across all events?
-    │     match?             │
-    │                        │
-    │   ✓ Part numbers       │──→  Same P/N in every record?
-    │     consistent?        │
-    │                        │
-    │   ✓ Hours & cycles     │──→  Do they only go UP over time?
-    │     make sense?        │     (going backwards = tampering?)
-    │                        │
-    │   ✓ Required docs      │──→  Birth cert? Release cert?
-    │     present?           │     Work orders for all repairs?
-    │                        │
-    │   ✓ Dates logical?     │──→  Installed BEFORE manufactured?
-    │                        │     That's a problem.
-    │                        │
-    │   ✓ Documents signed?  │──→  Unsigned 8130-3 = not airworthy
-    │                        │
-    └────────┬───────────────┘
-             │
-             ▼
-    ┌────────────────────────┐
-    │   FINDINGS             │
-    │                        │
-    │   🔴 CRITICAL          │  Missing birth certificate
-    │   🔴 CRITICAL          │  Unauthorized modification
-    │   🟡 WARNING           │  Documentation gap found
-    │   🟡 WARNING           │  Life limit approaching
-    │   🔵 INFO              │  Unsigned draft document
-    │                        │
-    └────────────────────────┘
+  UPLOAD CMM PDF                  AI PASS 1 (INDEX)              AI PASS 2 (EXTRACT)
+┌──────────────┐              ┌──────────────────┐           ┌──────────────────────┐
+│              │              │  Gemini 2.5      │           │  Gemini 2.5 Pro      │
+│  PDF up to   │              │  Flash (fast)    │           │  (detailed)          │
+│  500 pages   │ ──────────→  │                  │ ───────→  │                      │
+│              │              │  Identifies:     │           │  Extracts per        │
+│  Stored in   │              │  • Figure numbers│           │  section:            │
+│  Vercel Blob │              │  • Tables        │           │  • Checklist items   │
+│              │              │  • Section       │           │  • Measurements      │
+└──────────────┘              │    boundaries    │           │  • Tolerances        │
+                              │  • Page ranges   │           │  • Go/No-Go checks   │
+                              └──────────────────┘           │  • Config variants   │
+                                                             └──────────┬───────────┘
+                                                                        │
+                                                                        ▼
+                                                             ┌──────────────────────┐
+                                                             │  REVIEW & APPROVE    │
+                                                             │                      │
+                                                             │  Supervisor reviews  │
+                                                             │  extracted template  │
+                                                             │  Can reextract       │
+                                                             │  individual sections │
+                                                             │  Approve → ready     │
+                                                             │  for inspections     │
+                                                             └──────────────────────┘
 ```
 
 ---
 
-## File Structure (Simplified)
+## Two Types of Jobs
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         /jobs                                    │
+│                                                                  │
+│  ┌───────────────────────┐    ┌───────────────────────────────┐ │
+│  │  FREEFORM CAPTURE     │    │  GUIDED INSPECTION            │ │
+│  │                       │    │                               │ │
+│  │  Mechanic captures    │    │  Follows a CMM template       │ │
+│  │  evidence freely:     │    │  step by step:                │ │
+│  │  photos, video,       │    │                               │ │
+│  │  voice notes          │    │  Each section has items:      │ │
+│  │                       │    │  • Go/No-Go (pass/fail)       │ │
+│  │  AI analyzes and      │    │  • Measurement (with specs)   │ │
+│  │  drafts documents     │    │  • Text entry (notes)         │ │
+│  │  automatically        │    │                               │ │
+│  │                       │    │  Progress tracked per item    │ │
+│  │  Good for: ad-hoc     │    │  Technician assigned per      │ │
+│  │  repairs, quick jobs  │    │  section                      │ │
+│  │                       │    │                               │ │
+│  │  sessionType:         │    │  Good for: scheduled          │ │
+│  │  "capture"            │    │  overhauls, routine           │ │
+│  │                       │    │  inspections                  │ │
+│  │                       │    │                               │ │
+│  │                       │    │  sessionType:                 │ │
+│  │                       │    │  "inspection"                 │ │
+│  └───────────────────────┘    └───────────────────────────────┘ │
+│                                                                  │
+│  Both types flow through the same pipeline:                      │
+│  Captured → Drafting → Verified → Packaged → Completed          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## File Structure
 
 ```
 aerovision-mvp/
 │
-├── app/                          ← All the pages you see in the browser
-│   ├── page.tsx                  ← Home/landing page
-│   ├── glasses-demo/             ← Smart glasses simulation
-│   ├── (dashboard)/              ← Everything behind the sidebar
-│   │   ├── dashboard/            ← Fleet overview
-│   │   ├── capture/              ← Evidence capture + overhaul workflow
-│   │   ├── parts/[id]/           ← Individual part detail pages
-│   │   ├── integrity/            ← Exception/alert detection
-│   │   ├── knowledge/            ← Mechanic wisdom library
-│   │   ├── analytics/            ← Charts and metrics
-│   │   └── demo/                 ← Executive demo (HEICO pitch)
-│   └── api/                      ← Backend logic (invisible to user)
-│       ├── ai/                   ← Claude AI integration
-│       ├── components/           ← Part data operations
-│       ├── exceptions/           ← Integrity engine
-│       ├── documents/            ← PDF generation
-│       └── knowledge/            ← Knowledge base operations
+├── app/                              ← All pages and API routes
+│   ├── layout.tsx                    ← Root layout (fonts, global styles)
+│   ├── login/                        ← Email/password login
+│   ├── register/                     ← Account creation + org setup
+│   ├── join-org/                     ← Join org with invite code
+│   ├── glasses-demo/                 ← Smart glasses simulation (public)
+│   ├── docs/                         ← User documentation (public)
+│   │
+│   ├── (dashboard)/                  ← Protected pages (sidebar + auth)
+│   │   ├── layout.tsx                ← Sidebar, auth check, org name fetch
+│   │   ├── jobs/                     ← Unified work orders + inspections
+│   │   │   ├── page.tsx              ← Job list with filters
+│   │   │   └── [id]/                 ← Job detail (routes to right workspace)
+│   │   │       ├── page.tsx
+│   │   │       ├── audit/            ← Audit trail
+│   │   │       └── review/           ← Supervisor sign-off
+│   │   ├── forms/                    ← Form management
+│   │   ├── library/                  ← CMM template management
+│   │   │   ├── page.tsx              ← Template list
+│   │   │   └── [templateId]/review/  ← Template detail + approval
+│   │   ├── technicians/              ← Team management
+│   │   ├── settings/                 ← Org settings + AI instructions
+│   │   ├── dashboard/                ← Fleet overview
+│   │   ├── parts/[id]/               ← Component detail pages
+│   │   ├── capture/                  ← Evidence capture workflow
+│   │   └── analytics/                ← Fleet charts and metrics
+│   │
+│   └── api/                          ← Backend (89 API routes)
+│       ├── auth/                     ← Login, register, password reset
+│       ├── sessions/                 ← Capture session CRUD + processing
+│       ├── jobs/                     ← Unified job endpoints
+│       ├── inspect/                  ← CMM-guided inspection endpoints
+│       ├── library/                  ← Template upload, extraction, approval
+│       ├── mobile/                   ← iOS companion app endpoints
+│       ├── components/               ← Component data operations
+│       ├── documents/                ← PDF generation + download
+│       ├── measurements/             ← Measurement CRUD
+│       ├── measurement-specs/        ← Measurement specifications
+│       ├── technicians/              ← Technician management
+│       ├── org/                      ← Organization settings + documents
+│       ├── exceptions/               ← Integrity engine scanning
+│       └── ai/                       ← Direct AI endpoints
 │
-├── components/                   ← Reusable UI pieces
-├── lib/                          ← Shared logic (database, integrity engine)
-├── prisma/                       ← Database schema + seed data
-│   ├── schema.prisma             ← Defines the data structure
-│   ├── seed.ts                   ← All 17 demo components
-│   └── dev.db                    ← The actual database file
+├── components/                       ← Reusable UI components
+│   ├── layout/                       ← Sidebar, navigation
+│   ├── ui/                           ← shadcn/ui primitives
+│   ├── inspect/                      ← Inspection workspace components
+│   ├── sessions/                     ← Session detail components
+│   └── demo/                         ← Demo overlay components
 │
-└── generated/prisma/             ← Auto-generated database code
+├── lib/                              ← Shared logic
+│   ├── ai/                           ← AI provider configs + fallback chains
+│   │   ├── models.ts                 ← Provider definitions per task
+│   │   └── pipeline-stages.ts        ← Session processing stages
+│   ├── db.ts                         ← Prisma client singleton
+│   ├── auth.ts                       ← NextAuth configuration
+│   ├── api-url.ts                    ← basePath-aware URL helper
+│   └── generated/prisma/             ← Auto-generated Prisma client
+│
+├── prisma/
+│   ├── schema.prisma                 ← 39 models
+│   ├── seed.ts                       ← Demo data
+│   └── migrations/                   ← Database migrations
+│
+└── public/                           ← Static assets
 ```
 
 ---
 
-## Key URLs to Explore
+## The Integrity Engine
 
-| URL | What You'll See |
-|-----|----------------|
-| http://localhost:3000 | Landing page |
-| http://localhost:3000/dashboard | All 17 parts in a searchable table |
-| http://localhost:3000/glasses-demo | 43-second smart glasses simulation |
-| http://localhost:3000/demo | 7-step HEICO pitch with ROI calculator |
-| http://localhost:3000/capture | Start an overhaul capture workflow |
-| http://localhost:3000/integrity | Run the exception scanner |
-| http://localhost:3000/knowledge | Browse mechanic knowledge base |
-| http://localhost:3000/analytics | Fleet analytics (mock data) |
-| http://localhost:3000/parts/demo-hpc7-overhaul | Component 9 detail (glasses demo part) |
+Automated auditor that scans every component for data problems:
+
+```
+           "SCAN ALL"
+               │
+               ▼
+  ┌────────────────────────┐
+  │   For each component:  │
+  │                        │
+  │   Serial numbers       │──→  Match across all events?
+  │   match?               │
+  │                        │
+  │   Part numbers         │──→  Same P/N in every record?
+  │   consistent?          │
+  │                        │
+  │   Hours & cycles       │──→  Only go UP over time?
+  │   make sense?          │     (going backwards = tampering?)
+  │                        │
+  │   Required docs        │──→  Birth cert? Release cert?
+  │   present?             │     Work orders for all repairs?
+  │                        │
+  │   Dates logical?       │──→  Installed BEFORE manufactured?
+  │                        │     That's a problem.
+  │                        │
+  │   Documents signed?    │──→  Unsigned 8130-3 = not airworthy
+  │                        │
+  └────────┬───────────────┘
+           │
+           ▼
+  ┌────────────────────────┐
+  │   FINDINGS             │
+  │   CRITICAL   Missing birth certificate        │
+  │   CRITICAL   Unauthorized modification        │
+  │   WARNING    Documentation gap found          │
+  │   WARNING    Life limit approaching           │
+  │   INFO       Unsigned draft document          │
+  └────────────────────────┘
+```

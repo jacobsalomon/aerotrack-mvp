@@ -6,6 +6,7 @@ import { useState, type ComponentType } from "react";
 import {
   BookOpen,
   ClipboardCheck,
+  ExternalLink,
   FileText,
   LogOut,
   Menu,
@@ -207,6 +208,16 @@ function SidebarBody({
           <Settings className="h-4 w-4" />
           Settings
         </Link>
+        <a
+          href="/docs"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-white/50 transition-colors hover:bg-white/6 hover:text-white/80"
+        >
+          <BookOpen className="h-4 w-4" />
+          Docs
+          <ExternalLink className="ml-auto h-3 w-3 opacity-50" />
+        </a>
         <button
           onClick={() => signOut({ callbackUrl: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/login` })}
           className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-white/50 transition-colors hover:bg-white/6 hover:text-white/80"
