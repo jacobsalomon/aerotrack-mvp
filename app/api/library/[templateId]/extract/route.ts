@@ -13,10 +13,10 @@ import { randomUUID } from "crypto";
 import { runPass1 } from "@/lib/ai/cmm-extraction-pass1";
 import { extractSection } from "@/lib/ai/cmm-extraction-pass2";
 
-// Vercel Pro plan allows up to 300s per invocation
-export const maxDuration = 300;
+// Fluid Compute allows up to 800s per invocation on Vercel Pro
+export const maxDuration = 800;
 
-const LEASE_DURATION_MS = 5 * 60 * 1000; // 5-minute lease (matches maxDuration)
+const LEASE_DURATION_MS = 15 * 60 * 1000; // 15-minute lease (generous buffer over maxDuration)
 
 export async function POST(
   _request: Request,

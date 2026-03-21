@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,24 +29,41 @@ interface TemplateInfo {
   currentSectionIndex: number;
 }
 
-// Map template status to a badge color and label
-function statusBadge(status: string, currentSectionIndex: number, sectionCount: number) {
+// Live progress data from the polling endpoint
+interface ExtractionProgress {
+  status: string;
+  totalSections: number;
+  completedSections: number;
+  totalItems: number;
+  currentSection: { title: string; figureNumber: string } | null;
+}
+
+// Map template status to a badge with live progress info
+function statusBadge(
+  status: string,
+  currentSectionIndex: number,
+  sectionCount: number,
+  progress?: ExtractionProgress
+) {
   switch (status) {
     case "pending_extraction":
     case "extracting_index":
       return (
         <Badge className="bg-blue-100 text-blue-700 border-blue-200">
           <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-          Indexing...
+          Indexing pages...
         </Badge>
       );
-    case "extracting_details":
+    case "extracting_details": {
+      const completed = progress?.completedSections ?? currentSectionIndex;
+      const total = progress?.totalSections ?? sectionCount;
       return (
         <Badge className="bg-blue-100 text-blue-700 border-blue-200">
           <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-          Extracting {currentSectionIndex}/{sectionCount}
+          Extracting {completed}/{total}
         </Badge>
       );
+    }
     case "review_ready":
       return (
         <Badge className="bg-amber-100 text-amber-700 border-amber-200">
@@ -77,11 +94,68 @@ function statusBadge(status: string, currentSectionIndex: number, sectionCount: 
 }
 
 export default function LibraryClient({
-  templates,
+  templates: initialTemplates,
 }: {
   templates: TemplateInfo[];
 }) {
   const [showUpload, setShowUpload] = useState(false);
+  const [templates, setTemplates] = useState(initialTemplates);
+  const [progress, setProgress] = useState<Record<string, ExtractionProgress>>({});
+
+  // Check if any templates are currently being processed
+  const processingTemplates = templates.filter((t) =>
+    ["pending_extraction", "extracting_index", "extracting_details"].includes(t.status)
+  );
+
+  // Poll progress for templates that are being processed
+  const pollProgress = useCallback(async () => {
+    const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+    const updates: Record<string, ExtractionProgress> = {};
+    let needsRefresh = false;
+
+    for (const t of processingTemplates) {
+      try {
+        const res = await fetch(`${basePath}/api/library/${t.id}/progress`);
+        if (!res.ok) continue;
+        const data = await res.json();
+        updates[t.id] = data;
+
+        // If status changed to a terminal state, we need to refresh the page data
+        if (data.status === "review_ready" || data.status === "extraction_failed") {
+          needsRefresh = true;
+        }
+      } catch {
+        // Silently skip — next poll will retry
+      }
+    }
+
+    setProgress((prev) => ({ ...prev, ...updates }));
+
+    // If any template finished, update the template list with new status
+    if (needsRefresh) {
+      setTemplates((prev) =>
+        prev.map((t) => {
+          const p = updates[t.id];
+          if (!p) return t;
+          return {
+            ...t,
+            status: p.status,
+            sectionCount: p.totalSections || t.sectionCount,
+            currentSectionIndex: p.completedSections,
+          };
+        })
+      );
+    }
+  }, [processingTemplates]);
+
+  useEffect(() => {
+    if (processingTemplates.length === 0) return;
+
+    // Poll immediately, then every 5 seconds
+    pollProgress();
+    const interval = setInterval(pollProgress, 5000);
+    return () => clearInterval(interval);
+  }, [processingTemplates.length, pollProgress]);
 
   // Split into active/processing and archived
   const activeTemplates = templates.filter((t) => t.status !== "archived");
@@ -128,10 +202,15 @@ export default function LibraryClient({
       ) : (
         <div className="grid gap-4">
           {activeTemplates.map((template) => {
-            // Templates that are review_ready or active are clickable
             const isClickable =
               template.status === "review_ready" ||
               template.status === "active";
+            const isProcessing = [
+              "pending_extraction",
+              "extracting_index",
+              "extracting_details",
+            ].includes(template.status);
+            const tp = progress[template.id];
 
             const cardContent = (
               <Card
@@ -157,9 +236,22 @@ export default function LibraryClient({
                         {statusBadge(
                           template.status,
                           template.currentSectionIndex,
-                          template.sectionCount
+                          template.sectionCount,
+                          tp
                         )}
                       </div>
+
+                      {/* Live progress detail when processing */}
+                      {isProcessing && tp?.currentSection && (
+                        <p className="text-xs text-blue-600 mt-1">
+                          Processing Fig. {tp.currentSection.figureNumber} — {tp.currentSection.title}
+                          {tp.totalItems > 0 && (
+                            <span className="text-slate-400 ml-2">
+                              ({tp.totalItems} items found so far)
+                            </span>
+                          )}
+                        </p>
+                      )}
 
                       {/* Part numbers */}
                       {template.partNumbersCovered.length > 0 && (
@@ -180,7 +272,7 @@ export default function LibraryClient({
                       <div className="flex items-center gap-4 mt-2 text-xs text-slate-400">
                         <span className="flex items-center gap-1">
                           <Layers className="h-3 w-3" />
-                          {template.sectionCount} sections
+                          {(tp?.totalSections ?? template.sectionCount) || 0} sections
                         </span>
                         <span>{template.totalPages} pages</span>
                         {template.revisionDate && (

@@ -146,7 +146,7 @@ export async function PATCH(
       processingJob = await ensureSessionProcessingJob(id, {
         forceRetry: retryProcessing === true,
       });
-      scheduleSessionProcessing(processingJob.id);
+      if (processingJob) scheduleSessionProcessing(processingJob.id);
     }
 
     // Log status changes

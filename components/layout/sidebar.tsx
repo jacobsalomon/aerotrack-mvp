@@ -141,9 +141,11 @@ function NavSection({
 function SidebarBody({
   pathname,
   onNavigate,
+  orgName,
 }: {
   pathname: string;
   onNavigate?: () => void;
+  orgName?: string | null;
 }) {
   return (
     <div
@@ -167,7 +169,7 @@ function SidebarBody({
             >
               AeroVision
             </p>
-            <p className="text-xs text-white/40">AI-powered maintenance docs</p>
+            <p className="text-xs text-white/40">{orgName || "AI-powered maintenance docs"}</p>
           </div>
         </div>
       </Link>
@@ -219,15 +221,17 @@ function SidebarBody({
           <LogOut className="h-4 w-4" />
           Sign out
         </button>
-        <p className="mt-3 px-3 text-xs" style={{ color: "rgba(255, 255, 255, 0.34)" }}>
-          The Mechanical Vision Corporation
-        </p>
+        {orgName && (
+          <p className="mt-3 px-3 text-xs truncate" style={{ color: "rgba(255, 255, 255, 0.34)" }}>
+            {orgName}
+          </p>
+        )}
       </div>
     </div>
   );
 }
 
-export function Sidebar() {
+export function Sidebar({ orgName }: { orgName?: string | null }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -257,7 +261,7 @@ export function Sidebar() {
                   {activeItem?.label || "AeroVision"}
                 </p>
                 <p className="truncate text-xs text-white/40">
-                  {activeItem?.description || "AI-powered maintenance docs"}
+                  {activeItem?.description || orgName || "AI-powered maintenance docs"}
                 </p>
               </div>
             </div>
@@ -279,7 +283,7 @@ export function Sidebar() {
         className="fixed inset-y-0 left-0 z-40 hidden w-72 lg:flex"
         aria-label="Sidebar navigation"
       >
-        <SidebarBody pathname={pathname} />
+        <SidebarBody pathname={pathname} orgName={orgName} />
       </aside>
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
@@ -295,6 +299,7 @@ export function Sidebar() {
           <SidebarBody
             pathname={pathname}
             onNavigate={() => setMobileOpen(false)}
+            orgName={orgName}
           />
         </SheetContent>
       </Sheet>

@@ -97,8 +97,8 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
       return;
     }
 
-    if (selected.size > 50 * 1024 * 1024) {
-      toast.error("File must be under 50MB");
+    if (selected.size > 500 * 1024 * 1024) {
+      toast.error("File must be under 500MB");
       return;
     }
 
@@ -150,7 +150,7 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
                 <div>
                   <FileUp className="h-8 w-8 text-slate-300 mx-auto mb-2" />
                   <p className="text-sm text-slate-500">
-                    Click to select a PDF (max 50MB)
+                    Click to select a PDF (max 500MB)
                   </p>
                 </div>
               )}

@@ -4,7 +4,7 @@
 // Creates InspectionSection records for each identified sub-assembly.
 
 import { prisma } from "@/lib/db";
-import { extractPdfPages } from "@/lib/pdf-utils";
+import { parsePdf } from "@/lib/pdf-utils";
 import { callGemini } from "./provider";
 import { PASS1_CLASSIFICATION_PROMPT } from "./cmm-prompts";
 
@@ -38,16 +38,17 @@ export async function runPass1(templateId: string): Promise<number> {
     where: { id: templateId },
   });
 
-  // Download the PDF
+  // Download the PDF and parse it once (avoids re-parsing per page)
   const pdfResponse = await fetch(template.sourceFileUrl);
   if (!pdfResponse.ok) throw new Error("Failed to download PDF");
   const pdfBytes = Buffer.from(await pdfResponse.arrayBuffer());
+  const pdf = await parsePdf(pdfBytes);
 
   // Determine which pages to process
   const pagesToProcess =
     template.inspectionPages.length > 0
       ? template.inspectionPages // Already 0-indexed from parsePageRanges
-      : Array.from({ length: template.totalPages }, (_, i) => i);
+      : Array.from({ length: pdf.pageCount }, (_, i) => i);
 
   console.log(
     `[CMM Pass 1] Processing ${pagesToProcess.length} pages for template ${templateId}`
@@ -58,9 +59,8 @@ export async function runPass1(templateId: string): Promise<number> {
 
   for (const pageIndex of pagesToProcess) {
     try {
-      // Extract single page as PDF bytes
-      const pageBuffer = await extractPdfPages(pdfBytes, [pageIndex]);
-      const pageBase64 = pageBuffer.toString("base64");
+      // Extract single page from the pre-parsed PDF (no re-parsing)
+      const pageBase64 = await pdf.extractPageAsBase64(pageIndex);
 
       // Send to Gemini for classification
       const responseText = await callGemini({

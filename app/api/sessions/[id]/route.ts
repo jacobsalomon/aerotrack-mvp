@@ -148,7 +148,7 @@ export async function PATCH(
     if (isEnding) {
       try {
         const job = await ensureSessionProcessingJob(id);
-        scheduleSessionProcessing(job.id);
+        if (job) scheduleSessionProcessing(job.id);
       } catch (err) {
         console.error("Failed to enqueue processing:", err);
       }
@@ -158,7 +158,7 @@ export async function PATCH(
     if (isRetry) {
       try {
         const job = await ensureSessionProcessingJob(id, { forceRetry: true });
-        scheduleSessionProcessing(job.id);
+        if (job) scheduleSessionProcessing(job.id);
       } catch (err) {
         console.error("Failed to retry processing:", err);
       }

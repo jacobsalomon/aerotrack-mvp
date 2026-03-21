@@ -184,23 +184,23 @@ export default function InspectSelectClient() {
   }
 
   return (
-    <div className="min-h-screen p-6 max-w-2xl mx-auto">
+    <div className="max-w-2xl mx-auto py-2">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <ClipboardCheck className="h-6 w-6" />
+        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+          <ClipboardCheck className="h-6 w-6 text-slate-700" />
           CMM-Guided Inspection
         </h1>
-        <p className="text-white/50 mt-1">
+        <p className="text-slate-500 mt-1">
           Select a component and template to start a guided inspection
         </p>
       </div>
 
       {/* Step 1: Component Lookup */}
-      <Card className="bg-white/5 border-white/10 mb-4">
+      <Card className="mb-4">
         <CardHeader className="pb-3">
-          <CardTitle className="text-white text-lg flex items-center gap-2">
-            <span className="flex items-center justify-center w-7 h-7 rounded-full bg-white/10 text-sm font-mono">1</span>
+          <CardTitle className="text-slate-900 text-lg flex items-center gap-2">
+            <span className="flex items-center justify-center w-7 h-7 rounded-full bg-slate-100 text-slate-600 text-sm font-mono">1</span>
             Find Component
           </CardTitle>
         </CardHeader>
@@ -209,16 +209,16 @@ export default function InspectSelectClient() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-white font-medium">{component.description}</p>
-                  <p className="text-white/50 text-sm">
+                  <p className="text-slate-900 font-medium">{component.description}</p>
+                  <p className="text-slate-500 text-sm">
                     P/N: {component.partNumber} &middot; S/N: {component.serialNumber}
                   </p>
                 </div>
-                <Badge variant="outline" className="text-white/70 border-white/20">
+                <Badge variant="outline" className="text-slate-600 border-slate-300">
                   {component.status}
                 </Badge>
               </div>
-              <Button variant="ghost" size="sm" onClick={handleReset} className="text-white/50 hover:text-white">
+              <Button variant="ghost" size="sm" onClick={handleReset} className="text-slate-500 hover:text-slate-700">
                 Change component
               </Button>
             </div>
@@ -229,7 +229,6 @@ export default function InspectSelectClient() {
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
               />
               <Button onClick={handleSearch} disabled={searching || !searchInput.trim()}>
                 {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
@@ -237,7 +236,7 @@ export default function InspectSelectClient() {
             </div>
           )}
           {searchError && (
-            <p className="text-red-400 text-sm mt-2 flex items-center gap-1">
+            <p className="text-red-500 text-sm mt-2 flex items-center gap-1">
               <AlertCircle className="h-3 w-3" /> {searchError}
             </p>
           )}
@@ -246,25 +245,25 @@ export default function InspectSelectClient() {
 
       {/* Step 2: Template Selection */}
       {step !== "component" && (
-        <Card className="bg-white/5 border-white/10 mb-4">
+        <Card className="mb-4">
           <CardHeader className="pb-3">
-            <CardTitle className="text-white text-lg flex items-center gap-2">
-              <span className="flex items-center justify-center w-7 h-7 rounded-full bg-white/10 text-sm font-mono">2</span>
+            <CardTitle className="text-slate-900 text-lg flex items-center gap-2">
+              <span className="flex items-center justify-center w-7 h-7 rounded-full bg-slate-100 text-slate-600 text-sm font-mono">2</span>
               Select Template
             </CardTitle>
           </CardHeader>
           <CardContent>
             {loadingTemplates ? (
-              <div className="flex items-center gap-2 text-white/50">
+              <div className="flex items-center gap-2 text-slate-500">
                 <Loader2 className="h-4 w-4 animate-spin" /> Loading templates...
               </div>
             ) : templates.length === 0 ? (
-              <div className="text-white/50 space-y-2">
+              <div className="text-slate-500 space-y-2">
                 <p className="flex items-center gap-1">
                   <AlertCircle className="h-4 w-4" />
                   No CMM template found for this component.
                 </p>
-                <Button variant="outline" size="sm" onClick={() => router.push("/library")} className="border-white/20 text-white/70">
+                <Button variant="outline" size="sm" onClick={() => router.push("/library")}>
                   <BookOpen className="h-4 w-4 mr-1" /> Upload one in the Library
                 </Button>
               </div>
@@ -276,23 +275,23 @@ export default function InspectSelectClient() {
                     onClick={() => handleTemplateSelect(t)}
                     className={`w-full text-left p-4 rounded-lg border transition-colors ${
                       selectedTemplate?.id === t.id
-                        ? "border-blue-500 bg-blue-500/10"
-                        : "border-white/10 bg-white/5 hover:border-white/20"
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-white font-medium flex items-center gap-2">
-                          <FileText className="h-4 w-4 text-white/50" />
+                        <p className="text-slate-900 font-medium flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-slate-400" />
                           {t.title}
                         </p>
-                        <p className="text-white/40 text-sm mt-1">
+                        <p className="text-slate-400 text-sm mt-1">
                           Rev. {t.revisionDate ? new Date(t.revisionDate).toLocaleDateString() : "—"}
                           {" · "}
                           {t.sectionCount} sections · {t.itemCount} items
                         </p>
                       </div>
-                      <ChevronRight className="h-4 w-4 text-white/30" />
+                      <ChevronRight className="h-4 w-4 text-slate-300" />
                     </div>
                   </button>
                 ))}
@@ -304,10 +303,10 @@ export default function InspectSelectClient() {
 
       {/* Step 3: Config variant + Work order + Start */}
       {step === "start" && selectedTemplate && (
-        <Card className="bg-white/5 border-white/10 mb-4">
+        <Card className="mb-4">
           <CardHeader className="pb-3">
-            <CardTitle className="text-white text-lg flex items-center gap-2">
-              <span className="flex items-center justify-center w-7 h-7 rounded-full bg-white/10 text-sm font-mono">3</span>
+            <CardTitle className="text-slate-900 text-lg flex items-center gap-2">
+              <span className="flex items-center justify-center w-7 h-7 rounded-full bg-slate-100 text-slate-600 text-sm font-mono">3</span>
               Start Inspection
             </CardTitle>
           </CardHeader>
@@ -315,9 +314,9 @@ export default function InspectSelectClient() {
             {/* Config variant selector — only show if template has variants */}
             {selectedTemplate.configVariants.length > 0 && (
               <div className="space-y-2">
-                <label className="text-white/70 text-sm">Configuration Variant</label>
+                <label className="text-slate-600 text-sm font-medium">Configuration Variant</label>
                 <Select value={configVariant} onValueChange={setConfigVariant}>
-                  <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                  <SelectTrigger>
                     <SelectValue placeholder="Select variant..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -331,12 +330,11 @@ export default function InspectSelectClient() {
 
             {/* Work order reference (optional) */}
             <div className="space-y-2">
-              <label className="text-white/70 text-sm">Work Order Reference (optional)</label>
+              <label className="text-slate-600 text-sm font-medium">Work Order Reference (optional)</label>
               <Input
                 placeholder="e.g., WO#359847"
                 value={workOrderRef}
                 onChange={(e) => setWorkOrderRef(e.target.value)}
-                className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
               />
             </div>
 
