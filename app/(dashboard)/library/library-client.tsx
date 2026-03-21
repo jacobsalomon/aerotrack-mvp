@@ -379,8 +379,7 @@ export default function LibraryClient({
                     {/* Three-dot dropdown menu */}
                     {showMenu && (
                       <div
-                        onClick={(e) => e.preventDefault()}
-                        onClickCapture={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
                       >
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
