@@ -16,20 +16,81 @@ import {
   ChevronRight,
   Lock,
   Loader2,
-  X,
   FileCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import InspectionStatusIndicator from "./inspection-status-indicator";
 
-// Simplified types — these come from the server component JSON serialization
-interface Props {
-  session: any;
-  component: { id: string; partNumber: string; serialNumber: string; description: string } | null;
-  unassignedCount: number;
+// Types matching the JSON-serialized data from the server component
+interface MeasurementData {
+  id: string;
+  value: number;
+  unit: string;
+  inTolerance: boolean | null;
 }
 
-export default function ReviewScreen({ session, component, unassignedCount }: Props) {
+interface InspectionItemData {
+  id: string;
+  parameterName: string;
+  specValueLow: number | null;
+  specValueHigh: number | null;
+  checkReference: string | null;
+  repairReference: string | null;
+}
+
+interface ProgressRecord {
+  id: string;
+  inspectionItemId: string;
+  status: string;
+  result: string | null;
+  measurement: MeasurementData | null;
+  inspectionItem: InspectionItemData | null;
+  completedBy: { firstName: string | null; name: string | null } | null;
+}
+
+interface FindingRecord {
+  id: string;
+  description: string;
+  severity: string;
+  status: string;
+  createdBy: { firstName: string | null; name: string | null } | null;
+}
+
+interface SectionData {
+  id: string;
+  title: string;
+  figureNumber: string;
+  items: InspectionItemData[];
+}
+
+interface TemplateData {
+  id: string;
+  title: string;
+  revisionDate: string | null;
+  sections: SectionData[];
+}
+
+interface SessionData {
+  id: string;
+  startedAt: string;
+  signedOffAt: string | null;
+  configurationVariant: string | null;
+  workOrderRef: string | null;
+  user: { firstName: string | null; lastName: string | null; name: string | null } | null;
+  signedOffBy: { firstName: string | null; name: string | null } | null;
+  inspectionTemplate: TemplateData | null;
+  inspectionProgress: ProgressRecord[];
+  inspectionFindings: FindingRecord[];
+}
+
+interface Props {
+  session: SessionData;
+  component: { id: string; partNumber: string; serialNumber: string; description: string } | null;
+  unassignedCount: number;
+  isReconciling?: boolean;
+}
+
+export default function ReviewScreen({ session, component, unassignedCount, isReconciling }: Props) {
   const router = useRouter();
   const template = session.inspectionTemplate;
   const progress = session.inspectionProgress || [];
@@ -41,23 +102,22 @@ export default function ReviewScreen({ session, component, unassignedCount }: Pr
   const [showSignOffDialog, setShowSignOffDialog] = useState(false);
 
   // Build progress map
-  const progressMap = new Map<string, any>();
+  const progressMap = new Map<string, ProgressRecord>();
   for (const p of progress) {
     progressMap.set(p.inspectionItemId, p);
   }
 
   // Summary counts
   const total = progress.length;
-  const done = progress.filter((p: any) => p.status === "done").length;
-  const problem = progress.filter((p: any) => p.status === "problem").length;
-  const skipped = progress.filter((p: any) => p.status === "skipped").length;
-  const pending = progress.filter((p: any) => p.status === "pending").length;
+  const done = progress.filter((p) => p.status === "done").length;
+  const problem = progress.filter((p) => p.status === "problem").length;
+  const skipped = progress.filter((p) => p.status === "skipped").length;
 
   // Problems: out-of-spec items
-  const problemItems = progress.filter((p: any) => p.status === "problem");
+  const problemItems = progress.filter((p) => p.status === "problem");
 
   // Unacknowledged check/repair references
-  const checkRefs = progress.filter((p: any) => {
+  const checkRefs = progress.filter((p) => {
     const item = p.inspectionItem;
     return (item?.checkReference || item?.repairReference) && p.status === "pending";
   });
@@ -97,6 +157,14 @@ export default function ReviewScreen({ session, component, unassignedCount }: Pr
         </Button>
       </div>
 
+      {/* Reconciliation in-progress banner (Fix 6) */}
+      {isReconciling && (
+        <div className="flex items-center gap-2 text-blue-400 text-sm bg-blue-500/10 rounded-lg px-4 py-2 mb-4">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Finalizing AI analysis...
+        </div>
+      )}
+
       {/* Summary Card */}
       <Card className="bg-white/5 border-white/10 mb-6">
         <CardHeader>
@@ -125,7 +193,7 @@ export default function ReviewScreen({ session, component, unassignedCount }: Pr
             <p>Started: {new Date(session.startedAt).toLocaleString()}</p>
             {isSignedOff && session.signedOffBy && (
               <p className="text-yellow-400">
-                Signed off by {session.signedOffBy.firstName || session.signedOffBy.name} at {new Date(session.signedOffAt).toLocaleString()}
+                Signed off by {session.signedOffBy.firstName || session.signedOffBy.name} at {new Date(session.signedOffAt!).toLocaleString()}
               </p>
             )}
           </div>
@@ -168,7 +236,7 @@ export default function ReviewScreen({ session, component, unassignedCount }: Pr
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {problemItems.map((p: any) => (
+            {problemItems.map((p) => (
               <div key={p.id} className="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
                 <InspectionStatusIndicator status="problem" size="sm" />
                 <div className="flex-1">
@@ -184,17 +252,28 @@ export default function ReviewScreen({ session, component, unassignedCount }: Pr
                 </div>
               </div>
             ))}
-            {findings.map((f: any) => (
-              <div key={f.id} className="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
-                <AlertTriangle className="h-4 w-4 text-amber-400 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-white text-sm">{f.description}</p>
-                  <p className="text-amber-400 text-xs">
-                    {f.severity} · {f.status} · by {f.createdBy?.firstName || f.createdBy?.name}
-                  </p>
+            {findings.map((f) => {
+              // Auto-detected findings start with "Out-of-spec:" (created by inspection-matching.ts)
+              const isAutoDetected = f.description?.startsWith("Out-of-spec:");
+              return (
+                <div key={f.id} className="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
+                  <AlertTriangle className="h-4 w-4 text-amber-400 flex-shrink-0" />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-white text-sm">{f.description}</p>
+                      {isAutoDetected && (
+                        <Badge variant="outline" className="border-blue-400/50 text-blue-400 text-[10px] px-1.5 py-0">
+                          Auto-detected
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-amber-400 text-xs">
+                      {f.severity} · {f.status} · by {f.createdBy?.firstName || f.createdBy?.name}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       )}
@@ -204,7 +283,7 @@ export default function ReviewScreen({ session, component, unassignedCount }: Pr
         <Card className="bg-amber-500/5 border-amber-500/20 mb-4">
           <CardContent className="py-3">
             <p className="text-amber-400 text-sm font-medium mb-2">⚠ Unacknowledged References ({checkRefs.length})</p>
-            {checkRefs.map((p: any) => (
+            {checkRefs.map((p) => (
               <p key={p.id} className="text-white/50 text-xs">
                 {p.inspectionItem?.parameterName}: {p.inspectionItem?.checkReference || p.inspectionItem?.repairReference}
               </p>
@@ -227,10 +306,10 @@ export default function ReviewScreen({ session, component, unassignedCount }: Pr
       {/* Section-by-section breakdown */}
       <div className="space-y-2 mb-6">
         <h3 className="text-white font-medium mb-3">Section Details</h3>
-        {(template?.sections || []).map((section: any) => {
+        {(template?.sections || []).map((section) => {
           const sectionItems = section.items || [];
           const isExpanded = expandedSection === section.id;
-          const sectionDone = sectionItems.filter((i: any) => {
+          const sectionDone = sectionItems.filter((i) => {
             const p = progressMap.get(i.id);
             return p?.status === "done" || p?.status === "problem" || p?.status === "skipped";
           }).length;
@@ -250,7 +329,7 @@ export default function ReviewScreen({ session, component, unassignedCount }: Pr
 
               {isExpanded && (
                 <div className="px-4 pb-3 space-y-1">
-                  {sectionItems.map((item: any) => {
+                  {sectionItems.map((item) => {
                     const p = progressMap.get(item.id);
                     return (
                       <div key={item.id} className="flex items-center gap-3 py-2 border-t border-white/5">

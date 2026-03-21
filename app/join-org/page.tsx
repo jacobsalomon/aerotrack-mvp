@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { Plane, Building2, Plus, Copy, Check } from "lucide-react";
 import { apiUrl } from "@/lib/api-url";
@@ -105,7 +105,16 @@ export default function JoinOrgPage() {
     }
   }
 
-  // Success screen — org created, show invite code
+  // Auto-redirect to dashboard after creating an org (5 second delay to copy the invite code)
+  const dashboardUrl = `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/sessions`;
+  useEffect(() => {
+    if (!createdInviteCode) return;
+    const timer = setTimeout(() => {
+      window.location.href = dashboardUrl;
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [createdInviteCode, dashboardUrl]);
+
   if (createdInviteCode) {
     return (
       <div
@@ -145,13 +154,13 @@ export default function JoinOrgPage() {
 
           <button
             onClick={() => {
-              // Full page reload so middleware picks up the refreshed JWT with the new orgId
-              window.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/sessions`;
+              window.location.href = dashboardUrl;
             }}
             className="w-full rounded-xl bg-white/10 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-white/15"
           >
-            Continue to AeroVision
+            Continue to Dashboard
           </button>
+          <p className="text-xs text-white/30">Redirecting automatically in a few seconds...</p>
 
           <p className="text-center text-xs text-white/20">
             <Plane className="mr-1 inline-block h-3 w-3" />
