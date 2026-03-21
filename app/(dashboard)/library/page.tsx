@@ -1,6 +1,5 @@
 // CMM Library page — shows all uploaded CMM inspection templates for the org.
-// Admins can upload new CMMs and manage existing ones.
-// Regular users see a read-only view of active templates.
+// Any authenticated user can upload and manage templates.
 
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";

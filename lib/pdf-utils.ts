@@ -38,6 +38,44 @@ export async function extractSinglePageAsBase64(
 }
 
 /**
+ * Pre-parsed PDF handle for extracting multiple pages without re-parsing.
+ * For a 500-page PDF, this avoids parsing the full document 500 times.
+ */
+export interface ParsedPdf {
+  /** Extract a single page as a new PDF buffer */
+  extractPage(pageIndex: number): Promise<Buffer>;
+  /** Extract a single page as base64 */
+  extractPageAsBase64(pageIndex: number): Promise<string>;
+  /** Total page count */
+  pageCount: number;
+}
+
+/**
+ * Parse a PDF once and return a handle for efficient page extraction.
+ * Call this once, then use the handle to extract individual pages.
+ */
+export async function parsePdf(pdfBytes: Buffer | Uint8Array): Promise<ParsedPdf> {
+  const srcDoc = await PDFDocument.load(pdfBytes);
+
+  async function extractPage(pageIndex: number): Promise<Buffer> {
+    const newDoc = await PDFDocument.create();
+    const [copiedPage] = await newDoc.copyPages(srcDoc, [pageIndex]);
+    newDoc.addPage(copiedPage);
+    const bytes = await newDoc.save();
+    return Buffer.from(bytes);
+  }
+
+  return {
+    pageCount: srcDoc.getPageCount(),
+    extractPage,
+    async extractPageAsBase64(pageIndex: number): Promise<string> {
+      const buf = await extractPage(pageIndex);
+      return buf.toString("base64");
+    },
+  };
+}
+
+/**
  * Get the total number of pages in a PDF.
  */
 export async function getPdfPageCount(

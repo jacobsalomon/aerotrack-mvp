@@ -27,7 +27,7 @@ export async function POST(request: Request) {
 
         return {
           allowedContentTypes: ["application/pdf"],
-          maximumSizeInBytes: 50 * 1024 * 1024, // 50MB
+          maximumSizeInBytes: 500 * 1024 * 1024, // 500MB — CMMs can be very large
           tokenPayload: JSON.stringify({
             userId: session.user.id,
             organizationId: session.user.organizationId,

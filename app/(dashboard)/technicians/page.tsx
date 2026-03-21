@@ -24,14 +24,21 @@ interface UserData {
 
 export default function TeamPage() {
   const [users, setUsers] = useState<UserData[]>([]);
+  const [orgName, setOrgName] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(apiUrl("/api/technicians"));
-        if (!res.ok) throw new Error(`API error: ${res.status}`);
-        setUsers(await res.json());
+        const [teamRes, orgRes] = await Promise.all([
+          fetch(apiUrl("/api/technicians")),
+          fetch(apiUrl("/api/org/settings")),
+        ]);
+        if (teamRes.ok) setUsers(await teamRes.json());
+        if (orgRes.ok) {
+          const orgData = await orgRes.json();
+          setOrgName(orgData.orgName || "");
+        }
       } catch (err) {
         console.error("Failed to fetch team:", err);
       } finally {
@@ -51,7 +58,7 @@ export default function TeamPage() {
           Team
         </h1>
         <p className="text-sm mt-2" style={{ color: "rgb(100, 100, 100)" }}>
-          Everyone who uses AeroVision at your organization.
+          Everyone who uses AeroVision{orgName ? ` at ${orgName}` : ""}.
         </p>
       </div>
 
