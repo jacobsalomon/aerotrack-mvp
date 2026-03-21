@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { upload } from "@vercel/blob/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,6 +26,7 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
   const [partNumbers, setPartNumbers] = useState("");
   const [inspectionPages, setInspectionPages] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState("");
 
   async function handleUpload() {
     if (!file) {
@@ -33,19 +35,36 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
     }
 
     setUploading(true);
+    const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("title", title || file.name.replace(/\.pdf$/i, ""));
-      if (revisionDate) formData.append("revisionDate", revisionDate);
-      if (partNumbers) formData.append("partNumbers", partNumbers);
-      if (inspectionPages) formData.append("inspectionPages", inspectionPages);
+      // Step 1: Upload PDF directly to Vercel Blob from the browser.
+      // This bypasses the 4.5MB serverless body limit — CMMs can be 50MB+.
+      setUploadStatus("Uploading PDF...");
+      const blob = await upload(
+        `cmm-library/${Date.now()}-${file.name}`,
+        file,
+        {
+          access: "public",
+          handleUploadUrl: `${basePath}/api/library/upload`,
+          contentType: "application/pdf",
+        }
+      );
 
-      const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+      // Step 2: Tell the API about the uploaded file so it can create
+      // the template record and kick off AI extraction.
+      setUploadStatus("Starting extraction...");
       const res = await fetch(`${basePath}/api/library`, {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          blobUrl: blob.url,
+          fileName: file.name,
+          title: title || file.name.replace(/\.pdf$/i, ""),
+          revisionDate: revisionDate || null,
+          partNumbers: partNumbers || null,
+          inspectionPages: inspectionPages || null,
+        }),
       });
 
       const data = await res.json();
@@ -53,15 +72,19 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
       if (!res.ok) {
         toast.error(data.error || "Upload failed");
         setUploading(false);
+        setUploadStatus("");
         return;
       }
 
       toast.success("CMM uploaded — extraction starting");
       onClose();
       router.refresh();
-    } catch {
-      toast.error("Upload failed — please try again");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      console.error("[Upload] Failed:", message);
+      toast.error(`Upload failed: ${message}`);
       setUploading(false);
+      setUploadStatus("");
     }
   }
 
@@ -148,7 +171,10 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
 
           {/* Revision Date */}
           <div>
-            <Label htmlFor="cmm-revision">Revision Date</Label>
+            <Label htmlFor="cmm-revision">
+              Revision Date{" "}
+              <span className="text-slate-400 font-normal">(optional)</span>
+            </Label>
             <Input
               id="cmm-revision"
               type="date"
@@ -160,7 +186,10 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
 
           {/* Part Numbers */}
           <div>
-            <Label htmlFor="cmm-parts">Part Numbers Covered</Label>
+            <Label htmlFor="cmm-parts">
+              Part Numbers Covered{" "}
+              <span className="text-slate-400 font-normal">(optional)</span>
+            </Label>
             <Input
               id="cmm-parts"
               value={partNumbers}
@@ -201,7 +230,7 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
             {uploading ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Uploading...
+                {uploadStatus || "Uploading..."}
               </>
             ) : (
               "Upload & Extract"

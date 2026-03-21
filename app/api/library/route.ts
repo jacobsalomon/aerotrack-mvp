@@ -1,10 +1,9 @@
 // GET  /api/library — List all CMM inspection templates for the user's org
-// POST /api/library — Upload a new CMM PDF and start extraction
+// POST /api/library — Create a template from an already-uploaded Blob URL
 
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
-import { put } from "@vercel/blob";
 import { parsePageRanges, getPdfPageCount } from "@/lib/pdf-utils";
 
 export async function GET() {
@@ -31,52 +30,44 @@ export async function POST(request: Request) {
   }
 
   try {
-    const formData = await request.formData();
-    const file = formData.get("file") as File | null;
-    const title = formData.get("title") as string | null;
-    const revisionDateStr = formData.get("revisionDate") as string | null;
-    const partNumbersStr = formData.get("partNumbers") as string | null;
-    const inspectionPagesStr = formData.get("inspectionPages") as string | null;
+    // Client uploads the PDF directly to Vercel Blob, then sends us the URL + metadata
+    const body = await request.json();
+    const { blobUrl, fileName, title, revisionDate, partNumbers, inspectionPages } = body as {
+      blobUrl: string;
+      fileName: string;
+      title?: string;
+      revisionDate?: string | null;
+      partNumbers?: string | null;
+      inspectionPages?: string | null;
+    };
 
-    if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 });
-    }
-
-    if (file.type !== "application/pdf") {
-      return NextResponse.json({ error: "Only PDF files are allowed" }, { status: 400 });
-    }
-
-    // 50MB limit for CMMs (they can be large)
-    if (file.size > 50 * 1024 * 1024) {
-      return NextResponse.json({ error: "File must be under 50MB" }, { status: 400 });
+    if (!blobUrl || !fileName) {
+      return NextResponse.json({ error: "Missing blobUrl or fileName" }, { status: 400 });
     }
 
     const orgId = session.user.organizationId;
-    const docTitle = title?.trim() || file.name.replace(/\.pdf$/i, "");
+    const docTitle = title?.trim() || fileName.replace(/\.pdf$/i, "");
 
     // Parse part numbers from comma-separated string
-    const partNumbersCovered = partNumbersStr
-      ? partNumbersStr.split(",").map((pn) => pn.trim()).filter(Boolean)
+    const partNumbersCovered = partNumbers
+      ? partNumbers.split(",").map((pn: string) => pn.trim()).filter(Boolean)
       : [];
 
     // Parse revision date
-    const revisionDate = revisionDateStr ? new Date(revisionDateStr) : null;
+    const parsedRevisionDate = revisionDate ? new Date(revisionDate) : null;
 
-    // Parse inspection page ranges (user provides 1-based, we store 0-based internally)
-    const inspectionPages = inspectionPagesStr?.trim()
-      ? parsePageRanges(inspectionPagesStr)
+    // Parse inspection page ranges
+    const parsedInspectionPages = inspectionPages?.trim()
+      ? parsePageRanges(inspectionPages)
       : [];
 
-    // Get page count from the PDF
-    const pdfBytes = Buffer.from(await file.arrayBuffer());
+    // Download the PDF from Blob to count pages
+    const pdfResponse = await fetch(blobUrl);
+    if (!pdfResponse.ok) {
+      return NextResponse.json({ error: "Could not read uploaded PDF" }, { status: 400 });
+    }
+    const pdfBytes = Buffer.from(await pdfResponse.arrayBuffer());
     const totalPages = await getPdfPageCount(pdfBytes);
-
-    // Upload to Vercel Blob
-    const blob = await put(
-      `cmm-library/${orgId}/${Date.now()}-${file.name}`,
-      file,
-      { access: "public", contentType: "application/pdf" }
-    );
 
     // Check for existing ComponentManual records with matching part numbers
     let componentManualId: string | null = null;
@@ -107,13 +98,13 @@ export async function POST(request: Request) {
         createdById: session.user.id,
         componentManualId,
         title: docTitle,
-        sourceFileUrl: blob.url,
-        sourceFileName: file.name,
-        revisionDate,
+        sourceFileUrl: blobUrl,
+        sourceFileName: fileName,
+        revisionDate: parsedRevisionDate,
         partNumbersCovered,
         status: "pending_extraction",
         totalPages,
-        inspectionPages,
+        inspectionPages: parsedInspectionPages,
         version: 1,
       },
     });
@@ -130,12 +121,12 @@ export async function POST(request: Request) {
           title: docTitle,
           partNumbers: partNumbersCovered,
           totalPages,
-          fileName: file.name,
+          fileName,
         },
       },
     });
 
-    // Kick off extraction by calling the extraction endpoint
+    // Kick off extraction
     const baseUrl = process.env.NEXTAUTH_URL || process.env.VERCEL_URL
       ? `https://${process.env.VERCEL_URL}`
       : "http://localhost:3000";
@@ -151,7 +142,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, template });
   } catch (error) {
-    console.error("[Library] Upload error:", error);
-    return NextResponse.json({ error: "Upload failed" }, { status: 500 });
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[Library] Upload error:", message);
+    return NextResponse.json({ error: `Upload failed: ${message}` }, { status: 500 });
   }
 }
