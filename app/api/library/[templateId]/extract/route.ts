@@ -8,7 +8,7 @@
 // This keeps each serverless invocation under 60 seconds.
 
 import { prisma } from "@/lib/db";
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { randomUUID } from "crypto";
 import { runPass1Batch } from "@/lib/ai/cmm-extraction-pass1";
 import { extractSection } from "@/lib/ai/cmm-extraction-pass2";
@@ -236,7 +236,9 @@ export async function POST(
   }
 }
 
-// Fire-and-forget self-call to process the next step
+// Self-call to process the next step. Uses after() to ensure the fetch
+// completes even after the response is sent — without this, the serverless
+// function may shut down before the self-call reaches the network.
 function triggerNextStep(templateId: string) {
   const baseUrl =
     process.env.NEXTAUTH_URL ||
@@ -246,13 +248,17 @@ function triggerNextStep(templateId: string) {
   const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
   const secret = process.env.INTERNAL_API_SECRET || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "";
 
-  fetch(`${baseUrl}${basePath}/api/library/${templateId}/extract`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-internal-secret": secret,
-    },
-  }).catch((err) => {
-    console.error(`[Extraction] Failed to trigger next step:`, err);
+  after(async () => {
+    try {
+      await fetch(`${baseUrl}${basePath}/api/library/${templateId}/extract`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-internal-secret": secret,
+        },
+      });
+    } catch (err) {
+      console.error(`[Extraction] Failed to trigger next step:`, err);
+    }
   });
 }
