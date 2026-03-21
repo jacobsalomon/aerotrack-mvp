@@ -30,6 +30,8 @@ export async function getExtractionContext(sessionId: string): Promise<string> {
       targetFormType: true,
       orgDocumentId: true,
       componentId: true,
+      sessionType: true,
+      activeInspectionSectionId: true,
     },
   });
 
@@ -99,6 +101,38 @@ export async function getExtractionContext(sessionId: string): Promise<string> {
   // 4. Add component description for general context
   if (component?.description) {
     sections.push(`COMPONENT: ${component.description} (P/N: ${component.partNumber})`);
+  }
+
+  // Layer 2: If this is an inspection session, include the active section's pending items
+  // This gives the AI much better context — it knows exactly what specs to listen for
+  if (session.sessionType === "inspection" && session.activeInspectionSectionId) {
+    const pendingItems = await prisma.inspectionItem.findMany({
+      where: {
+        sectionId: session.activeInspectionSectionId,
+        inspectionProgress: {
+          none: {
+            captureSessionId: sessionId,
+            status: { in: ["done", "problem"] },
+          },
+        },
+      },
+      orderBy: { sortOrder: "asc" },
+      take: 50,
+    });
+
+    if (pendingItems.length > 0) {
+      sections.push("\nACTIVE INSPECTION ITEMS (listen for these specific measurements):");
+      for (const item of pendingItems) {
+        let line = `- ${item.parameterName}`;
+        if (item.itemCallout) line += ` (callout #${item.itemCallout})`;
+        if (item.specValueLow != null && item.specValueHigh != null) {
+          line += `: ${item.specValueLow}-${item.specValueHigh} ${item.specUnit || ""}`;
+        }
+        if (item.itemType) line += ` [${item.itemType}]`;
+        sections.push(line);
+      }
+      sections.push("\nIf the technician calls out an item number (e.g., 'item 290'), include the callout number in your extraction output.");
+    }
   }
 
   const context = sections.join("\n\n");

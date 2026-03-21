@@ -44,9 +44,12 @@ model User {
 
   // Relationships (moved from Technician)
   captureSessions     CaptureSession[]
+  signedOffSessions   CaptureSession[]   @relation("inspectionSignOff")
   reviewedDocuments   CaptureDocument[]  @relation("reviewer")
   auditLog            AuditLogEntry[]
   createdTemplates    InspectionTemplate[]
+  completedProgress   InspectionProgress[] @relation("progressCompletedBy")
+  createdFindings     InspectionFinding[]  @relation("findingCreatedBy")
 
   @@index([organizationId])
 }
@@ -417,6 +420,7 @@ model CaptureSession {
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   componentId     String?                               // Linked after AI identifies the part
   status          String    @default("capturing")       // capturing, processing, documents_generated, submitted, approved, rejected
+                                                        // Layer 2 adds: inspecting, reviewing, signed_off
   description     String?
   targetFormType  String?                               // Which FAA form to auto-populate: "8130-3", "337", or "8010-4"
   orgDocumentId   String?                               // Internal form selected for this session (mutually exclusive with targetFormType)
@@ -427,6 +431,19 @@ model CaptureSession {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  // Layer 2: CMM-guided inspection fields
+  sessionType                 String    @default("capture")   // "capture" (existing flow) or "inspection" (CMM-guided)
+  inspectionTemplateId        String?                         // FK to InspectionTemplate — which CMM template guides this inspection
+  inspectionTemplate          InspectionTemplate? @relation(fields: [inspectionTemplateId], references: [id], onDelete: SetNull)
+  inspectionTemplateVersion   Int?                            // Snapshot of template version at session creation (immutable record)
+  configurationVariant        String?                         // Selected P/N variant for this inspection session
+  activeInspectionSectionId   String?                         // Which sub-assembly section the tech is currently working on
+  workOrderRef                String?                         // Optional work order number, e.g., "WO#359847"
+  signedOffById               String?                         // FK to User who signed off on this inspection
+  signedOffBy                 User? @relation("inspectionSignOff", fields: [signedOffById], references: [id], onDelete: SetNull)
+  signedOffAt                 DateTime?                       // When the inspection was signed off
+  signOffNotes                String?                         // Optional notes from sign-off
+
   // Relationships
   evidence        CaptureEvidence[]
   documents       CaptureDocument[]
@@ -434,12 +451,15 @@ model CaptureSession {
   processingJob   SessionProcessingJob?
   packages        SessionPackage[]
   measurements    Measurement[]
+  inspectionProgress  InspectionProgress[]
+  inspectionFindings  InspectionFinding[]
 
   @@index([userId])
   @@index([organizationId])
   @@index([status, startedAt])
   @@index([userId, status, startedAt])
   @@index([organizationId, status, startedAt])
+  @@index([sessionType])
 }
 
 // ──────────────────────────────────────────────────────
@@ -702,13 +722,19 @@ model Measurement {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
+  // Layer 2: direct link from measurement to inspection template item
+  inspectionItemId    String?                         // FK to InspectionItem — which template item this measurement fulfills
+  inspectionItem      InspectionItem? @relation(fields: [inspectionItemId], references: [id], onDelete: SetNull)
+
   // Relationships
   sources             MeasurementSource[]
+  inspectionProgress  InspectionProgress[]
 
   @@index([captureSessionId])
   @@index([componentId])
   @@index([measurementType])
   @@index([status])
+  @@index([inspectionItemId])
 }
 
 // ──────────────────────────────────────────────────────
@@ -844,6 +870,7 @@ model InspectionTemplate {
   // Relationships
   sections                InspectionSection[]
   linkedComponents        ComponentInspectionTemplate[]
+  captureSessions         CaptureSession[]              // Layer 2: sessions using this template
 
   @@index([organizationId])
   @@index([status])
@@ -880,6 +907,7 @@ model InspectionSection {
 
   // Relationships
   items                       InspectionItem[]
+  inspectionFindings          InspectionFinding[]         // Layer 2: findings linked to this section
 
   @@index([templateId])
   @@index([organizationId])
@@ -933,6 +961,11 @@ model InspectionItem {
   createdAt                   DateTime  @default(now())
   updatedAt                   DateTime  @updatedAt
 
+  // Layer 2 reverse relations
+  measurements                Measurement[]               // Measurements linked to this inspection item
+  inspectionProgress          InspectionProgress[]        // Progress records for this item
+  inspectionFindings          InspectionFinding[]         // Findings attached to this item
+
   @@index([sectionId])
 }
 
@@ -952,4 +985,67 @@ model ComponentInspectionTemplate {
   @@unique([componentId, templateId])
   @@index([componentId])
   @@index([templateId])
+}
+
+// ══════════════════════════════════════════════════════
+// LAYER 2: CMM-GUIDED INSPECTION WORKFLOW
+// Progress tracking and findings for guided inspection sessions.
+// InspectionProgress is thin — values live in Measurement table, not duplicated here.
+// ══════════════════════════════════════════════════════
+
+// ──────────────────────────────────────────────────────
+// InspectionProgress — tracks completion status for each inspection item in a session.
+// The captured VALUE lives in the linked Measurement record (no duplication).
+// Status tracks work state, result tracks the outcome.
+// ──────────────────────────────────────────────────────
+model InspectionProgress {
+  id                  String    @id @default(cuid())
+  captureSessionId    String
+  captureSession      CaptureSession @relation(fields: [captureSessionId], references: [id], onDelete: Cascade)
+  inspectionItemId    String
+  inspectionItem      InspectionItem @relation(fields: [inspectionItemId], references: [id], onDelete: Cascade)
+
+  status              String    @default("pending")       // pending, done, problem, skipped
+  result              String?                             // pass, fail, in_spec, out_of_spec, not_applicable (null when pending)
+  measurementId       String?                             // FK to Measurement — THE source of truth for captured values
+  measurement         Measurement? @relation(fields: [measurementId], references: [id], onDelete: SetNull)
+  notes               String?                             // Inspector notes for this item
+  skipReason          String?                             // Required when status is "skipped"
+
+  completedAt         DateTime?                           // When this item was completed
+  completedById       String?                             // FK to User who completed this item
+  completedBy         User? @relation("progressCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+  updatedAt           DateTime  @updatedAt                // Needed for polling endpoint
+
+  @@unique([captureSessionId, inspectionItemId])          // One progress record per item per session
+  @@index([captureSessionId, updatedAt])                  // For incremental polling: "what changed since X?"
+  @@index([inspectionItemId])
+}
+
+// ──────────────────────────────────────────────────────
+// InspectionFinding — a non-routine discovery during inspection.
+// Mechanics find unexpected issues: damage, corrosion, missing hardware.
+// Minimal capture: photo + one-line description + severity.
+// ──────────────────────────────────────────────────────
+model InspectionFinding {
+  id                    String    @id @default(cuid())
+  captureSessionId      String
+  captureSession        CaptureSession @relation(fields: [captureSessionId], references: [id], onDelete: Cascade)
+  inspectionItemId      String?                           // Nullable — finding may not relate to a specific item
+  inspectionItem        InspectionItem? @relation(fields: [inspectionItemId], references: [id], onDelete: SetNull)
+  inspectionSectionId   String                            // Which section this finding is in
+  inspectionSection     InspectionSection @relation(fields: [inspectionSectionId], references: [id], onDelete: Cascade)
+
+  description           String                            // One-line description of the finding
+  severity              String    @default("major")       // minor, major, critical
+  recommendedAction     String?                           // Optional — can be added later at review time
+  photoUrls             String[]                          // Blob URLs for finding photos
+  status                String    @default("open")        // open, deferred, resolved
+
+  createdById           String                            // FK to User who created this finding
+  createdBy             User @relation("findingCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt             DateTime  @default(now())
+
+  @@index([captureSessionId])
+  @@index([inspectionSectionId])
 }

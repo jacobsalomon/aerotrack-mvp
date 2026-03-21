@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState, type ComponentType } from "react";
 import {
   BookOpen,
+  ClipboardCheck,
   FileCheck,
   FileText,
   LogOut,
@@ -36,6 +37,12 @@ const primaryNavItems: NavItem[] = [
     label: "Sessions",
     icon: FileCheck,
     description: "Capture and review work",
+  },
+  {
+    href: "/inspect",
+    label: "Inspect",
+    icon: ClipboardCheck,
+    description: "CMM-guided inspections",
   },
 ];
 

@@ -1,0 +1,323 @@
+"use client";
+
+// Inspection review screen
+// Summary card, problems at top, section-by-section breakdown, findings, sign-off
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { apiUrl } from "@/lib/api-url";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Lock,
+  Loader2,
+  X,
+  FileCheck,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import InspectionStatusIndicator from "./inspection-status-indicator";
+
+// Simplified types — these come from the server component JSON serialization
+interface Props {
+  session: any;
+  component: { id: string; partNumber: string; serialNumber: string; description: string } | null;
+  unassignedCount: number;
+}
+
+export default function ReviewScreen({ session, component, unassignedCount }: Props) {
+  const router = useRouter();
+  const template = session.inspectionTemplate;
+  const progress = session.inspectionProgress || [];
+  const findings = session.inspectionFindings || [];
+  const isSignedOff = !!session.signedOffAt;
+
+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
+  const [signingOff, setSigningOff] = useState(false);
+  const [showSignOffDialog, setShowSignOffDialog] = useState(false);
+
+  // Build progress map
+  const progressMap = new Map<string, any>();
+  for (const p of progress) {
+    progressMap.set(p.inspectionItemId, p);
+  }
+
+  // Summary counts
+  const total = progress.length;
+  const done = progress.filter((p: any) => p.status === "done").length;
+  const problem = progress.filter((p: any) => p.status === "problem").length;
+  const skipped = progress.filter((p: any) => p.status === "skipped").length;
+  const pending = progress.filter((p: any) => p.status === "pending").length;
+
+  // Problems: out-of-spec items
+  const problemItems = progress.filter((p: any) => p.status === "problem");
+
+  // Unacknowledged check/repair references
+  const checkRefs = progress.filter((p: any) => {
+    const item = p.inspectionItem;
+    return (item?.checkReference || item?.repairReference) && p.status === "pending";
+  });
+
+  async function handleSignOff() {
+    setSigningOff(true);
+    try {
+      // First transition to reviewing status
+      await fetch(apiUrl(`/api/inspect/sessions/${session.id}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "reviewing" }),
+      });
+
+      const res = await fetch(apiUrl(`/api/inspect/sessions/${session.id}/sign-off`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (res.ok) {
+        router.refresh();
+      }
+    } catch (err) {
+      console.error("Sign-off error:", err);
+    } finally {
+      setSigningOff(false);
+      setShowSignOffDialog(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-zinc-950 p-4 max-w-4xl mx-auto pb-20">
+      {/* Back button */}
+      <div className="mb-4">
+        <Button variant="ghost" onClick={() => router.push(`/inspect/${session.id}`)} className="text-white/50 hover:text-white">
+          ← Back to Inspection
+        </Button>
+      </div>
+
+      {/* Summary Card */}
+      <Card className="bg-white/5 border-white/10 mb-6">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center gap-2">
+            <FileCheck className="h-5 w-5" />
+            Inspection Review
+            {isSignedOff && (
+              <Badge variant="outline" className="border-yellow-500/50 text-yellow-500 ml-2">
+                <Lock className="h-3 w-3 mr-1" /> Signed Off
+              </Badge>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {component && (
+            <div className="text-white/70 text-sm">
+              <p className="font-medium text-white">{component.description}</p>
+              <p>P/N: {component.partNumber} · S/N: {component.serialNumber}</p>
+            </div>
+          )}
+          <div className="text-white/50 text-sm space-y-1">
+            <p>Template: {template?.title} · Rev. {template?.revisionDate ? new Date(template.revisionDate).toLocaleDateString() : "—"}</p>
+            {session.configurationVariant && <p>Configuration: {session.configurationVariant}</p>}
+            {session.workOrderRef && <p>Work Order: {session.workOrderRef}</p>}
+            <p>Inspector: {session.user?.firstName || session.user?.name || "Unknown"} {session.user?.lastName || ""}</p>
+            <p>Started: {new Date(session.startedAt).toLocaleString()}</p>
+            {isSignedOff && session.signedOffBy && (
+              <p className="text-yellow-400">
+                Signed off by {session.signedOffBy.firstName || session.signedOffBy.name} at {new Date(session.signedOffAt).toLocaleString()}
+              </p>
+            )}
+          </div>
+
+          {/* Completion grid */}
+          <div className="grid grid-cols-5 gap-2 pt-2">
+            {[
+              { label: "Total", value: total, color: "text-white" },
+              { label: "Done", value: done, color: "text-green-400" },
+              { label: "Problems", value: problem, color: "text-red-400" },
+              { label: "Skipped", value: skipped, color: "text-zinc-400" },
+              { label: "Findings", value: findings.length, color: "text-amber-400" },
+            ].map((stat) => (
+              <div key={stat.label} className="text-center">
+                <p className={cn("text-2xl font-bold", stat.color)}>{stat.value}</p>
+                <p className="text-white/40 text-xs">{stat.label}</p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Problems Section */}
+      {(problemItems.length > 0 || findings.length > 0) && (
+        <Card className="bg-red-500/5 border-red-500/20 mb-4">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-red-400 text-lg flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5" /> Problems & Findings
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {problemItems.map((p: any) => (
+              <div key={p.id} className="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
+                <InspectionStatusIndicator status="problem" size="sm" />
+                <div className="flex-1">
+                  <p className="text-white text-sm">{p.inspectionItem?.parameterName}</p>
+                  {p.measurement && (
+                    <p className="text-red-400 text-xs">
+                      Measured: {p.measurement.value} {p.measurement.unit}
+                      {p.inspectionItem?.specValueLow != null && (
+                        <span className="text-white/40"> (spec: {p.inspectionItem.specValueLow}–{p.inspectionItem.specValueHigh})</span>
+                      )}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+            {findings.map((f: any) => (
+              <div key={f.id} className="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
+                <AlertTriangle className="h-4 w-4 text-amber-400 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-white text-sm">{f.description}</p>
+                  <p className="text-amber-400 text-xs">
+                    {f.severity} · {f.status} · by {f.createdBy?.firstName || f.createdBy?.name}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Unacknowledged CHECK/REPAIR references */}
+      {checkRefs.length > 0 && (
+        <Card className="bg-amber-500/5 border-amber-500/20 mb-4">
+          <CardContent className="py-3">
+            <p className="text-amber-400 text-sm font-medium mb-2">⚠ Unacknowledged References ({checkRefs.length})</p>
+            {checkRefs.map((p: any) => (
+              <p key={p.id} className="text-white/50 text-xs">
+                {p.inspectionItem?.parameterName}: {p.inspectionItem?.checkReference || p.inspectionItem?.repairReference}
+              </p>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Unassigned measurements warning */}
+      {unassignedCount > 0 && (
+        <Card className="bg-amber-500/5 border-amber-500/20 mb-4">
+          <CardContent className="py-3">
+            <p className="text-amber-400 text-sm">
+              ⚠ {unassignedCount} unassigned measurement{unassignedCount > 1 ? "s" : ""} remaining
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Section-by-section breakdown */}
+      <div className="space-y-2 mb-6">
+        <h3 className="text-white font-medium mb-3">Section Details</h3>
+        {(template?.sections || []).map((section: any) => {
+          const sectionItems = section.items || [];
+          const isExpanded = expandedSection === section.id;
+          const sectionDone = sectionItems.filter((i: any) => {
+            const p = progressMap.get(i.id);
+            return p?.status === "done" || p?.status === "problem" || p?.status === "skipped";
+          }).length;
+
+          return (
+            <div key={section.id} className="bg-white/5 rounded-lg border border-white/10">
+              <button
+                onClick={() => setExpandedSection(isExpanded ? null : section.id)}
+                className="w-full flex items-center gap-3 px-4 py-3 text-left"
+              >
+                {isExpanded ? <ChevronDown className="h-4 w-4 text-white/30" /> : <ChevronRight className="h-4 w-4 text-white/30" />}
+                <span className="text-white text-sm flex-1">
+                  Fig {section.figureNumber} — {section.title}
+                </span>
+                <span className="text-white/40 text-xs font-mono">{sectionDone}/{sectionItems.length}</span>
+              </button>
+
+              {isExpanded && (
+                <div className="px-4 pb-3 space-y-1">
+                  {sectionItems.map((item: any) => {
+                    const p = progressMap.get(item.id);
+                    return (
+                      <div key={item.id} className="flex items-center gap-3 py-2 border-t border-white/5">
+                        <InspectionStatusIndicator status={p?.status || "pending"} size="sm" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white/70 text-sm truncate">{item.parameterName}</p>
+                        </div>
+                        {p?.measurement && (
+                          <span className={cn(
+                            "text-xs font-mono",
+                            p.measurement.inTolerance === false ? "text-red-400" : "text-green-400"
+                          )}>
+                            {p.measurement.value} {p.measurement.unit}
+                          </span>
+                        )}
+                        {p?.completedBy && (
+                          <span className="text-white/20 text-xs">
+                            {p.completedBy.firstName?.[0] || "AI"}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Sign-off button */}
+      {!isSignedOff && (
+        <div className="fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-white/10 p-4 pb-safe">
+          <Button
+            className="w-full h-14 bg-green-600 hover:bg-green-700 text-lg font-medium"
+            onClick={() => setShowSignOffDialog(true)}
+          >
+            <Check className="h-5 w-5 mr-2" /> Sign Off Inspection
+          </Button>
+        </div>
+      )}
+
+      {/* Sign-off confirmation dialog */}
+      {showSignOffDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/70" onClick={() => setShowSignOffDialog(false)} />
+          <div className="relative bg-zinc-900 rounded-xl border border-white/10 p-6 max-w-md mx-4 space-y-4">
+            <h3 className="text-white font-medium text-lg">Confirm Sign-Off</h3>
+            <p className="text-white/60 text-sm">
+              You are signing off on the inspection of{" "}
+              {component ? <span className="text-white">{component.partNumber} {component.serialNumber}</span> : "this component"}{" "}
+              against <span className="text-white">{template?.title}</span>.
+            </p>
+            <p className="text-white/60 text-sm">
+              {done} items complete, {problem} problems, {findings.length} findings.
+            </p>
+            <p className="text-amber-400 text-sm font-medium">
+              This action is recorded and the record becomes read-only.
+            </p>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1 border-white/20 text-white/70"
+                onClick={() => setShowSignOffDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 bg-green-600 hover:bg-green-700"
+                onClick={handleSignOff}
+                disabled={signingOff}
+              >
+                {signingOff ? <Loader2 className="h-4 w-4 animate-spin" /> : "Sign Off"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

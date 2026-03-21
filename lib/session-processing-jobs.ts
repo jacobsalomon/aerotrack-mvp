@@ -62,11 +62,18 @@ export async function ensureSessionProcessingJob(
       organizationId: true,
       status: true,
       completedAt: true,
+      sessionType: true,
     },
   });
 
   if (!session) {
     throw new Error("Session not found");
+  }
+
+  // Inspection sessions skip the processing pipeline entirely —
+  // no 8130-3 generation, no work order drafting, just direct measurement capture.
+  if (session.sessionType === "inspection") {
+    return null;
   }
 
   const now = new Date();
