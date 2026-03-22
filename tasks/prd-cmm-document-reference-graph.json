@@ -1,0 +1,145 @@
+{
+  "name": "CMM Document Reference Graph and Page-Resumable Pass 2",
+  "branchName": "ralph/cmm-document-reference-graph",
+  "description": "Upgrade the CMM extraction pipeline to resolve long-range document references deterministically and make Pass 2 page-resumable for large, dense manuals.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Add Hybrid Reference Persistence",
+      "description": "As the extraction system, I want raw page reference data stored flexibly and resolved section links stored structurally so that cross-page context can be maintained without introducing an over-engineered graph platform.",
+      "acceptanceCriteria": [
+        "Define a hybrid persistence design that keeps raw per-page reference extraction in JSON metadata and stores resolved section-context links in structured database fields or tables",
+        "The structured layer records which pages are attached to which section and why",
+        "The structured layer supports these link reasons at minimum: diagram_page, explicit_figure_reference, explicit_page_reference, check_reference_context, repair_reference_context, special_assembly_reference",
+        "The schema design is limited to the minimum needed to drive deterministic extraction and resumption",
+        "Existing extracted templates remain readable after the schema change",
+        "`npm run typecheck` passes",
+        "`npm run lint` passes",
+        "Manual verification is documented on at least one real 73+ page CMM with known long-range references",
+        "Confirm extraction can complete without manual lease clearing or full-section reprocessing after interruption"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "",
+      "dependsOn": []
+    },
+    {
+      "id": "US-002",
+      "title": "Extract Explicit References During Pass 1",
+      "description": "As the extraction system, I want each classified page to emit explicit document references so that section context is determined by identifiers instead of proximity alone.",
+      "acceptanceCriteria": [
+        "Pass 1 extracts explicit references from relevant pages, including figure references, page references, check references, repair references, and special assembly figure references",
+        "Raw extracted references are persisted per page in template-level metadata",
+        "Diagram pages still create section anchors by figure number as they do today",
+        "inspection_text pages are no longer linked only by nearest-page distance when explicit references are available",
+        "The system preserves the current page classification outputs and does not reduce Pass 1 accuracy for existing short-range cases",
+        "`npm run typecheck` passes",
+        "`npm run lint` passes",
+        "Manual verification is documented on at least one real 73+ page CMM with known long-range references",
+        "Confirm extraction can complete without manual lease clearing or full-section reprocessing after interruption"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [
+        "US-001"
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Resolve Reference Graph Into Section Context",
+      "description": "As the extraction system, I want explicit page references resolved into deterministic section context so that each section includes all relevant supporting pages before deep extraction begins.",
+      "acceptanceCriteria": [
+        "The resolver links text, index, and reference pages to sections by explicit figure or page reference before using proximity fallback",
+        "Proximity fallback is only used when no explicit resolvable reference exists",
+        "Resolution decisions record confidence and link reason",
+        "A section can include context pages that are far from the diagram pages in the source PDF",
+        "Ambiguous references are retained in raw metadata and marked unresolved rather than silently attached to the wrong section",
+        "Resolved context pages are reflected in the section's effective extraction page set",
+        "`npm run typecheck` passes",
+        "`npm run lint` passes",
+        "Manual verification is documented on at least one real 73+ page CMM with known long-range references",
+        "Confirm extraction can complete without manual lease clearing or full-section reprocessing after interruption"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [
+        "US-001",
+        "US-002"
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "Make Pass 2 Page-Resumable",
+      "description": "As the extraction system, I want Pass 2 to process one page at a time with persisted progress so that dense sections cannot fail as one oversized invocation.",
+      "acceptanceCriteria": [
+        "Pass 2 processes one section page per invocation, not an entire section",
+        "Each processed page persists raw consensus output before the next page begins",
+        "A partially completed section resumes from the next unprocessed page without redoing completed pages",
+        "Section finalization runs as a separate step that merges per-page outputs, deduplicates items, validates results, and writes final items",
+        "Pass 2 remains sequential at the section level and continues using the current dual-model consensus approach per page",
+        "If one page fails, the failure is isolated to that page or section state and does not require rerunning the entire template",
+        "`npm run typecheck` passes",
+        "`npm run lint` passes",
+        "Manual verification is documented on at least one real 73+ page CMM with known long-range references",
+        "Confirm extraction can complete without manual lease clearing or full-section reprocessing after interruption"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [
+        "US-001"
+      ]
+    },
+    {
+      "id": "US-005",
+      "title": "Update Extraction Orchestration and Progress APIs",
+      "description": "As the system and API consumer, I want extraction progress to reflect page-level Pass 2 work and resolved context so that background processing remains observable and debuggable.",
+      "acceptanceCriteria": [
+        "The extraction runner can identify the next unprocessed page for a section deterministically",
+        "Progress APIs expose enough information to distinguish Pass 1 indexing, Pass 2 page extraction, and section finalization",
+        "Structured link data is available to internal debugging endpoints or logs without requiring reviewer UI changes",
+        "Cron-based polling and lease handling continue to work with the page-resumable Pass 2 model",
+        "Stale in-progress page work can be safely retried without corrupting resolved context or duplicating final items",
+        "`npm run typecheck` passes",
+        "`npm run lint` passes",
+        "Manual verification is documented on at least one real 73+ page CMM with known long-range references",
+        "Confirm extraction can complete without manual lease clearing or full-section reprocessing after interruption"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "",
+      "dependsOn": [
+        "US-003",
+        "US-004"
+      ]
+    },
+    {
+      "id": "US-006",
+      "title": "Validate Against Real Long CMMs",
+      "description": "As the product team, we want a repeatable validation pass on a real complex CMM so that we can confirm the new reference resolution improves extraction quality instead of only changing architecture.",
+      "acceptanceCriteria": [
+        "Run the pipeline on at least one real 73+ page CMM with known long-range references",
+        "Verify at least one case where a text, index, or reference page is correctly attached to a distant diagram section",
+        "Verify Pass 2 resumes from persisted per-page progress if interrupted mid-section",
+        "Compare extraction output before and after the change for at least one cross-reference-heavy figure",
+        "Document observed wins, misses, and unresolved ambiguity cases in a short task note",
+        "`npm run typecheck` passes",
+        "`npm run lint` passes",
+        "Manual verification is documented on at least one real 73+ page CMM with known long-range references",
+        "Confirm extraction can complete without manual lease clearing or full-section reprocessing after interruption"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "Code complete — requires running pipeline on real 73+ page CMM to validate",
+      "dependsOn": [
+        "US-001",
+        "US-002",
+        "US-003",
+        "US-004",
+        "US-005"
+      ]
+    }
+  ]
+}

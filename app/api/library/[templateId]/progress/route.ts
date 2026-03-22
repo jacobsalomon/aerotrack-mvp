@@ -35,6 +35,8 @@ export async function GET(
           status: true,
           itemCount: true,
           extractionConfidence: true,
+          pageNumbers: true,
+          pass2Progress: true,
         },
         orderBy: { sortOrder: "asc" },
       },
@@ -69,6 +71,25 @@ export async function GET(
   const pagesClassified = pass1Progress?.classifiedSoFar?.length ?? 0;
   const pagesToClassify = pass1Progress?.pagesToProcess?.length ?? template.totalPages;
 
+  // Determine current phase and page-level progress for Pass 2
+  let phase: "indexing" | "page_extraction" | "section_finalization" | null = null;
+  let pageProgress: { current: number; total: number } | null = null;
+
+  if (template.status === "extracting_index") {
+    phase = "indexing";
+  } else if (template.status === "extracting_details" && currentSection) {
+    const p2 = currentSection.pass2Progress as { nextPageOffset: number } | null;
+    const totalPagesInSection = currentSection.pageNumbers.length;
+    const pagesExtractedInSection = p2?.nextPageOffset ?? 0;
+
+    if (pagesExtractedInSection >= totalPagesInSection && totalPagesInSection > 0) {
+      phase = "section_finalization";
+    } else {
+      phase = "page_extraction";
+    }
+    pageProgress = { current: pagesExtractedInSection, total: totalPagesInSection };
+  }
+
   return NextResponse.json({
     status: template.status,
     totalPages: template.totalPages,
@@ -79,17 +100,29 @@ export async function GET(
     // Pass 1 progress (page classification)
     pagesClassified,
     pagesToClassify,
+    // Current work
+    phase,
     currentSection: currentSection
-      ? { title: currentSection.title, figureNumber: currentSection.figureNumber }
+      ? {
+          title: currentSection.title,
+          figureNumber: currentSection.figureNumber,
+          pageProgress,
+        }
       : null,
     // Per-section breakdown for detailed progress UI
-    sections: template.sections.map((s) => ({
-      id: s.id,
-      title: s.title,
-      figureNumber: s.figureNumber,
-      status: s.status,
-      itemCount: s.itemCount,
-      confidence: s.extractionConfidence,
-    })),
+    sections: template.sections.map((s) => {
+      const p2 = s.pass2Progress as { nextPageOffset: number } | null;
+      return {
+        id: s.id,
+        title: s.title,
+        figureNumber: s.figureNumber,
+        status: s.status,
+        itemCount: s.itemCount,
+        confidence: s.extractionConfidence,
+        pageProgress: s.status === "extracting" && p2
+          ? { current: p2.nextPageOffset, total: s.pageNumbers.length }
+          : undefined,
+      };
+    }),
   });
 }
