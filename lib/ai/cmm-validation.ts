@@ -54,12 +54,14 @@ export interface ExtractedItem {
   sequenceGroup?: string | null;
   notes?: string | null;
   confidence: number;
+  reviewReason?: string | null; // Set during extraction — explains why confidence is low
 }
 
 export interface ValidationResult {
   item: ExtractedItem;
   adjustedConfidence: number;
   issues: string[];
+  reviewReason: string | null;
 }
 
 // Validate a single extracted item and adjust its confidence
@@ -129,10 +131,17 @@ export function validateItem(item: ExtractedItem): ValidationResult {
     confidence = Math.min(confidence, 0.4);
   }
 
+  // Build a review reason from validation issues (if confidence was reduced)
+  let reviewReason: string | null = item.reviewReason || null;
+  if (issues.length > 0 && confidence < 0.7 && !reviewReason) {
+    reviewReason = issues[0]; // Use the first validation issue as the reason
+  }
+
   return {
-    item: { ...item, confidence },
+    item: { ...item, confidence, reviewReason },
     adjustedConfidence: confidence,
     issues,
+    reviewReason,
   };
 }
 
@@ -259,7 +268,12 @@ export function reconcileExtractions(
 
     if (!match) {
       // Only model A found this item — confidence based on structural validity
-      mergedItems.push({ ...a, confidence: unmatchedConfidence(a) });
+      const conf = unmatchedConfidence(a);
+      mergedItems.push({
+        ...a,
+        confidence: conf,
+        reviewReason: conf < 0.7 ? "Only one AI model extracted this item and it has validation issues" : null,
+      });
       continue;
     }
 
@@ -318,6 +332,7 @@ export function reconcileExtractions(
       specialAssemblyRef: a.specialAssemblyRef || b.specialAssemblyRef,
       notes: a.notes || b.notes,
       confidence: agreed ? 1.0 : 0.5,
+      reviewReason: agreed ? null : "Both AI models found this item but disagreed on the values",
     };
 
     mergedItems.push(mergedItem);
@@ -326,7 +341,12 @@ export function reconcileExtractions(
   // Add items only model B found (not matched to any A item)
   for (let j = 0; j < itemsB.length; j++) {
     if (!matchedB.has(j)) {
-      mergedItems.push({ ...itemsB[j], confidence: unmatchedConfidence(itemsB[j]) });
+      const conf = unmatchedConfidence(itemsB[j]);
+      mergedItems.push({
+        ...itemsB[j],
+        confidence: conf,
+        reviewReason: conf < 0.7 ? "Only one AI model extracted this item and it has validation issues" : null,
+      });
     }
   }
 

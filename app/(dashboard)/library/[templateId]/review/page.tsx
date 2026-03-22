@@ -72,6 +72,7 @@ export default async function ReviewPage({
             configurationApplicability: item.configurationApplicability,
             notes: item.notes,
             confidence: item.confidence,
+            reviewReason: item.reviewReason,
             sortOrder: item.sortOrder,
           })),
         })),

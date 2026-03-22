@@ -958,6 +958,7 @@ model InspectionItem {
   // Metadata
   sortOrder                   Int                         // Display order within the section
   confidence                  Float     @default(0)       // 0-1 confidence score
+  reviewReason                String?                     // Why this item needs review (null = no review needed)
 
   // Edit tracking
   editedById                  String?                     // User who last edited this item during review
