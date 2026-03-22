@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   AlertTriangle,
+  Check,
   ChevronDown,
   ChevronRight,
   Pencil,
@@ -95,6 +96,25 @@ export default function ItemList({
     setExpandedTypes(next);
   }
 
+  async function handleApproveItem(itemId: string) {
+    const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+    const res = await fetch(
+      `${basePath}/api/library/${templateId}/sections/${sectionId}/items`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: itemId, action: "approve" }),
+      }
+    );
+
+    if (res.ok) {
+      toast.success("Item approved");
+      onItemsChanged();
+    } else {
+      toast.error("Failed to approve item");
+    }
+  }
+
   async function handleDeleteItem(itemId: string) {
     if (!confirm("Delete this item?")) return;
 
@@ -116,17 +136,17 @@ export default function ItemList({
     }
   }
 
-  const lowConfidenceCount = items.filter((i) => i.confidence < 0.7).length;
+  const needsReviewCount = items.filter((i) => i.reviewReason || i.confidence < 0.7).length;
 
   return (
     <div className="space-y-3">
       {/* Summary bar */}
       <div className="flex items-center gap-4 text-xs text-slate-500 px-1">
         <span>{items.length} items</span>
-        {lowConfidenceCount > 0 && (
+        {needsReviewCount > 0 && (
           <span className="flex items-center gap-1 text-amber-600">
             <AlertTriangle className="h-3 w-3" />
-            {lowConfidenceCount} need review
+            {needsReviewCount} need approval
           </span>
         )}
         <Button
@@ -198,7 +218,7 @@ export default function ItemList({
                     ) : (
                       <div
                         className={`px-3 py-2.5 group ${
-                          item.confidence < 0.7
+                          (item.reviewReason || item.confidence < 0.7)
                             ? "border-l-2 border-l-amber-400 bg-amber-50/30"
                             : ""
                         }`}
@@ -250,11 +270,18 @@ export default function ItemList({
                               </p>
                             )}
 
-                            {/* Review reason — shown for low-confidence items */}
-                            {item.confidence < 0.7 && (
+                            {/* Review reason — shown for items needing approval */}
+                            {(item.reviewReason || item.confidence < 0.7) && (
                               <div className="flex items-center gap-1.5 mt-1.5 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[10px] text-amber-700">
                                 <AlertTriangle className="h-3 w-3 shrink-0" />
-                                <span>{getReviewReason(item)}</span>
+                                <span className="flex-1">{getReviewReason(item)}</span>
+                                <button
+                                  onClick={() => handleApproveItem(item.id)}
+                                  className="shrink-0 flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 border border-emerald-300 rounded hover:bg-emerald-200 transition-colors font-medium"
+                                >
+                                  <Check className="h-3 w-3" />
+                                  Approve
+                                </button>
                               </div>
                             )}
                           </div>
