@@ -52,6 +52,24 @@ const ITEM_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   replace_if_disturbed: { label: "Replace If Disturbed", color: "bg-red-100 text-red-700" },
 };
 
+// Explain why an item is flagged for review based on its confidence and data
+function getReviewReason(item: InspectionItemData): string {
+  if (item.confidence <= 0.5) {
+    return "AI models disagreed on this value — verify against the PDF";
+  }
+  if (item.confidence <= 0.6) {
+    if (item.specUnit && item.specValueLow == null) {
+      return "Spec values couldn't be parsed — check the numbers";
+    }
+    return "Extracted with low confidence — verify against the PDF";
+  }
+  // confidence 0.6-0.7: single-model extraction or minor issues
+  if (item.itemType === "torque_spec" && item.specValueLowMetric == null && item.specValueLow != null) {
+    return "Missing metric equivalent — check if both units are shown in the PDF";
+  }
+  return "Only one AI model extracted this — verify it exists in the PDF";
+}
+
 interface ItemListProps {
   items: InspectionItemData[];
   templateId: string;
@@ -236,17 +254,22 @@ export default function ItemList({
 
                             {/* Notes */}
                             {item.notes && (
-                              <p className="text-[10px] text-amber-600 mt-1 italic">
+                              <p className="text-[10px] text-slate-400 mt-1 italic">
                                 {item.notes}
                               </p>
                             )}
+
+                            {/* Review reason — shown for low-confidence items */}
+                            {item.confidence < 0.7 && (
+                              <div className="flex items-center gap-1.5 mt-1.5 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[10px] text-amber-700">
+                                <AlertTriangle className="h-3 w-3 shrink-0" />
+                                <span>{getReviewReason(item)}</span>
+                              </div>
+                            )}
                           </div>
 
-                          {/* Confidence + actions */}
+                          {/* Edit/delete actions */}
                           <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {item.confidence < 0.7 && (
-                              <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-                            )}
                             <button
                               onClick={() => setEditingItemId(item.id)}
                               className="p-1 hover:bg-slate-100 rounded"
