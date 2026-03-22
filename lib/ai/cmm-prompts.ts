@@ -120,6 +120,22 @@ Configuration-Specific Items:
 - "P/N 1709614C CONFIGURATION" → configurationApplicability: ["1709614C"]
 - If applies to all configurations, leave as empty array
 
+Test Results and Data Tables:
+- If the page contains a test results form, data table, or measurement log, extract EVERY row as a separate item
+- Use "general_note" for test results that don't fit other categories (electrical tests, surge tests, resistance checks, etc.)
+- Use the full field name as parameterName (e.g., "Surge Test Peak Voltage L1", "EAR 1-2/2-3/3-1 (%)")
+- Include the value AND units in the specification field (e.g., "2000 V", "0/--/--", "1.6/1.4/-- %")
+- Do NOT skip rows just because they have zero values, dashes, or "No Test Performed" — extract every row
+- For multi-column tables, extract each data cell that contains a measurement or result
+
+Units (CRITICAL):
+- ALWAYS include units in the specification field and specUnit field
+- Electrical: V (volts), A (amps), OHM/OHMS, Hz, kW, HP, VA, W
+- Percentage: % (for EAR, delta, ratio values)
+- Temperature: °F, °C
+- If a unit is shown anywhere on the page (e.g., in a column header or page header), apply it to all values in that column
+- Never extract a bare number without its unit — check the column header, row label, or page header for the unit
+
 Confidence Scoring:
 - 0.9-1.0: clearly visible, unambiguous spec
 - 0.7-0.9: readable but some interpretation needed
