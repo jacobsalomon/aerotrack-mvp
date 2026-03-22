@@ -126,10 +126,16 @@ export async function POST(request: Request) {
       },
     });
 
-    // Kick off extraction
-    const baseUrl = process.env.NEXTAUTH_URL || process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "http://localhost:3000";
+    // Kick off extraction — use stable production URL to survive deployment cutover
+    const baseUrl =
+      process.env.EXTRACTION_BASE_URL ||
+      process.env.NEXTAUTH_URL ||
+      (process.env.VERCEL_PROJECT_PRODUCTION_URL
+        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+        : null) ||
+      (process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "http://localhost:3000");
     const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
     const secret = process.env.INTERNAL_API_SECRET || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "";
 

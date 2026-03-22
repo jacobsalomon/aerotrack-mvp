@@ -239,9 +239,18 @@ export async function POST(
 // Self-call to process the next step. Uses after() to ensure the fetch
 // completes even after the response is sent — without this, the serverless
 // function may shut down before the self-call reaches the network.
+//
+// IMPORTANT: Uses the stable production URL (EXTRACTION_BASE_URL or the
+// public domain) instead of VERCEL_URL. VERCEL_URL is per-deployment, so
+// during deployment cutover the old URL becomes unreachable and the chain
+// breaks silently. The stable domain always routes to the active deployment.
 function triggerNextStep(templateId: string) {
   const baseUrl =
+    process.env.EXTRACTION_BASE_URL ||
     process.env.NEXTAUTH_URL ||
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : null) ||
     (process.env.VERCEL_URL
       ? `https://${process.env.VERCEL_URL}`
       : "http://localhost:3000");
