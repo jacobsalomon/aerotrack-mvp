@@ -210,7 +210,11 @@ interface PersistedPageResult {
 interface Pass2Progress {
   pageResults: PersistedPageResult[];
   nextPageOffset: number; // Index into section.pageNumbers (not the page index itself)
+  retries?: Record<number, number>; // pageOffset → retry count (tracks how many times a page has been attempted)
 }
+
+// Max retries per page before giving up on that page and moving on
+const MAX_PAGE_RETRIES = 3;
 
 // ── Page-resumable extraction ─────────────────────────────────────────
 
@@ -304,27 +308,49 @@ export async function extractSectionPage(
     }
     return "continue";
   } catch (error) {
+    // Track retries per page — retry up to MAX_PAGE_RETRIES times before giving up
+    if (!progress.retries) progress.retries = {};
+    const retryCount = (progress.retries[progress.nextPageOffset] ?? 0) + 1;
+    progress.retries[progress.nextPageOffset] = retryCount;
+
+    const errorMsg = error instanceof Error ? error.message : "Unknown error";
+
+    if (retryCount < MAX_PAGE_RETRIES) {
+      // Save retry count but keep section as extracting — the runner will try this page again
+      console.warn(
+        `[CMM Pass 2] Fig. ${section.figureNumber} page ${pageIdx + 1} failed (attempt ${retryCount}/${MAX_PAGE_RETRIES}): ${errorMsg}`
+      );
+
+      await prisma.inspectionSection.update({
+        where: { id: sectionId },
+        data: {
+          pass2Progress: JSON.parse(JSON.stringify(progress)),
+        },
+      });
+
+      // Return "continue" so the runner releases the lease and retries next poll
+      return "continue";
+    }
+
+    // Max retries exhausted — skip this page and move on to the next one
     console.error(
-      `[CMM Pass 2] Failed on Fig. ${section.figureNumber} page ${pageIdx + 1}:`,
-      error
+      `[CMM Pass 2] Fig. ${section.figureNumber} page ${pageIdx + 1} failed after ${MAX_PAGE_RETRIES} attempts, skipping: ${errorMsg}`
     );
 
-    // Mark the section as failed — the page-level error is isolated
+    progress.nextPageOffset++;
+
     await prisma.inspectionSection.update({
       where: { id: sectionId },
       data: {
-        status: "failed",
         pass2Progress: JSON.parse(JSON.stringify(progress)),
-        rawExtractionResponse: JSON.parse(JSON.stringify({
-          error: error instanceof Error ? error.message : "Unknown error",
-          failedAt: new Date().toISOString(),
-          failedOnPage: pageIdx + 1,
-          pagesCompleted: progress.pageResults.length,
-        })),
       },
     });
 
-    throw error;
+    // Check if there are more pages after skipping this one
+    if (progress.nextPageOffset >= section.pageNumbers.length) {
+      return "finalize";
+    }
+    return "continue";
   }
 }
 

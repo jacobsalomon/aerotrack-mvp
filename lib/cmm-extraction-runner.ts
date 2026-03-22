@@ -8,9 +8,13 @@ import {
 } from "@/lib/ai/cmm-extraction-pass2";
 
 export const EXTRACTION_STEP_MAX_DURATION_MS = 5 * 60 * 1000;
-export const EXTRACTION_STALE_THRESHOLD_MS = EXTRACTION_STEP_MAX_DURATION_MS + 2 * 60 * 1000;
+// How long to wait before considering a running extraction stale and reclaimable.
+// 3 minutes: long enough for most pages to finish, short enough to self-heal quickly.
+export const EXTRACTION_STALE_THRESHOLD_MS = 3 * 60 * 1000;
 
-const LEASE_DURATION_MS = 15 * 60 * 1000;
+// Lease duration: 6 minutes. Covers the 5-min serverless max with 1 min buffer.
+// If a function dies, the lease clears in 6 min max (or 3 min via stale threshold).
+const LEASE_DURATION_MS = 6 * 60 * 1000;
 const POLLABLE_TEMPLATE_STATUSES = [
   "pending_extraction",
   "extracting_index",
