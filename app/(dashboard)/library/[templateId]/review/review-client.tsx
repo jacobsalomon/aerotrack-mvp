@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,9 +8,12 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
+  FileText,
+  Info,
   Loader2,
   RefreshCw,
   Shield,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import PdfViewer from "@/components/library/pdf-viewer";
@@ -52,6 +55,19 @@ export default function ReviewClient({
   );
   const [approving, setApproving] = useState(false);
   const [reextracting, setReextracting] = useState<string | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
+
+  // Show onboarding banner on first visit
+  useEffect(() => {
+    if (!localStorage.getItem("review-guide-dismissed")) {
+      setShowGuide(true);
+    }
+  }, []);
+
+  function dismissGuide() {
+    setShowGuide(false);
+    localStorage.setItem("review-guide-dismissed", "1");
+  }
 
   const activeSection = template.sections.find((s) => s.id === activeSectionId);
 
@@ -131,8 +147,8 @@ export default function ReviewClient({
 
   // Summary stats
   const totalItems = template.sections.reduce((sum, s) => sum + s.items.length, 0);
-  const lowConfidenceItems = template.sections.reduce(
-    (sum, s) => sum + s.items.filter((i) => i.confidence < 0.7).length,
+  const flaggedItems = template.sections.reduce(
+    (sum, s) => sum + s.items.filter((i) => i.reviewReason || i.confidence < 0.7).length,
     0
   );
   const failedSections = template.sections.filter((s) => s.status === "failed").length;
@@ -140,9 +156,14 @@ export default function ReviewClient({
     template.status !== "active" &&
     !template.sections.some((s) => s.status === "pending" || s.status === "extracting");
 
-  // Track which page is being viewed within the active section
+  // "Full Document" mode — browse the entire PDF page-by-page
+  const isFullDocMode = activeSectionId === "__full__";
+
+  // Track which page is being viewed within the active section (or full doc)
   const [viewingPageIdx, setViewingPageIdx] = useState<number | null>(null);
-  const activePdfPage = viewingPageIdx ?? activeSection?.pageNumbers[0] ?? 0;
+  const activePdfPage = isFullDocMode
+    ? (viewingPageIdx ?? 0)
+    : (viewingPageIdx ?? activeSection?.pageNumbers[0] ?? 0);
 
   return (
     <div className="h-[calc(100vh-2rem)] flex flex-col">
@@ -161,11 +182,11 @@ export default function ReviewClient({
               {template.title}
             </h1>
             <div className="flex items-center gap-3 text-xs text-slate-400 mt-0.5">
-              <span>{totalItems} items</span>
-              {lowConfidenceItems > 0 && (
+              <span>{totalItems} items extracted</span>
+              {flaggedItems > 0 && (
                 <span className="flex items-center gap-1 text-amber-600">
                   <AlertTriangle className="h-3 w-3" />
-                  {lowConfidenceItems} need review
+                  {flaggedItems} flagged for review
                 </span>
               )}
               {failedSections > 0 && (
@@ -193,6 +214,22 @@ export default function ReviewClient({
         )}
       </div>
 
+      {/* Onboarding banner — shown once on first visit */}
+      {showGuide && (
+        <div className="shrink-0 flex items-center gap-3 mt-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
+          <Info className="h-4 w-4 shrink-0 text-blue-500" />
+          <p className="flex-1">
+            <span className="font-semibold">How to review:</span> Compare
+            extracted specs against the PDF. Items flagged by AI are highlighted
+            in amber — approve if correct, or edit to fix. Click &quot;Approve
+            Template&quot; when done.
+          </p>
+          <button onClick={dismissGuide} className="shrink-0 p-0.5 hover:bg-blue-100 rounded">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Main content — 3-column layout */}
       <div className="flex-1 flex gap-0 mt-4 min-h-0">
         {/* Left: Section nav */}
@@ -206,7 +243,45 @@ export default function ReviewClient({
 
         {/* Center: PDF viewer */}
         <div className="flex-1 min-w-0 px-3">
-          {activeSection ? (
+          {isFullDocMode ? (
+            /* Full document browsing — page-by-page through the entire PDF */
+            <div className="h-full flex flex-col">
+              <div className="text-xs text-slate-400 mb-2">
+                Full Document — Page {activePdfPage + 1} of {template.totalPages}
+              </div>
+              <div className="flex-1 rounded-lg overflow-hidden border border-slate-200">
+                <PdfViewer
+                  fileUrl={template.sourceFileUrl}
+                  pageIndex={activePdfPage}
+                />
+              </div>
+
+              {/* Page navigation — prev/next + page number */}
+              <div className="flex items-center gap-2 mt-2 justify-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 text-[10px] px-2"
+                  disabled={activePdfPage === 0}
+                  onClick={() => setViewingPageIdx(activePdfPage - 1)}
+                >
+                  Prev
+                </Button>
+                <span className="text-xs text-slate-500 tabular-nums">
+                  {activePdfPage + 1} / {template.totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 text-[10px] px-2"
+                  disabled={activePdfPage >= template.totalPages - 1}
+                  onClick={() => setViewingPageIdx(activePdfPage + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          ) : activeSection ? (
             <div className="h-full flex flex-col">
               <div className="text-xs text-slate-400 mb-2">
                 Fig. {activeSection.figureNumber} — Page{" "}
@@ -250,7 +325,17 @@ export default function ReviewClient({
 
         {/* Right: Extracted items */}
         <div className="w-96 shrink-0 overflow-y-auto pl-3 border-l border-slate-100">
-          {activeSection ? (
+          {isFullDocMode ? (
+            <div className="flex flex-col items-center justify-center h-full text-center px-6">
+              <FileText className="h-8 w-8 text-slate-300 mb-3" />
+              <p className="text-sm text-slate-500">
+                Viewing full document
+              </p>
+              <p className="text-xs text-slate-400 mt-1">
+                Select a section on the left to see its extracted items.
+              </p>
+            </div>
+          ) : activeSection ? (
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-sm font-semibold text-slate-700">

@@ -4,9 +4,15 @@ import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
   CheckCircle2,
+  FileText,
   Loader2,
   XCircle,
 } from "lucide-react";
+
+interface SectionItemInfo {
+  confidence: number;
+  reviewReason: string | null;
+}
 
 interface SectionInfo {
   id: string;
@@ -15,6 +21,7 @@ interface SectionInfo {
   status: string;
   itemCount: number;
   extractionConfidence: number;
+  items: SectionItemInfo[];
 }
 
 interface SectionNavProps {
@@ -23,11 +30,16 @@ interface SectionNavProps {
   onSelectSection: (sectionId: string) => void;
 }
 
-function statusIcon(status: string, confidence: number) {
+// Count items that need review in a section
+function flaggedCount(items: SectionItemInfo[]): number {
+  return items.filter((i) => i.reviewReason || i.confidence < 0.7).length;
+}
+
+function statusIcon(status: string, items: SectionItemInfo[]) {
   switch (status) {
     case "extracted":
     case "reviewed":
-      if (confidence < 0.7) {
+      if (flaggedCount(items) > 0) {
         return <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />;
       }
       return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />;
@@ -47,34 +59,56 @@ export default function SectionNav({
 }: SectionNavProps) {
   return (
     <div className="space-y-0.5">
+      {/* Full Document — browse the entire PDF in page order */}
+      <button
+        onClick={() => onSelectSection("__full__")}
+        className={cn(
+          "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors text-sm mb-1",
+          activeSectionId === "__full__"
+            ? "bg-indigo-50 text-indigo-900"
+            : "text-slate-600 hover:bg-slate-50"
+        )}
+      >
+        <FileText className="h-3.5 w-3.5 text-slate-400" />
+        <span className="font-medium text-xs">Full Document</span>
+      </button>
+
       <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
         Sub-Assemblies
       </p>
-      {sections.map((section) => (
-        <button
-          key={section.id}
-          onClick={() => onSelectSection(section.id)}
-          className={cn(
-            "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors text-sm",
-            activeSectionId === section.id
-              ? "bg-indigo-50 text-indigo-900"
-              : "text-slate-600 hover:bg-slate-50"
-          )}
-        >
-          {statusIcon(section.status, section.extractionConfidence)}
-          <div className="min-w-0 flex-1">
-            <p className="font-medium truncate text-xs">
-              Fig. {section.figureNumber}
-            </p>
-            <p className="text-[11px] text-slate-400 truncate">
-              {section.title}
-            </p>
-          </div>
-          <span className="text-[10px] text-slate-400 shrink-0">
-            {section.itemCount}
-          </span>
-        </button>
-      ))}
+      {sections.map((section) => {
+        const flagged = flaggedCount(section.items);
+        return (
+          <button
+            key={section.id}
+            onClick={() => onSelectSection(section.id)}
+            className={cn(
+              "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors text-sm",
+              activeSectionId === section.id
+                ? "bg-indigo-50 text-indigo-900"
+                : "text-slate-600 hover:bg-slate-50"
+            )}
+          >
+            {statusIcon(section.status, section.items)}
+            <div className="min-w-0 flex-1">
+              <p className="font-medium truncate text-xs">
+                Fig. {section.figureNumber}
+              </p>
+              <p className="text-[11px] text-slate-400 truncate">
+                {section.title}
+              </p>
+            </div>
+            <span className="text-[10px] text-slate-400 shrink-0">
+              {section.itemCount}
+              {flagged > 0 && (
+                <span className="text-amber-500 ml-0.5">
+                  {" "}· {flagged}⚠
+                </span>
+              )}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
