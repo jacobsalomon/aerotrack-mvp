@@ -35,6 +35,7 @@ export interface InspectionItemData {
   configurationApplicability: string[];
   notes: string | null;
   confidence: number;
+  reviewReason: string | null;
   sortOrder: number;
 }
 
@@ -52,22 +53,12 @@ const ITEM_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   replace_if_disturbed: { label: "Replace If Disturbed", color: "bg-red-100 text-red-700" },
 };
 
-// Explain why an item is flagged for review based on its confidence and data
+// Show the saved review reason, or a generic fallback for older extractions
 function getReviewReason(item: InspectionItemData): string {
-  if (item.confidence <= 0.5) {
-    return "AI models disagreed on this value — verify against the PDF";
-  }
-  if (item.confidence <= 0.6) {
-    if (item.specUnit && item.specValueLow == null) {
-      return "Spec values couldn't be parsed — check the numbers";
-    }
-    return "Extracted with low confidence — verify against the PDF";
-  }
-  // confidence 0.6-0.7: single-model extraction or minor issues
-  if (item.itemType === "torque_spec" && item.specValueLowMetric == null && item.specValueLow != null) {
-    return "Missing metric equivalent — check if both units are shown in the PDF";
-  }
-  return "Only one AI model extracted this — verify it exists in the PDF";
+  if (item.reviewReason) return item.reviewReason;
+  // Fallback for items extracted before reviewReason was added
+  if (item.confidence <= 0.5) return "Low confidence — verify against the PDF";
+  return "Flagged for review — verify against the PDF";
 }
 
 interface ItemListProps {

@@ -389,7 +389,7 @@ export async function finalizeSectionExtraction(
 
     // Save items to database
     let sortOrder = 0;
-    for (const { item, adjustedConfidence } of validatedItems) {
+    for (const { item, adjustedConfidence, reviewReason } of validatedItems) {
       await prisma.inspectionItem.create({
         data: {
           sectionId,
@@ -412,6 +412,7 @@ export async function finalizeSectionExtraction(
           notes: item.notes || null,
           sortOrder: sortOrder++,
           confidence: adjustedConfidence,
+          reviewReason: reviewReason || null,
         },
       });
     }
