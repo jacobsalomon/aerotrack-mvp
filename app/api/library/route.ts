@@ -3,7 +3,7 @@
 
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { parsePageRanges, getPdfPageCount } from "@/lib/pdf-utils";
 
 export async function GET() {
@@ -133,15 +133,21 @@ export async function POST(request: Request) {
     const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
     const secret = process.env.INTERNAL_API_SECRET || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "";
 
-    // Fire-and-forget: trigger extraction asynchronously
-    fetch(`${baseUrl}${basePath}/api/library/${template.id}/extract`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-internal-secret": secret,
-      },
-    }).catch((err) => {
-      console.error("[Library] Failed to trigger extraction:", err);
+    // Use after() so the extraction trigger survives after the response is sent.
+    // Without this, the serverless function shuts down and kills the fetch.
+    const extractUrl = `${baseUrl}${basePath}/api/library/${template.id}/extract`;
+    after(async () => {
+      try {
+        await fetch(extractUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-internal-secret": secret,
+          },
+        });
+      } catch (err) {
+        console.error("[Library] Failed to trigger extraction:", err);
+      }
     });
 
     return NextResponse.json({ success: true, template });
