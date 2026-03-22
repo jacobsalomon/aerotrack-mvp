@@ -74,6 +74,8 @@ export default async function ReviewPage({
             confidence: item.confidence,
             reviewReason: item.reviewReason,
             sortOrder: item.sortOrder,
+            correctedAt: item.correctedAt?.toISOString() ?? null,
+            humanCorrection: item.humanCorrection as { action: "approved" | "corrected" } | null,
           })),
         })),
       }}

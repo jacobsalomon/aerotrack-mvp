@@ -30,13 +30,30 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Delete existing items for this section
+  // Archive human corrections before deleting — ground truth for eval pipeline
+  const correctedItems = await prisma.inspectionItem.findMany({
+    where: { sectionId, correctedAt: { not: null } },
+    select: { parameterName: true, itemType: true, humanCorrection: true },
+  });
+
+  // Delete existing items
   await prisma.inspectionItem.deleteMany({ where: { sectionId } });
 
-  // Reset section status
+  // Reset section status. If there were corrections, stash them on the
+  // section so they survive the deletion (eval script can query them later).
   await prisma.inspectionSection.update({
     where: { id: sectionId },
-    data: { status: "pending", itemCount: 0, extractionConfidence: 0, pass2Progress: Prisma.DbNull },
+    data: {
+      status: "pending",
+      itemCount: 0,
+      extractionConfidence: 0,
+      pass2Progress: Prisma.DbNull,
+      ...(correctedItems.length > 0 && {
+        rawExtractionResponse: JSON.parse(JSON.stringify({
+          archivedCorrections: correctedItems,
+        })),
+      }),
+    },
   });
 
   // Run extraction

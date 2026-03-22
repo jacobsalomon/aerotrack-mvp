@@ -38,6 +38,8 @@ export interface InspectionItemData {
   confidence: number;
   reviewReason: string | null;
   sortOrder: number;
+  correctedAt: string | null;
+  humanCorrection: { action: "approved" | "corrected" } | null;
 }
 
 // Item type display labels and colors
@@ -232,9 +234,21 @@ export default function ItemList({
                           )}
 
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-slate-800">
-                              {item.parameterName}
-                            </p>
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-sm font-medium text-slate-800">
+                                {item.parameterName}
+                              </p>
+                              {item.humanCorrection?.action === "approved" && (
+                                <span className="shrink-0 text-[9px] font-medium bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                                  Approved
+                                </span>
+                              )}
+                              {item.humanCorrection?.action === "corrected" && (
+                                <span className="shrink-0 text-[9px] font-medium bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">
+                                  Corrected
+                                </span>
+                              )}
+                            </div>
                             <p className="text-xs text-slate-500 mt-0.5 font-mono">
                               {item.specification}
                             </p>
