@@ -7,12 +7,13 @@
 export const PASS1_CLASSIFICATION_PROMPT = `You are an aerospace CMM (Component Maintenance Manual) expert analyzing inspection sheet pages.
 
 For this page, identify:
-1. Whether it contains an inspection diagram, text instructions, a parts list, or should be ignored
+1. Whether it contains an inspection diagram, text instructions, a parts list, a structured data table, or should be ignored
 2. If it's a diagram: the figure number, sub-assembly name, and sheet number
+3. If it's a data table: whether it has headers, approximate row count, and whether it continues from/to adjacent pages
 
 Return JSON matching this exact structure:
 {
-  "pageType": "diagram" | "inspection_text" | "parts_list" | "ignore",
+  "pageType": "diagram" | "inspection_text" | "parts_list" | "data_table" | "ignore",
   "figureNumber": "816" or null,
   "subAssemblyTitle": "Assembly of End Housing Unit" or null,
   "sheetNumber": 1,
@@ -25,6 +26,12 @@ Return JSON matching this exact structure:
     "checkReferences": ["23"],
     "repairReferences": ["6", "25"],
     "specialAssemblyReferences": ["823"]
+  },
+  "tableMetadata": {
+    "hasHeaders": true,
+    "estimatedRows": 15,
+    "continuesFromPrevious": false,
+    "continuesToNext": true
   }
 }
 
@@ -32,7 +39,13 @@ RULES:
 - "diagram" = exploded assembly view with torque specs, callout numbers, tool requirements scattered on the drawing
 - "inspection_text" = text-heavy pages with warnings, cautions, general notes, check/repair procedures, tool lists
 - "parts_list" = IPL (Illustrated Parts List) tables showing part numbers, descriptions, quantities
+- "data_table" = structured forms, test result tables, measurement logs, or electrical test sheets with clear rows and columns of data (NOT parts lists)
 - "ignore" = cover pages, title pages, boilerplate, revision history, blank pages
+- Pages with BOTH a diagram AND a small embedded table → classify as "diagram" (OCR handles the embedded table)
+- Only classify as "data_table" when the PRIMARY content is a structured data table
+- Include "tableMetadata" ONLY when pageType is "data_table" — omit for other types
+- Set "continuesFromPrevious": true if the table starts mid-data without a title/header
+- Set "continuesToNext": true if the table appears cut off at the bottom of the page
 - Look for "FIGURE XXX" or "FIG. XXX" patterns for figure numbers
 - Look for "SHEET X OF Y" patterns for multi-sheet figures
 - Extract the sub-assembly title from figure captions (e.g., "ASSEMBLY OF END HOUSING UNIT")
