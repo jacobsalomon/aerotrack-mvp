@@ -46,8 +46,7 @@ interface PageExtractionResult {
 // Call Gemini 2.5 Pro with responseSchema for guaranteed structure
 async function extractWithGemini(
   pageBase64: string,
-  prompt: string,
-  _ocrText?: string // OCR text is already injected into the prompt
+  prompt: string
 ): Promise<ExtractedItem[]> {
   const responseText = await callGemini({
     model: "gemini-2.5-pro",
@@ -147,8 +146,7 @@ async function extractWithClaude(
 async function extractPageWithConsensus(
   pageBase64: string,
   prompt: string,
-  pageIndex: number,
-  ocrText?: string // OCR text already in prompt, passed for logging only
+  pageIndex: number
 ): Promise<PageExtractionResult> {
   // Fire both models in parallel
   const [geminiResult, claudeResult] = await Promise.allSettled([
@@ -297,7 +295,7 @@ export async function extractSectionPage(
       .replace("{ocrText}", ocrPromptText);
 
     // Extract with dual-model consensus (OCR text is already in the prompt)
-    const pageResult = await extractPageWithConsensus(pageBase64, prompt, pageIdx, ocrPromptText);
+    const pageResult = await extractPageWithConsensus(pageBase64, prompt, pageIdx);
 
     const modelInfo = pageResult.geminiSucceeded && pageResult.claudeSucceeded
       ? `consensus (${(pageResult.agreementRate * 100).toFixed(0)}% agree)`
