@@ -14,7 +14,7 @@ import {
   PASS2_CLAUDE_ADDITIONS,
   CMM_EXTRACTION_SCHEMA,
 } from "./cmm-prompts";
-import { ocrPage, formatOcrForPrompt, type OcrResult } from "./ocr-service";
+import type { OcrResult } from "./ocr-service";
 import {
   validateExtractionResults,
   reconcileExtractions,
@@ -268,21 +268,26 @@ export async function extractSectionPage(
     const pageBase64 = await extractSinglePageAsBase64(pdfBytes, pageIdx);
 
     // ── OCR step: run OCR before LLM extraction ──
-    // Check if we already have a cached OCR result from a previous attempt
-    // (avoids redundant API calls on retry)
-    let ocrResult: OcrResult;
-    const existingOcr = progress.pageResults.find(
-      (r) => r.pageIndex === pageIdx && r.ocrResult
-    );
-    if (existingOcr?.ocrResult) {
-      ocrResult = existingOcr.ocrResult;
-      console.log(`[CMM Pass 2] Reusing cached OCR for page ${pageIdx + 1} (${ocrResult.source})`);
-    } else {
-      ocrResult = await ocrPage(pageBase64);
+    // Dynamically import the OCR service to avoid crashing the module on load.
+    // If OCR import fails entirely, we fall back to image-only extraction.
+    let ocrResult: OcrResult = { fullText: "", tables: [], paragraphs: [], source: "none", confidence: 0, processingTimeMs: 0 };
+    let ocrPromptText = "";
+    try {
+      const { ocrPage, formatOcrForPrompt } = await import("./ocr-service");
+      // Check if we already have a cached OCR result from a previous attempt
+      const existingOcr = progress.pageResults.find(
+        (r) => r.pageIndex === pageIdx && r.ocrResult
+      );
+      if (existingOcr?.ocrResult) {
+        ocrResult = existingOcr.ocrResult;
+        console.log(`[CMM Pass 2] Reusing cached OCR for page ${pageIdx + 1} (${ocrResult.source})`);
+      } else {
+        ocrResult = await ocrPage(pageBase64);
+      }
+      ocrPromptText = formatOcrForPrompt(ocrResult);
+    } catch (ocrErr) {
+      console.warn(`[CMM Pass 2] OCR failed, continuing with image-only:`, ocrErr instanceof Error ? ocrErr.message : ocrErr);
     }
-
-    // Format OCR text for prompt injection
-    const ocrPromptText = formatOcrForPrompt(ocrResult);
 
     // Build the prompt with section context + OCR text
     const prompt = PASS2_EXTRACTION_PROMPT
