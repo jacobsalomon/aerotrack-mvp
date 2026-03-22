@@ -197,9 +197,11 @@ export default function LibraryClient({
   useEffect(() => {
     if (processingTemplates.length === 0) return;
 
-    // Poll immediately, then every 5 seconds
+    // Poll immediately, then every 10 seconds.
+    // Extraction takes minutes per section — 10s is plenty responsive
+    // and avoids flooding Vercel runtime logs (which cap at 100 entries).
     pollProgress();
-    const interval = setInterval(pollProgress, 5000);
+    const interval = setInterval(pollProgress, 10_000);
     return () => clearInterval(interval);
   }, [processingTemplates.length, pollProgress]);
 
