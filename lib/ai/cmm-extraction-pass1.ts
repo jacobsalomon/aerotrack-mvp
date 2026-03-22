@@ -32,9 +32,17 @@ interface ExplicitReferences {
   specialAssemblyReferences: string[];  // e.g., ["823"]
 }
 
+// Metadata for data_table pages — helps with multi-page table stitching
+interface TableMetadata {
+  hasHeaders: boolean;
+  estimatedRows: number;
+  continuesFromPrevious: boolean;
+  continuesToNext: boolean;
+}
+
 // The structure Gemini returns for each page
 interface PageClassification {
-  pageType: "diagram" | "inspection_text" | "parts_list" | "ignore";
+  pageType: "diagram" | "inspection_text" | "parts_list" | "data_table" | "ignore";
   figureNumber: string | null;
   subAssemblyTitle: string | null;
   sheetNumber: number | null;
@@ -42,6 +50,7 @@ interface PageClassification {
   partNumbers: string[];
   notes: string | null;
   explicitReferences?: ExplicitReferences;
+  tableMetadata?: TableMetadata; // Present when pageType is "data_table"
 }
 
 // Stored in extractionMetadata during incremental Pass 1
@@ -260,12 +269,12 @@ function resolvePageReferences(
     }
   }
 
-  // Process non-diagram pages (inspection_text, parts_list)
-  const nonDiagramPages = classifications.filter(
-    (c) => c.result.pageType === "inspection_text" || c.result.pageType === "parts_list"
+  // Process all pages not already in a figure group (text, parts lists, figure-less diagrams)
+  const nonFigurePages = classifications.filter(
+    (c) => c.result.pageType !== "ignore" && !pageToFigure.has(c.pageIndex)
   );
 
-  for (const { pageIndex, result } of nonDiagramPages) {
+  for (const { pageIndex, result } of nonFigurePages) {
     const refs = result.explicitReferences;
     let linkedByExplicitRef = false;
 
@@ -425,7 +434,10 @@ async function finalizePass1(templateId: string, progress: Pass1Progress): Promi
       ) {
         group.title = result.subAssemblyTitle;
       }
-    } else if (result.pageType === "inspection_text" || result.pageType === "parts_list") {
+    } else if (result.pageType !== "ignore") {
+      // Everything that isn't a diagram-with-figure or ignore goes to reference resolution.
+      // This includes inspection_text, parts_list, AND diagrams without figure numbers
+      // (e.g., rework/repair drawings that don't have a "FIGURE XXX" label).
       textPages.push({ pageIndex, result });
     }
   }
