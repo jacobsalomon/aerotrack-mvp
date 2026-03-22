@@ -62,7 +62,17 @@ Your task: extract EVERY specification, check, tool requirement, and note from t
 
 // The main extraction prompt with context placeholders, naming convention,
 // itemType definitions, few-shot examples, and output schema.
+// The {ocrText} placeholder is injected with OCR-extracted text when available.
 export const PASS2_EXTRACTION_PROMPT = `CONTEXT: This is Figure {figureNumber} — "{sectionTitle}" from a CMM for part numbers {partNumbers}.
+
+{ocrText}
+OCR CROSS-REFERENCE INSTRUCTIONS:
+If OCR text is provided above, use it to verify your visual reading of the page image.
+- For numerical values (torque specs, dimensions, test results): PREFER the OCR text over your visual reading when they disagree — OCR is more reliable for exact numbers.
+- For units (LB-IN, N-m, V, OHMS, etc.): PREFER the OCR text — it captures column headers and unit labels that may be far from the values.
+- For table data: The OCR text contains the complete table structure with headers and rows. Use it as your primary source for table extraction, cross-referencing against the image for any values the OCR may have missed.
+- For diagram callout numbers and spatial relationships: PREFER your visual reading — OCR doesn't capture spatial layout well.
+- If NO OCR text is provided, extract everything from the image alone as before.
 
 STEP 1 — SYSTEMATIC PAGE SCAN:
 Before extracting items, scan the ENTIRE page systematically:
