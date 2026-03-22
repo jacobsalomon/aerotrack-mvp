@@ -2,6 +2,7 @@
 // Re-run Pass 2 extraction for a single section (deletes existing items first)
 
 import { prisma } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { extractSection } from "@/lib/ai/cmm-extraction-pass2";
@@ -35,7 +36,7 @@ export async function POST(
   // Reset section status
   await prisma.inspectionSection.update({
     where: { id: sectionId },
-    data: { status: "pending", itemCount: 0, extractionConfidence: 0 },
+    data: { status: "pending", itemCount: 0, extractionConfidence: 0, pass2Progress: Prisma.DbNull },
   });
 
   // Run extraction

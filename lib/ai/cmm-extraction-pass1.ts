@@ -23,6 +23,15 @@ const PAGES_PER_BATCH = 35;
 // dual-model consensus benefits from isolated execution.
 const PASS1_CONCURRENCY = 5;
 
+// Explicit cross-references extracted from a page
+interface ExplicitReferences {
+  figureReferences: string[];           // e.g., ["812", "823"]
+  pageReferences: string[];             // e.g., ["73-24"]
+  checkReferences: string[];            // e.g., ["23"]
+  repairReferences: string[];           // e.g., ["6", "25"]
+  specialAssemblyReferences: string[];  // e.g., ["823"]
+}
+
 // The structure Gemini returns for each page
 interface PageClassification {
   pageType: "diagram" | "inspection_text" | "parts_list" | "ignore";
@@ -32,6 +41,7 @@ interface PageClassification {
   totalSheets: number | null;
   partNumbers: string[];
   notes: string | null;
+  explicitReferences?: ExplicitReferences;
 }
 
 // Stored in extractionMetadata during incremental Pass 1
@@ -202,8 +212,178 @@ export async function runPass1Batch(templateId: string): Promise<"continue" | "d
   return "continue";
 }
 
+// ── Reference Resolution ──────────────────────────────────────────────
+
+// A resolved link between a page and a section, stored in InspectionSection.pageLinks
+interface PageLink {
+  pageIndex: number;
+  reason:
+    | "diagram_page"
+    | "explicit_figure_reference"
+    | "explicit_page_reference"
+    | "check_reference_context"
+    | "repair_reference_context"
+    | "special_assembly_reference"
+    | "proximity";
+  confidence: number;
+  referenceText?: string; // The raw text that triggered this link
+}
+
 /**
- * All pages classified — group into sections, create DB records, return count.
+ * Resolve which pages belong to which sections using explicit references first,
+ * then falling back to proximity for pages without any explicit reference.
+ *
+ * Returns a map of figureNumber → PageLink[] plus a list of unresolved pages.
+ */
+function resolvePageReferences(
+  classifications: { pageIndex: number; result: PageClassification }[],
+  figureGroups: Map<string, FigureGroup>
+): { resolved: Map<string, PageLink[]>; unresolved: { pageIndex: number; notes: string }[] } {
+  const resolved = new Map<string, PageLink[]>();
+  const unresolved: { pageIndex: number; notes: string }[] = [];
+
+  // Initialize resolved map with diagram pages (always linked to their own figure)
+  for (const [figNum, group] of figureGroups) {
+    const links: PageLink[] = group.pages.map((p) => ({
+      pageIndex: p.pageIndex,
+      reason: "diagram_page" as const,
+      confidence: 1.0,
+    }));
+    resolved.set(figNum, links);
+  }
+
+  // Build a lookup: which figure owns which page index (for resolving page references)
+  const pageToFigure = new Map<number, string>();
+  for (const [figNum, group] of figureGroups) {
+    for (const p of group.pages) {
+      pageToFigure.set(p.pageIndex, figNum);
+    }
+  }
+
+  // Process non-diagram pages (inspection_text, parts_list)
+  const nonDiagramPages = classifications.filter(
+    (c) => c.result.pageType === "inspection_text" || c.result.pageType === "parts_list"
+  );
+
+  for (const { pageIndex, result } of nonDiagramPages) {
+    const refs = result.explicitReferences;
+    let linkedByExplicitRef = false;
+
+    if (refs) {
+      // Priority 1: Explicit figure references (highest confidence)
+      for (const figRef of refs.figureReferences) {
+        const normalizedRef = figRef.replace(/^0+/, ""); // Strip leading zeros
+        if (figureGroups.has(normalizedRef)) {
+          addLink(resolved, normalizedRef, {
+            pageIndex,
+            reason: "explicit_figure_reference",
+            confidence: 0.95,
+            referenceText: `FIGURE ${figRef}`,
+          });
+          linkedByExplicitRef = true;
+        }
+      }
+
+      // Priority 2: Special assembly references
+      for (const saRef of refs.specialAssemblyReferences) {
+        const normalizedRef = saRef.replace(/^0+/, "");
+        if (figureGroups.has(normalizedRef) && !isAlreadyLinked(resolved, normalizedRef, pageIndex)) {
+          addLink(resolved, normalizedRef, {
+            pageIndex,
+            reason: "special_assembly_reference",
+            confidence: 0.85,
+            referenceText: `SPECIAL ASSEMBLY FIGURE ${saRef}`,
+          });
+          linkedByExplicitRef = true;
+        }
+      }
+
+      // Priority 3: Page references — resolve to the figure that owns that page
+      for (const pageRef of refs.pageReferences) {
+        // Page references might be like "73-24" (chapter-page) — extract the last number
+        const pageNum = parsePageReference(pageRef);
+        if (pageNum !== null) {
+          const owningFigure = pageToFigure.get(pageNum);
+          if (owningFigure && !isAlreadyLinked(resolved, owningFigure, pageIndex)) {
+            addLink(resolved, owningFigure, {
+              pageIndex,
+              reason: "explicit_page_reference",
+              confidence: 0.9,
+              referenceText: `PAGE ${pageRef}`,
+            });
+            linkedByExplicitRef = true;
+          }
+        }
+      }
+
+      // Check and repair references are stored in raw metadata but don't create
+      // section links on their own — they're weaker signals that may be cross-references
+      // rather than ownership indicators. They're used during Pass 2 for context.
+    }
+
+    // Proximity fallback: only if no explicit reference resolved this page
+    if (!linkedByExplicitRef) {
+      let closestFigure: string | null = null;
+      let closestDistance = Infinity;
+
+      for (const [figNum, group] of figureGroups) {
+        for (const page of group.pages) {
+          const distance = Math.abs(page.pageIndex - pageIndex);
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            closestFigure = figNum;
+          }
+        }
+      }
+
+      if (closestFigure && closestDistance <= 3) {
+        addLink(resolved, closestFigure, {
+          pageIndex,
+          reason: "proximity",
+          confidence: 0.7,
+          referenceText: `nearest diagram ${closestDistance} page(s) away`,
+        });
+      } else {
+        // Page has no explicit reference and is too far from any diagram — unresolved
+        unresolved.push({
+          pageIndex,
+          notes: `No explicit reference found; nearest diagram is ${closestDistance} page(s) away (threshold: 3)`,
+        });
+      }
+    }
+  }
+
+  return { resolved, unresolved };
+}
+
+/** Add a link to the resolved map, avoiding exact duplicates */
+function addLink(resolved: Map<string, PageLink[]>, figNum: string, link: PageLink) {
+  if (!resolved.has(figNum)) {
+    resolved.set(figNum, []);
+  }
+  resolved.get(figNum)!.push(link);
+}
+
+/** Check if a page is already linked to a figure */
+function isAlreadyLinked(resolved: Map<string, PageLink[]>, figNum: string, pageIndex: number): boolean {
+  const links = resolved.get(figNum);
+  return links ? links.some((l) => l.pageIndex === pageIndex) : false;
+}
+
+/** Parse a page reference like "73-24" into a 0-indexed page number */
+function parsePageReference(pageRef: string): number | null {
+  // Handle "73-24" format (chapter-page) — take the last number as 1-indexed page
+  const parts = pageRef.split("-");
+  const lastPart = parts[parts.length - 1];
+  const num = parseInt(lastPart, 10);
+  if (isNaN(num)) return null;
+  return num - 1; // Convert to 0-indexed
+}
+
+// ── finalizePass1 ─────────────────────────────────────────────────────
+
+/**
+ * All pages classified — resolve references, group into sections, create DB records.
  */
 async function finalizePass1(templateId: string, progress: Pass1Progress): Promise<"done" | 0> {
   const template = await prisma.inspectionTemplate.findUniqueOrThrow({
@@ -245,30 +425,27 @@ async function finalizePass1(templateId: string, progress: Pass1Progress): Promi
       ) {
         group.title = result.subAssemblyTitle;
       }
-    } else if (result.pageType === "inspection_text") {
+    } else if (result.pageType === "inspection_text" || result.pageType === "parts_list") {
       textPages.push({ pageIndex, result });
     }
   }
 
-  // Link text pages to their nearest diagram section
-  for (const textPage of textPages) {
-    let closestFigure: FigureGroup | null = null;
-    let closestDistance = Infinity;
+  // Resolve page references — explicit first, proximity fallback
+  const { resolved, unresolved } = resolvePageReferences(classifications, figureGroups);
 
-    for (const group of figureGroups.values()) {
-      for (const page of group.pages) {
-        const distance = Math.abs(page.pageIndex - textPage.pageIndex);
-        if (distance < closestDistance) {
-          closestDistance = distance;
-          closestFigure = group;
-        }
-      }
-    }
-
-    if (closestFigure && closestDistance <= 3) {
-      closestFigure.supplementaryPages.push(textPage.pageIndex);
+  // Log resolution results
+  let explicitCount = 0;
+  let proximityCount = 0;
+  for (const links of resolved.values()) {
+    for (const link of links) {
+      if (link.reason === "proximity") proximityCount++;
+      else if (link.reason !== "diagram_page") explicitCount++;
     }
   }
+  console.log(
+    `[CMM Pass 1] Reference resolution: ${explicitCount} explicit links, ` +
+      `${proximityCount} proximity links, ${unresolved.length} unresolved pages`
+  );
 
   // Sort pages within each group by sheet number
   for (const group of figureGroups.values()) {
@@ -286,10 +463,13 @@ async function finalizePass1(templateId: string, progress: Pass1Progress): Promi
 
   let sortOrder = 0;
   for (const group of sortedGroups) {
-    const pageNumbers = [
-      ...group.pages.map((p) => p.pageIndex),
-      ...group.supplementaryPages,
-    ].sort((a, b) => a - b);
+    // Get resolved links for this figure
+    const pageLinks = resolved.get(group.figureNumber) || [];
+
+    // Build pageNumbers from resolved links (all unique page indices)
+    const pageNumbers = [...new Set(pageLinks.map((l) => l.pageIndex))].sort(
+      (a, b) => a - b
+    );
 
     const sheetInfo =
       group.pages.length > 1
@@ -304,6 +484,7 @@ async function finalizePass1(templateId: string, progress: Pass1Progress): Promi
         figureNumber: group.figureNumber,
         sheetInfo,
         pageNumbers,
+        pageLinks: JSON.parse(JSON.stringify(pageLinks)),
         status: "pending",
         pageClassification: "diagram",
         configurationApplicability: group.partNumbers,
@@ -319,14 +500,23 @@ async function finalizePass1(templateId: string, progress: Pass1Progress): Promi
     diagramPages: classifications.filter((c) => c.result.pageType === "diagram").length,
     textPages: textPages.length,
     ignoredPages: classifications.filter(
-      (c) => c.result.pageType === "ignore" || c.result.pageType === "parts_list"
+      (c) => c.result.pageType === "ignore"
     ).length,
-    figures: sortedGroups.map((g) => ({
-      figureNumber: g.figureNumber,
-      title: g.title,
-      pageCount: g.pages.length,
-      supplementaryPages: g.supplementaryPages.length,
-    })),
+    unresolvedPages: unresolved,
+    figures: sortedGroups.map((g) => {
+      const links = resolved.get(g.figureNumber) || [];
+      const supplementaryLinks = links.filter((l) => l.reason !== "diagram_page");
+      return {
+        figureNumber: g.figureNumber,
+        title: g.title,
+        pageCount: g.pages.length,
+        supplementaryPages: supplementaryLinks.length,
+        linkBreakdown: {
+          explicit: supplementaryLinks.filter((l) => l.reason !== "proximity").length,
+          proximity: supplementaryLinks.filter((l) => l.reason === "proximity").length,
+        },
+      };
+    }),
     rawClassifications: classifications.map((c) => ({
       page: c.pageIndex + 1,
       ...c.result,
@@ -336,7 +526,7 @@ async function finalizePass1(templateId: string, progress: Pass1Progress): Promi
   await prisma.inspectionTemplate.update({
     where: { id: templateId },
     data: {
-      extractionMetadata: indexData,
+      extractionMetadata: JSON.parse(JSON.stringify(indexData)),
       status: "extracting_details",
     },
   });

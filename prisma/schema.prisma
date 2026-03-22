@@ -903,6 +903,8 @@ model InspectionSection {
   itemCount                   Int       @default(0)       // Denormalized count of items
   extractionConfidence        Float     @default(0)       // 0-1 overall confidence for this section
   rawExtractionResponse       Json?                       // Raw AI response for re-parsing
+  pageLinks                   Json?                       // Resolved page-to-section links: [{pageIndex, reason, confidence, referenceText}]
+  pass2Progress               Json?                       // Per-page extraction state for resumable Pass 2
   notes                       String?                     // Reviewer annotations
 
   createdAt                   DateTime  @default(now())

@@ -4,6 +4,7 @@
 // and system prompts for Claude to maximize extraction completeness.
 
 import { prisma } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import { extractSinglePageAsBase64 } from "@/lib/pdf-utils";
 import { callGemini } from "./provider";
 import { getApiKey, getApiBase } from "./models";
@@ -192,25 +193,64 @@ async function extractPageWithConsensus(
   };
 }
 
-// ── Main: extract a full section page-by-page ─────────────────────────
+// ── Per-page progress tracking (stored in InspectionSection.pass2Progress) ──
+
+// A single page's extraction result, persisted before the next page starts
+interface PersistedPageResult {
+  pageIndex: number;
+  items: ExtractedItem[];
+  geminiSucceeded: boolean;
+  claudeSucceeded: boolean;
+  agreementRate: number;
+  disagreements: DisagreementRecord[];
+  completedAt: string;
+}
+
+// The full progress state for a section's Pass 2 extraction
+interface Pass2Progress {
+  pageResults: PersistedPageResult[];
+  nextPageOffset: number; // Index into section.pageNumbers (not the page index itself)
+}
+
+// ── Page-resumable extraction ─────────────────────────────────────────
 
 /**
- * Extract specs from a single section using per-page dual-model consensus.
- * Returns the number of items created.
+ * Extract ONE page of a section with dual-model consensus and persist the result.
+ * Returns:
+ * - "continue" if more pages remain in this section
+ * - "finalize" if all pages are done and the section needs finalization
  */
-export async function extractSection(
+export async function extractSectionPage(
   templateId: string,
   sectionId: string
-): Promise<number> {
+): Promise<"continue" | "finalize"> {
   const section = await prisma.inspectionSection.findUniqueOrThrow({
     where: { id: sectionId },
     include: { template: true },
   });
 
-  await prisma.inspectionSection.update({
-    where: { id: sectionId },
-    data: { status: "extracting" },
-  });
+  // Ensure section is marked as extracting
+  if (section.status === "pending") {
+    await prisma.inspectionSection.update({
+      where: { id: sectionId },
+      data: { status: "extracting" },
+    });
+  }
+
+  // Load or initialize progress
+  let progress: Pass2Progress;
+  if (section.pass2Progress) {
+    progress = section.pass2Progress as unknown as Pass2Progress;
+  } else {
+    progress = { pageResults: [], nextPageOffset: 0 };
+  }
+
+  // Check if all pages already processed
+  if (progress.nextPageOffset >= section.pageNumbers.length) {
+    return "finalize";
+  }
+
+  const pageIdx = section.pageNumbers[progress.nextPageOffset];
 
   try {
     // Download the PDF
@@ -227,29 +267,92 @@ export async function extractSection(
         section.template.partNumbersCovered.join(", ") || "not specified"
       );
 
-    // Extract each page individually and run consensus
-    const allPageResults: PageExtractionResult[] = [];
-    let totalAgreementRate = 0;
-    let allDisagreements: DisagreementRecord[] = [];
+    // Extract this single page with dual-model consensus
+    const pageBase64 = await extractSinglePageAsBase64(pdfBytes, pageIdx);
+    const pageResult = await extractPageWithConsensus(pageBase64, prompt, pageIdx);
 
-    for (const pageIdx of section.pageNumbers) {
-      const pageBase64 = await extractSinglePageAsBase64(pdfBytes, pageIdx);
-      const pageResult = await extractPageWithConsensus(pageBase64, prompt, pageIdx);
+    const modelInfo = pageResult.geminiSucceeded && pageResult.claudeSucceeded
+      ? `consensus (${(pageResult.agreementRate * 100).toFixed(0)}% agree)`
+      : pageResult.geminiSucceeded ? "Gemini only" : "Claude only";
+    console.log(
+      `[CMM Pass 2] Fig. ${section.figureNumber} page ${progress.nextPageOffset + 1}/${section.pageNumbers.length} ` +
+        `(PDF page ${pageIdx + 1}): ${pageResult.items.length} items — ${modelInfo}`
+    );
 
-      allPageResults.push(pageResult);
-      totalAgreementRate += pageResult.agreementRate;
-      allDisagreements = allDisagreements.concat(pageResult.disagreements);
+    // Persist result — this is the key to resumability
+    progress.pageResults.push({
+      pageIndex: pageResult.pageIndex,
+      items: pageResult.items,
+      geminiSucceeded: pageResult.geminiSucceeded,
+      claudeSucceeded: pageResult.claudeSucceeded,
+      agreementRate: pageResult.agreementRate,
+      disagreements: pageResult.disagreements,
+      completedAt: new Date().toISOString(),
+    });
+    progress.nextPageOffset++;
 
-      const modelInfo = pageResult.geminiSucceeded && pageResult.claudeSucceeded
-        ? `consensus (${(pageResult.agreementRate * 100).toFixed(0)}% agree)`
-        : pageResult.geminiSucceeded ? "Gemini only" : "Claude only";
-      console.log(
-        `[Consensus] Page ${pageIdx + 1}: ${pageResult.items.length} items — ${modelInfo}`
-      );
+    await prisma.inspectionSection.update({
+      where: { id: sectionId },
+      data: {
+        pass2Progress: JSON.parse(JSON.stringify(progress)),
+      },
+    });
+
+    // Are there more pages?
+    if (progress.nextPageOffset >= section.pageNumbers.length) {
+      return "finalize";
     }
+    return "continue";
+  } catch (error) {
+    console.error(
+      `[CMM Pass 2] Failed on Fig. ${section.figureNumber} page ${pageIdx + 1}:`,
+      error
+    );
 
+    // Mark the section as failed — the page-level error is isolated
+    await prisma.inspectionSection.update({
+      where: { id: sectionId },
+      data: {
+        status: "failed",
+        pass2Progress: JSON.parse(JSON.stringify(progress)),
+        rawExtractionResponse: JSON.parse(JSON.stringify({
+          error: error instanceof Error ? error.message : "Unknown error",
+          failedAt: new Date().toISOString(),
+          failedOnPage: pageIdx + 1,
+          pagesCompleted: progress.pageResults.length,
+        })),
+      },
+    });
+
+    throw error;
+  }
+}
+
+/**
+ * Finalize a section after all pages have been extracted.
+ * Merges per-page results, deduplicates items, validates, and saves to DB.
+ * Returns the number of items created.
+ */
+export async function finalizeSectionExtraction(
+  sectionId: string
+): Promise<number> {
+  const section = await prisma.inspectionSection.findUniqueOrThrow({
+    where: { id: sectionId },
+  });
+
+  const progress = section.pass2Progress as Pass2Progress | null;
+  if (!progress || progress.pageResults.length === 0) {
+    console.warn(`[CMM Pass 2] No page results to finalize for section ${sectionId}`);
+    await prisma.inspectionSection.update({
+      where: { id: sectionId },
+      data: { status: "failed" },
+    });
+    return 0;
+  }
+
+  try {
     // Merge all page results and remove cross-page duplicates
-    const allItems = allPageResults.flatMap((r) => r.items);
+    const allItems = progress.pageResults.flatMap((r) => r.items);
     const dedupedItems = deduplicateItems(allItems);
 
     // Run structural validation on deduped items
@@ -288,12 +391,16 @@ export async function extractSection(
     }
 
     // Calculate stats for logging
-    const avgAgreement = section.pageNumbers.length > 0
-      ? totalAgreementRate / section.pageNumbers.length
+    const totalAgreementRate = progress.pageResults.reduce((sum, r) => sum + r.agreementRate, 0);
+    const avgAgreement = progress.pageResults.length > 0
+      ? totalAgreementRate / progress.pageResults.length
       : 0;
-    const bothSucceeded = allPageResults.filter((r) => r.geminiSucceeded && r.claudeSucceeded).length;
+    const bothSucceeded = progress.pageResults.filter(
+      (r) => r.geminiSucceeded && r.claudeSucceeded
+    ).length;
+    const allDisagreements = progress.pageResults.flatMap((r) => r.disagreements);
 
-    // Update section with results
+    // Update section with final results
     await prisma.inspectionSection.update({
       where: { id: sectionId },
       data: {
@@ -301,13 +408,13 @@ export async function extractSection(
         itemCount: validatedItems.length,
         extractionConfidence: sectionConfidence,
         rawExtractionResponse: JSON.parse(JSON.stringify({
-          method: "dual-model-consensus-v2",
-          pagesProcessed: section.pageNumbers.length,
+          method: "dual-model-consensus-v2-resumable",
+          pagesProcessed: progress.pageResults.length,
           consensusPages: bothSucceeded,
           averageAgreementRate: avgAgreement,
           totalDisagreements: allDisagreements.length,
           disagreements: allDisagreements.slice(0, 20),
-          pageResults: allPageResults.map((r) => ({
+          pageResults: progress.pageResults.map((r) => ({
             page: r.pageIndex + 1,
             items: r.items.length,
             gemini: r.geminiSucceeded,
@@ -319,16 +426,16 @@ export async function extractSection(
     });
 
     console.log(
-      `[CMM Pass 2] Fig. ${section.figureNumber}: ${validatedItems.length} items ` +
+      `[CMM Pass 2] Finalized Fig. ${section.figureNumber}: ${validatedItems.length} items ` +
         `(confidence: ${sectionConfidence.toFixed(2)}, ` +
-        `consensus: ${bothSucceeded}/${section.pageNumbers.length} pages, ` +
+        `consensus: ${bothSucceeded}/${progress.pageResults.length} pages, ` +
         `agreement: ${(avgAgreement * 100).toFixed(0)}%)`
     );
 
     return validatedItems.length;
   } catch (error) {
     console.error(
-      `[CMM Pass 2] Failed to extract Fig. ${section.figureNumber}:`,
+      `[CMM Pass 2] Failed to finalize Fig. ${section.figureNumber}:`,
       error
     );
 
@@ -339,10 +446,36 @@ export async function extractSection(
         rawExtractionResponse: JSON.parse(JSON.stringify({
           error: error instanceof Error ? error.message : "Unknown error",
           failedAt: new Date().toISOString(),
+          phase: "finalization",
         })),
       },
     });
 
     return 0;
   }
+}
+
+/**
+ * Convenience wrapper: extract all pages of a section then finalize.
+ * Used by the re-extract endpoint (processes everything in one go).
+ * The runner uses extractSectionPage + finalizeSectionExtraction individually.
+ */
+export async function extractSection(
+  templateId: string,
+  sectionId: string
+): Promise<number> {
+  // Clear any existing progress for a fresh extraction
+  await prisma.inspectionSection.update({
+    where: { id: sectionId },
+    data: { pass2Progress: Prisma.DbNull, status: "extracting" },
+  });
+
+  // Process all pages one by one
+  let result: "continue" | "finalize" = "continue";
+  while (result === "continue") {
+    result = await extractSectionPage(templateId, sectionId);
+  }
+
+  // Finalize: merge, dedup, validate, save items
+  return finalizeSectionExtraction(sectionId);
 }

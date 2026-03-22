@@ -18,7 +18,14 @@ Return JSON matching this exact structure:
   "sheetNumber": 1,
   "totalSheets": 3,
   "partNumbers": ["739515", "745329"],
-  "notes": "any relevant context about what this page covers"
+  "notes": "any relevant context about what this page covers",
+  "explicitReferences": {
+    "figureReferences": ["812", "823"],
+    "pageReferences": ["73-24", "73-25"],
+    "checkReferences": ["23"],
+    "repairReferences": ["6", "25"],
+    "specialAssemblyReferences": ["823"]
+  }
 }
 
 RULES:
@@ -29,7 +36,21 @@ RULES:
 - Look for "FIGURE XXX" or "FIG. XXX" patterns for figure numbers
 - Look for "SHEET X OF Y" patterns for multi-sheet figures
 - Extract the sub-assembly title from figure captions (e.g., "ASSEMBLY OF END HOUSING UNIT")
-- Extract any part number patterns (typically 6-7 digit numbers, sometimes with letter suffixes)`;
+- Extract any part number patterns (typically 6-7 digit numbers, sometimes with letter suffixes)
+
+EXPLICIT REFERENCE EXTRACTION:
+- Look for cross-references to other figures: "REFER TO FIGURE 812", "SEE FIGURE 823", "FIG. 812", "FIGURE 812"
+  → Extract just the figure number into figureReferences (e.g., ["812", "823"])
+- Look for page references: "SEE PAGE 73-24", "REFER TO PAGE 73-25", "PAGE 73-24"
+  → Extract the page identifier into pageReferences (e.g., ["73-24"])
+- Look for check references: "CHECK 23", "REFER TO CHECK 23", "SEE CHECK 12"
+  → Extract just the check number into checkReferences (e.g., ["23"])
+- Look for repair references: "REPAIR 6", "REFER TO REPAIR 6, 25", "SEE REPAIR 25"
+  → Extract the repair numbers into repairReferences (e.g., ["6", "25"])
+- Look for special assembly references: "SPECIAL ASSEMBLY FIGURE 823"
+  → Extract the figure number into specialAssemblyReferences (e.g., ["823"])
+- Return empty arrays if no references of that type are found
+- Only extract references that point to OTHER figures/pages, not the current page's own figure number`;
 
 // ── Pass 2: deep extraction with systematic scan + few-shot examples ──
 
