@@ -140,8 +140,9 @@ export default function ReviewClient({
     template.status !== "active" &&
     !template.sections.some((s) => s.status === "pending" || s.status === "extracting");
 
-  // Get the first page of the active section for PDF viewer
-  const activePdfPage = activeSection?.pageNumbers[0] ?? 0;
+  // Track which page is being viewed within the active section
+  const [viewingPageIdx, setViewingPageIdx] = useState<number | null>(null);
+  const activePdfPage = viewingPageIdx ?? activeSection?.pageNumbers[0] ?? 0;
 
   return (
     <div className="h-[calc(100vh-2rem)] flex flex-col">
@@ -199,7 +200,7 @@ export default function ReviewClient({
           <SectionNav
             sections={template.sections}
             activeSectionId={activeSectionId}
-            onSelectSection={setActiveSectionId}
+            onSelectSection={(id) => { setActiveSectionId(id); setViewingPageIdx(null); }}
           />
         </div>
 
@@ -212,7 +213,7 @@ export default function ReviewClient({
                 {activePdfPage + 1} of {template.totalPages}
                 {activeSection.pageNumbers.length > 1 && (
                   <span className="ml-2">
-                    ({activeSection.pageNumbers.map((p) => p + 1).join(", ")})
+                    (PDF pages: {activeSection.pageNumbers.map((p) => p + 1).join(", ")})
                   </span>
                 )}
               </div>
@@ -232,12 +233,7 @@ export default function ReviewClient({
                       variant={pageIdx === activePdfPage ? "default" : "outline"}
                       size="sm"
                       className="h-6 w-8 text-[10px]"
-                      onClick={() => {
-                        // Update the active page — we can track this by updating the section's view
-                        // For now, we use the first page. Multi-page navigation is handled by
-                        // clicking different pages in the button bar.
-                        // We'll need a separate state for this
-                      }}
+                      onClick={() => setViewingPageIdx(pageIdx)}
                     >
                       {pageIdx + 1}
                     </Button>
