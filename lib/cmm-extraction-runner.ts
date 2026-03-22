@@ -56,6 +56,7 @@ async function releaseExtractionLease(templateId: string, data: Record<string, u
 
 // Revive stale extracting sections so they can be picked up again.
 // Keeps pass2Progress intact — we only reset the section status, not page work.
+// If all pages are already done (completed or exhausted retries), finalize instead.
 async function reviveStaleExtractingSections(templateId: string, staleBefore: Date) {
   const staleSections = await prisma.inspectionSection.findMany({
     where: {
@@ -63,24 +64,40 @@ async function reviveStaleExtractingSections(templateId: string, staleBefore: Da
       status: "extracting",
       updatedAt: { lt: staleBefore },
     },
-    select: { id: true, pass2Progress: true },
+    select: { id: true, figureNumber: true, pageNumbers: true, pass2Progress: true },
   });
 
   if (staleSections.length === 0) return;
 
-  // Reset status but keep pass2Progress so completed pages aren't redone
-  await prisma.inspectionSection.updateMany({
-    where: {
-      id: { in: staleSections.map((s) => s.id) },
-    },
-    data: {
-      status: "pending",
-    },
-  });
+  for (const section of staleSections) {
+    const progress = section.pass2Progress as { nextPageOffset: number } | null;
+    const allPagesDone = progress && progress.nextPageOffset >= section.pageNumbers.length;
 
-  console.warn(
-    `[Extraction] Revived ${staleSections.length} stale section(s) for template ${templateId} (page progress preserved)`
-  );
+    if (allPagesDone) {
+      // All pages processed (completed or skipped) — finalize instead of resetting
+      console.log(
+        `[Extraction] Stale section Fig. ${section.figureNumber} has all pages done — finalizing`
+      );
+      try {
+        await finalizeSectionExtraction(section.id);
+      } catch (err) {
+        console.error(`[Extraction] Failed to finalize stale section ${section.id}:`, err);
+        await prisma.inspectionSection.update({
+          where: { id: section.id },
+          data: { status: "failed" },
+        });
+      }
+    } else {
+      // Still has pages to process — reset to pending so it gets picked up
+      await prisma.inspectionSection.update({
+        where: { id: section.id },
+        data: { status: "pending" },
+      });
+      console.warn(
+        `[Extraction] Revived stale section Fig. ${section.figureNumber} (page progress preserved)`
+      );
+    }
+  }
 }
 
 export async function findTemplatesReadyForExtraction(options: {
