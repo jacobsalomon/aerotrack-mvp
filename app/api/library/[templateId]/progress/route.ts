@@ -90,6 +90,9 @@ export async function GET(
     pageProgress = { current: pagesExtractedInSection, total: totalPagesInSection };
   }
 
+  // Short cache to reduce duplicate requests hitting the serverless function.
+  // Extraction progress only changes every ~30-60s per section, so 5s cache
+  // is fine and dramatically reduces log noise during extraction.
   return NextResponse.json({
     status: template.status,
     totalPages: template.totalPages,
