@@ -3,10 +3,13 @@
 // Two-tier approach: tries the PDF's embedded text layer first (free, instant),
 // then falls back to Mathpix OCR API for scanned/image-heavy pages.
 
-import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
-
-// Disable the worker since we're running server-side in Node.js
-GlobalWorkerOptions.workerSrc = "";
+// pdfjs-dist is loaded lazily to avoid crashing the module if the import fails.
+// Uses dynamic import so the rest of the OCR service (Mathpix tier) still works.
+async function loadPdfjs() {
+  const pdfjs = await import("pdfjs-dist");
+  pdfjs.GlobalWorkerOptions.workerSrc = "";
+  return pdfjs;
+}
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -65,7 +68,8 @@ async function extractTextLayer(pdfBase64: string): Promise<string> {
   const pdfBytes = Buffer.from(pdfBase64, "base64");
   const uint8 = new Uint8Array(pdfBytes);
 
-  const doc = await getDocument({ data: uint8, useWorkerFetch: false, isEvalSupported: false }).promise;
+  const pdfjs = await loadPdfjs();
+  const doc = await pdfjs.getDocument({ data: uint8, useWorkerFetch: false, isEvalSupported: false }).promise;
   const page = await doc.getPage(1); // Single-page PDF, always page 1
   const textContent = await page.getTextContent();
 
