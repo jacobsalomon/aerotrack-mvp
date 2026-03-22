@@ -50,7 +50,6 @@ const nextConfig: NextConfig = {
     "@prisma/client",
     "prisma",
     "pdf-lib",
-    "pdfjs-dist",
     "@anthropic-ai/sdk",
     "bcryptjs",
     "resend",
