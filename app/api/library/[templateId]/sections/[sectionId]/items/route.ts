@@ -91,6 +91,20 @@ export async function PATCH(
   const body = await request.json();
   if (!body.id) return NextResponse.json({ error: "Item id required" }, { status: 400 });
 
+  // "approve" action: clear the review flag without editing the item
+  if (body.action === "approve") {
+    const item = await prisma.inspectionItem.update({
+      where: { id: body.id },
+      data: {
+        reviewReason: null,
+        confidence: Math.max(0.7, (await prisma.inspectionItem.findUnique({ where: { id: body.id }, select: { confidence: true } }))?.confidence ?? 0.7),
+        editedById: session.user.id,
+        editedAt: new Date(),
+      },
+    });
+    return NextResponse.json({ item });
+  }
+
   const item = await prisma.inspectionItem.update({
     where: { id: body.id },
     data: {
@@ -110,6 +124,7 @@ export async function PATCH(
       ...(body.repairReference !== undefined && { repairReference: body.repairReference || null }),
       ...(body.notes !== undefined && { notes: body.notes || null }),
       ...(body.configurationApplicability !== undefined && { configurationApplicability: body.configurationApplicability }),
+      reviewReason: null, // Editing an item implicitly approves it
       editedById: session.user.id,
       editedAt: new Date(),
     },
