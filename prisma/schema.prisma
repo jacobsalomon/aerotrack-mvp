@@ -960,6 +960,11 @@ model InspectionItem {
   confidence                  Float     @default(0)       // 0-1 confidence score
   reviewReason                String?                     // Why this item needs review (null = no review needed)
 
+  // Human correction tracking (for ML eval pipeline)
+  humanCorrection             Json?                       // { original: {...}, corrected: {...}, correctionType: "wrong_value"|"missing_item"|"wrong_type"|"spurious_item" }
+  correctedAt                 DateTime?                   // When a human corrected this item
+  correctedById               String?                     // User who corrected this item
+
   // Edit tracking
   editedById                  String?                     // User who last edited this item during review
   editedAt                    DateTime?                   // When the item was last manually edited

@@ -91,19 +91,28 @@ export async function PATCH(
   const body = await request.json();
   if (!body.id) return NextResponse.json({ error: "Item id required" }, { status: 400 });
 
-  // "approve" action: clear the review flag without editing the item
+  // "approve" = human verified the AI got it right (no edits)
   if (body.action === "approve") {
     const item = await prisma.inspectionItem.update({
       where: { id: body.id },
       data: {
         reviewReason: null,
-        confidence: Math.max(0.7, (await prisma.inspectionItem.findUnique({ where: { id: body.id }, select: { confidence: true } }))?.confidence ?? 0.7),
+        confidence: 0.95,
         editedById: session.user.id,
         editedAt: new Date(),
+        correctedAt: new Date(),
+        correctedById: session.user.id,
+        humanCorrection: { action: "approved" },
       },
     });
     return NextResponse.json({ item });
   }
+
+  // Snapshot the AI's original output before overwriting.
+  // This is the core of the eval flywheel — we can later diff original vs final
+  // to understand what the AI got wrong and improve prompts.
+  const existing = await prisma.inspectionItem.findUnique({ where: { id: body.id } });
+  if (!existing) return NextResponse.json({ error: "Item not found" }, { status: 404 });
 
   const item = await prisma.inspectionItem.update({
     where: { id: body.id },
@@ -124,9 +133,31 @@ export async function PATCH(
       ...(body.repairReference !== undefined && { repairReference: body.repairReference || null }),
       ...(body.notes !== undefined && { notes: body.notes || null }),
       ...(body.configurationApplicability !== undefined && { configurationApplicability: body.configurationApplicability }),
-      reviewReason: null, // Editing an item implicitly approves it
+      reviewReason: null,
       editedById: session.user.id,
       editedAt: new Date(),
+      correctedAt: new Date(),
+      correctedById: session.user.id,
+      // Just save what the AI originally produced. The eval script
+      // can diff this against the current (corrected) state and join
+      // through the section to get page numbers, figure number, etc.
+      humanCorrection: {
+        action: "corrected",
+        original: {
+          itemType: existing.itemType,
+          parameterName: existing.parameterName,
+          specification: existing.specification,
+          specValueLow: existing.specValueLow,
+          specValueHigh: existing.specValueHigh,
+          specUnit: existing.specUnit,
+          specValueLowMetric: existing.specValueLowMetric,
+          specValueHighMetric: existing.specValueHighMetric,
+          specUnitMetric: existing.specUnitMetric,
+          toolsRequired: existing.toolsRequired,
+          notes: existing.notes,
+          confidence: existing.confidence,
+        },
+      },
     },
   });
 

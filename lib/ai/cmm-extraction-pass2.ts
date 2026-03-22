@@ -466,7 +466,7 @@ export async function finalizeSectionExtraction(
           consensusPages: bothSucceeded,
           averageAgreementRate: avgAgreement,
           totalDisagreements: allDisagreements.length,
-          disagreements: allDisagreements.slice(0, 20),
+          disagreements: allDisagreements,
           pageResults: progress.pageResults.map((r) => ({
             page: r.pageIndex + 1,
             items: r.items.length,
