@@ -14,6 +14,7 @@ import {
   PASS2_CLAUDE_ADDITIONS,
   CMM_EXTRACTION_SCHEMA,
 } from "./cmm-prompts";
+import { ocrPage, formatOcrForPrompt, type OcrResult } from "./ocr-service";
 import {
   validateExtractionResults,
   reconcileExtractions,
@@ -204,6 +205,7 @@ interface PersistedPageResult {
   agreementRate: number;
   disagreements: DisagreementRecord[];
   completedAt: string;
+  ocrResult?: OcrResult; // Cached OCR result — reused on retry to avoid redundant API calls
 }
 
 // The full progress state for a section's Pass 2 extraction
@@ -262,28 +264,51 @@ export async function extractSectionPage(
     if (!pdfResponse.ok) throw new Error("Failed to download PDF");
     const pdfBytes = Buffer.from(await pdfResponse.arrayBuffer());
 
-    // Build the prompt with section context
+    // Extract this single page as base64 PDF
+    const pageBase64 = await extractSinglePageAsBase64(pdfBytes, pageIdx);
+
+    // ── OCR step: run OCR before LLM extraction ──
+    // Check if we already have a cached OCR result from a previous attempt
+    // (avoids redundant API calls on retry)
+    let ocrResult: OcrResult;
+    const existingOcr = progress.pageResults.find(
+      (r) => r.pageIndex === pageIdx && r.ocrResult
+    );
+    if (existingOcr?.ocrResult) {
+      ocrResult = existingOcr.ocrResult;
+      console.log(`[CMM Pass 2] Reusing cached OCR for page ${pageIdx + 1} (${ocrResult.source})`);
+    } else {
+      ocrResult = await ocrPage(pageBase64);
+    }
+
+    // Format OCR text for prompt injection
+    const ocrPromptText = formatOcrForPrompt(ocrResult);
+
+    // Build the prompt with section context + OCR text
     const prompt = PASS2_EXTRACTION_PROMPT
       .replace("{figureNumber}", section.figureNumber)
       .replace("{sectionTitle}", section.title)
       .replace(
         "{partNumbers}",
         section.template.partNumbersCovered.join(", ") || "not specified"
-      );
+      )
+      .replace("{ocrText}", ocrPromptText);
 
-    // Extract this single page with dual-model consensus
-    const pageBase64 = await extractSinglePageAsBase64(pdfBytes, pageIdx);
+    // Extract with dual-model consensus (OCR text is already in the prompt)
     const pageResult = await extractPageWithConsensus(pageBase64, prompt, pageIdx);
 
     const modelInfo = pageResult.geminiSucceeded && pageResult.claudeSucceeded
       ? `consensus (${(pageResult.agreementRate * 100).toFixed(0)}% agree)`
       : pageResult.geminiSucceeded ? "Gemini only" : "Claude only";
+    const ocrInfo = ocrResult.source !== "none"
+      ? ` | OCR: ${ocrResult.source} (${ocrResult.fullText.length} chars, ${ocrResult.tables.length} tables)`
+      : " | OCR: none";
     console.log(
       `[CMM Pass 2] Fig. ${section.figureNumber} page ${progress.nextPageOffset + 1}/${section.pageNumbers.length} ` +
-        `(PDF page ${pageIdx + 1}): ${pageResult.items.length} items — ${modelInfo}`
+        `(PDF page ${pageIdx + 1}): ${pageResult.items.length} items — ${modelInfo}${ocrInfo}`
     );
 
-    // Persist result — this is the key to resumability
+    // Persist result with OCR — this is the key to resumability
     progress.pageResults.push({
       pageIndex: pageResult.pageIndex,
       items: pageResult.items,
@@ -292,6 +317,7 @@ export async function extractSectionPage(
       agreementRate: pageResult.agreementRate,
       disagreements: pageResult.disagreements,
       completedAt: new Date().toISOString(),
+      ocrResult, // Cache OCR so retries don't re-run the API
     });
     progress.nextPageOffset++;
 
@@ -435,7 +461,7 @@ export async function finalizeSectionExtraction(
         itemCount: validatedItems.length,
         extractionConfidence: sectionConfidence,
         rawExtractionResponse: JSON.parse(JSON.stringify({
-          method: "dual-model-consensus-v2-resumable",
+          method: "dual-model-consensus-v3-ocr-enriched",
           pagesProcessed: progress.pageResults.length,
           consensusPages: bothSucceeded,
           averageAgreementRate: avgAgreement,
@@ -447,6 +473,13 @@ export async function finalizeSectionExtraction(
             gemini: r.geminiSucceeded,
             claude: r.claudeSucceeded,
             agreement: r.agreementRate,
+            ocr: r.ocrResult ? {
+              source: r.ocrResult.source,
+              confidence: r.ocrResult.confidence,
+              textLength: r.ocrResult.fullText.length,
+              tables: r.ocrResult.tables.length,
+              processingTimeMs: r.ocrResult.processingTimeMs,
+            } : null,
           })),
         })),
       },

@@ -7,12 +7,13 @@
 export const PASS1_CLASSIFICATION_PROMPT = `You are an aerospace CMM (Component Maintenance Manual) expert analyzing inspection sheet pages.
 
 For this page, identify:
-1. Whether it contains an inspection diagram, text instructions, a parts list, or should be ignored
+1. Whether it contains an inspection diagram, text instructions, a parts list, a structured data table, or should be ignored
 2. If it's a diagram: the figure number, sub-assembly name, and sheet number
+3. If it's a data table: whether it has headers, approximate row count, and whether it continues from/to adjacent pages
 
 Return JSON matching this exact structure:
 {
-  "pageType": "diagram" | "inspection_text" | "parts_list" | "ignore",
+  "pageType": "diagram" | "inspection_text" | "parts_list" | "data_table" | "ignore",
   "figureNumber": "816" or null,
   "subAssemblyTitle": "Assembly of End Housing Unit" or null,
   "sheetNumber": 1,
@@ -25,6 +26,12 @@ Return JSON matching this exact structure:
     "checkReferences": ["23"],
     "repairReferences": ["6", "25"],
     "specialAssemblyReferences": ["823"]
+  },
+  "tableMetadata": {
+    "hasHeaders": true,
+    "estimatedRows": 15,
+    "continuesFromPrevious": false,
+    "continuesToNext": true
   }
 }
 
@@ -32,7 +39,13 @@ RULES:
 - "diagram" = exploded assembly view with torque specs, callout numbers, tool requirements scattered on the drawing
 - "inspection_text" = text-heavy pages with warnings, cautions, general notes, check/repair procedures, tool lists
 - "parts_list" = IPL (Illustrated Parts List) tables showing part numbers, descriptions, quantities
+- "data_table" = structured forms, test result tables, measurement logs, or electrical test sheets with clear rows and columns of data (NOT parts lists)
 - "ignore" = cover pages, title pages, boilerplate, revision history, blank pages
+- Pages with BOTH a diagram AND a small embedded table → classify as "diagram" (OCR handles the embedded table)
+- Only classify as "data_table" when the PRIMARY content is a structured data table
+- Include "tableMetadata" ONLY when pageType is "data_table" — omit for other types
+- Set "continuesFromPrevious": true if the table starts mid-data without a title/header
+- Set "continuesToNext": true if the table appears cut off at the bottom of the page
 - Look for "FIGURE XXX" or "FIG. XXX" patterns for figure numbers
 - Look for "SHEET X OF Y" patterns for multi-sheet figures
 - Extract the sub-assembly title from figure captions (e.g., "ASSEMBLY OF END HOUSING UNIT")
@@ -62,7 +75,17 @@ Your task: extract EVERY specification, check, tool requirement, and note from t
 
 // The main extraction prompt with context placeholders, naming convention,
 // itemType definitions, few-shot examples, and output schema.
+// The {ocrText} placeholder is injected with OCR-extracted text when available.
 export const PASS2_EXTRACTION_PROMPT = `CONTEXT: This is Figure {figureNumber} — "{sectionTitle}" from a CMM for part numbers {partNumbers}.
+
+{ocrText}
+OCR CROSS-REFERENCE INSTRUCTIONS:
+If OCR text is provided above, use it to verify your visual reading of the page image.
+- For numerical values (torque specs, dimensions, test results): PREFER the OCR text over your visual reading when they disagree — OCR is more reliable for exact numbers.
+- For units (LB-IN, N-m, V, OHMS, etc.): PREFER the OCR text — it captures column headers and unit labels that may be far from the values.
+- For table data: The OCR text contains the complete table structure with headers and rows. Use it as your primary source for table extraction, cross-referencing against the image for any values the OCR may have missed.
+- For diagram callout numbers and spatial relationships: PREFER your visual reading — OCR doesn't capture spatial layout well.
+- If NO OCR text is provided, extract everything from the image alone as before.
 
 STEP 1 — SYSTEMATIC PAGE SCAN:
 Before extracting items, scan the ENTIRE page systematically:
