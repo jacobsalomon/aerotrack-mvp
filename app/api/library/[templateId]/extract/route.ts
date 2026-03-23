@@ -217,6 +217,14 @@ export async function POST(
       }
 
       // More pages remain — release lease and self-call for next page
+      // Read updated progress for diagnostic info
+      const updatedSection = await prisma.inspectionSection.findUnique({
+        where: { id: nextSection.id },
+        select: { pageNumbers: true, pass2Progress: true },
+      });
+      const p2 = updatedSection?.pass2Progress as { nextPageOffset: number; pageResults: Array<{ ocrResult?: { source: string; fullText: string; tables: unknown[]; processingTimeMs: number } }> } | null;
+      const lastPage = p2?.pageResults?.[p2.pageResults.length - 1];
+
       await prisma.inspectionTemplate.update({
         where: { id: templateId },
         data: {
@@ -230,6 +238,13 @@ export async function POST(
       return NextResponse.json({
         status: "page_complete",
         figureNumber: nextSection.figureNumber,
+        pageProgress: `${p2?.nextPageOffset ?? "?"}/${updatedSection?.pageNumbers.length ?? "?"}`,
+        ocr: lastPage?.ocrResult ? {
+          source: lastPage.ocrResult.source,
+          chars: lastPage.ocrResult.fullText.length,
+          tables: lastPage.ocrResult.tables.length,
+          timeMs: lastPage.ocrResult.processingTimeMs,
+        } : null,
       });
     }
 
