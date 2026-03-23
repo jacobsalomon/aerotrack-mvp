@@ -11,7 +11,7 @@ import { prisma } from "@/lib/db";
 import { NextResponse, after } from "next/server";
 import { randomUUID } from "crypto";
 import { runPass1Batch } from "@/lib/ai/cmm-extraction-pass1";
-import { extractSection } from "@/lib/ai/cmm-extraction-pass2";
+import { extractSectionPage, finalizeSectionExtraction } from "@/lib/ai/cmm-extraction-pass2";
 
 // Pro plan allows up to 300s per serverless function invocation
 export const maxDuration = 300;
@@ -131,14 +131,18 @@ export async function POST(
       template.status === "extracting_details" ||
       template.status === "extraction_failed"
     ) {
-      // Run Pass 2 on the next pending section
-      const nextSection = await prisma.inspectionSection.findFirst({
-        where: {
-          templateId,
-          status: "pending",
-        },
-        orderBy: { sortOrder: "asc" },
-      });
+      // Find a section that needs work:
+      // 1. Resume an "extracting" section (has saved page progress from prior invocation)
+      // 2. Start a new "pending" section
+      const nextSection =
+        (await prisma.inspectionSection.findFirst({
+          where: { templateId, status: "extracting" },
+          orderBy: { sortOrder: "asc" },
+        })) ||
+        (await prisma.inspectionSection.findFirst({
+          where: { templateId, status: "pending" },
+          orderBy: { sortOrder: "asc" },
+        }));
 
       if (!nextSection) {
         // All sections processed — check if any succeeded
@@ -170,38 +174,62 @@ export async function POST(
         });
       }
 
-      // Process this section
+      // Process ONE PAGE of this section, then self-call for the next.
+      // Each page takes 35-75s with OCR — processing one at a time keeps
+      // each invocation well under the 300s serverless limit.
+      // extractSectionPage persists progress after each page, so if we
+      // time out or crash, the next invocation resumes from where we left off.
       console.log(
-        `[Extraction] Processing Fig. ${nextSection.figureNumber} for template ${templateId}`
+        `[Extraction] Processing page of Fig. ${nextSection.figureNumber} for template ${templateId}`
       );
 
-      const itemCount = await extractSection(templateId, nextSection.id);
+      const pageResult = await extractSectionPage(templateId, nextSection.id);
 
-      // Update progress counter
-      const completedCount = await prisma.inspectionSection.count({
-        where: {
-          templateId,
-          status: { in: ["extracted", "failed"] },
-        },
-      });
+      if (pageResult === "finalize") {
+        // All pages done — finalize this section (merge, dedup, validate)
+        const itemCount = await finalizeSectionExtraction(nextSection.id);
 
+        const completedCount = await prisma.inspectionSection.count({
+          where: {
+            templateId,
+            status: { in: ["extracted", "failed"] },
+          },
+        });
+
+        await prisma.inspectionTemplate.update({
+          where: { id: templateId },
+          data: {
+            currentSectionIndex: completedCount,
+            extractionRunnerToken: null,
+            extractionLeaseExpiresAt: null,
+          },
+        });
+
+        // Self-call to start the next section
+        triggerNextStep(templateId);
+
+        return NextResponse.json({
+          status: "section_complete",
+          figureNumber: nextSection.figureNumber,
+          itemsExtracted: itemCount,
+          progress: completedCount,
+        });
+      }
+
+      // More pages remain — release lease and self-call for next page
       await prisma.inspectionTemplate.update({
         where: { id: templateId },
         data: {
-          currentSectionIndex: completedCount,
           extractionRunnerToken: null,
           extractionLeaseExpiresAt: null,
         },
       });
 
-      // Self-call to process the next section
       triggerNextStep(templateId);
 
       return NextResponse.json({
-        status: "section_complete",
+        status: "page_complete",
         figureNumber: nextSection.figureNumber,
-        itemsExtracted: itemCount,
-        progress: completedCount,
       });
     }
 
