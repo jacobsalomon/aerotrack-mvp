@@ -3,7 +3,7 @@
 
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { NextResponse, after } from "next/server";
+import { NextResponse } from "next/server";
 import { parsePageRanges, getPdfPageCount } from "@/lib/pdf-utils";
 
 export async function GET() {
@@ -126,35 +126,9 @@ export async function POST(request: Request) {
       },
     });
 
-    // Kick off extraction — use stable production URL to survive deployment cutover
-    const baseUrl =
-      process.env.EXTRACTION_BASE_URL ||
-      process.env.NEXTAUTH_URL ||
-      (process.env.VERCEL_PROJECT_PRODUCTION_URL
-        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-        : null) ||
-      (process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : "http://localhost:3000");
-    const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
-    const secret = process.env.INTERNAL_API_SECRET || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "";
-
-    // Use after() so the extraction trigger survives after the response is sent.
-    // Without this, the serverless function shuts down and kills the fetch.
-    const extractUrl = `${baseUrl}${basePath}/api/library/${template.id}/extract`;
-    after(async () => {
-      try {
-        await fetch(extractUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-internal-secret": secret,
-          },
-        });
-      } catch (err) {
-        console.error("[Library] Failed to trigger extraction:", err);
-      }
-    });
+    // Extraction is triggered by the cron job (/api/library/retry-stuck)
+    // which runs every minute and picks up pending templates. No after(),
+    // no fire-and-forget — the cron calls the extract endpoint directly.
 
     return NextResponse.json({ success: true, template });
   } catch (error) {

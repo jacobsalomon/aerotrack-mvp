@@ -4,7 +4,7 @@
   "crons": [
     {
       "path": "/aerovision/api/library/retry-stuck",
-      "schedule": "*/5 * * * *"
+      "schedule": "* * * * *"
     }
   ]
 }

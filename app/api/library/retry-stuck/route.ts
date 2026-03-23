@@ -1,29 +1,29 @@
-// GET  /api/library/retry-stuck — Cron job: automatically retry stuck extractions
-// POST /api/library/retry-stuck — Manual admin trigger (same logic)
+// GET /api/library/retry-stuck — Cron-driven extraction runner
 //
-// Finds templates stuck in extraction states, clears expired leases,
-// and fires off extraction triggers. This is the safety net that ensures
-// broken self-call chains get restarted automatically.
+// This is the ONLY way extraction gets triggered. Runs every 1 minute via
+// Vercel cron. Finds templates that need work, calls the extract endpoint
+// directly (no after(), no fire-and-forget, no self-calling chains).
+//
+// The extract endpoint processes ONE step per call and returns.
+// This cron picks it back up next minute for the next step.
 
 import { prisma } from "@/lib/db";
-import { NextResponse, after } from "next/server";
+import { NextResponse } from "next/server";
 
-// Allow Vercel cron to invoke this (cron has a 60s default timeout)
 export const maxDuration = 60;
 
-// Vercel cron calls GET with Authorization: Bearer <CRON_SECRET>
 export async function GET(request: Request) {
-  // Verify cron secret
+  // Verify cron secret (Vercel sends Authorization: Bearer <CRON_SECRET>)
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  return retryStuckTemplates();
+  return runExtractionCycle();
 }
 
-// Manual trigger via POST with internal secret
+// POST for manual trigger via internal secret
 export async function POST(request: Request) {
   const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
   const authHeader = request.headers.get("x-internal-secret");
@@ -31,36 +31,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  return retryStuckTemplates();
+  return runExtractionCycle();
 }
 
-async function retryStuckTemplates() {
-  // Find all templates stuck in a processing state
-  const stuck = await prisma.inspectionTemplate.findMany({
+async function runExtractionCycle() {
+  // Find templates that need extraction work
+  const templates = await prisma.inspectionTemplate.findMany({
     where: {
       status: { in: ["pending_extraction", "extracting_index", "extracting_details"] },
+      // Only pick up templates without an active (non-expired) lease
+      OR: [
+        { extractionRunnerToken: null },
+        { extractionLeaseExpiresAt: { lt: new Date() } },
+      ],
     },
-    select: { id: true, title: true, status: true, updatedAt: true },
+    select: { id: true, title: true, status: true },
+    take: 3, // Process up to 3 templates per cron cycle
   });
 
-  if (stuck.length === 0) {
-    return NextResponse.json({ message: "No stuck templates found" });
+  if (templates.length === 0) {
+    return NextResponse.json({ message: "No work to do" });
   }
 
-  // Clear expired leases so the extract endpoint can acquire them
-  await prisma.inspectionTemplate.updateMany({
-    where: {
-      id: { in: stuck.map((t) => t.id) },
-    },
-    data: {
-      extractionRunnerToken: null,
-      extractionLeaseExpiresAt: null,
-    },
-  });
-
-  // Trigger extraction for each stuck template — use stable production URL.
-  // Fire-and-forget via after() so this endpoint responds quickly instead of
-  // waiting for the full extraction (which would timeout the cron).
+  // Call the extract endpoint directly for each template.
+  // This is a synchronous HTTP call — no after(), no fire-and-forget.
   const baseUrl =
     process.env.EXTRACTION_BASE_URL ||
     process.env.NEXTAUTH_URL ||
@@ -71,31 +65,26 @@ async function retryStuckTemplates() {
   const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
   const secret = process.env.INTERNAL_API_SECRET || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "";
 
-  const templateIds = stuck.map((t) => t.id);
-
-  after(async () => {
-    for (const id of templateIds) {
-      try {
-        await fetch(`${baseUrl}${basePath}/api/library/${id}/extract`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-internal-secret": secret,
-          },
-          signal: AbortSignal.timeout(10_000), // Don't wait forever
-        });
-      } catch (err) {
-        console.error(`[retry-stuck] Failed to trigger extraction for ${id}:`, err);
-      }
+  const results = [];
+  for (const t of templates) {
+    try {
+      const res = await fetch(`${baseUrl}${basePath}/api/library/${t.id}/extract`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-internal-secret": secret,
+        },
+        signal: AbortSignal.timeout(55_000), // Stay within 60s cron limit
+      });
+      const data = await res.json();
+      results.push({ id: t.id, title: t.title, status: res.status, result: data });
+      console.log(`[cron] ${t.title}: ${JSON.stringify(data)}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "unknown";
+      results.push({ id: t.id, title: t.title, status: "error", error: msg });
+      console.error(`[cron] Failed to process ${t.title}:`, msg);
     }
-  });
+  }
 
-  console.log(
-    `[retry-stuck] Re-triggered ${stuck.length} templates: ${stuck.map((t) => `${t.title} (${t.status})`).join(", ")}`
-  );
-
-  return NextResponse.json({
-    retriggered: stuck.length,
-    templates: stuck.map((t) => ({ id: t.id, title: t.title, status: t.status })),
-  });
+  return NextResponse.json({ processed: results.length, results });
 }
