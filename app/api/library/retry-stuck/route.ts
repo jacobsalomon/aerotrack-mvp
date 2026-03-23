@@ -1,11 +1,9 @@
 // GET /api/library/retry-stuck — Cron-driven extraction runner
 //
-// This is the ONLY way extraction gets triggered. Runs every 1 minute via
-// Vercel cron. Finds templates that need work, calls the extract endpoint
-// directly (no after(), no fire-and-forget, no self-calling chains).
-//
-// The extract endpoint processes ONE step per call and returns.
-// This cron picks it back up next minute for the next step.
+// Runs every 1 minute via Vercel cron. Finds templates that need extraction
+// and fires off requests to the extract endpoint. Does NOT wait for extraction
+// to finish — each extract call runs in its own serverless invocation with a
+// 300s timeout. This cron just kicks them off and returns.
 
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
@@ -13,7 +11,6 @@ import { NextResponse } from "next/server";
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
-  // Verify cron secret (Vercel sends Authorization: Bearer <CRON_SECRET>)
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
@@ -23,7 +20,6 @@ export async function GET(request: Request) {
   return runExtractionCycle();
 }
 
-// POST for manual trigger via internal secret
 export async function POST(request: Request) {
   const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
   const authHeader = request.headers.get("x-internal-secret");
@@ -35,26 +31,22 @@ export async function POST(request: Request) {
 }
 
 async function runExtractionCycle() {
-  // Find templates that need extraction work
   const templates = await prisma.inspectionTemplate.findMany({
     where: {
       status: { in: ["pending_extraction", "extracting_index", "extracting_details"] },
-      // Only pick up templates without an active (non-expired) lease
       OR: [
         { extractionRunnerToken: null },
         { extractionLeaseExpiresAt: { lt: new Date() } },
       ],
     },
     select: { id: true, title: true, status: true },
-    take: 3, // Process up to 3 templates per cron cycle
+    take: 3,
   });
 
   if (templates.length === 0) {
     return NextResponse.json({ message: "No work to do" });
   }
 
-  // Call the extract endpoint directly for each template.
-  // This is a synchronous HTTP call — no after(), no fire-and-forget.
   const baseUrl =
     process.env.EXTRACTION_BASE_URL ||
     process.env.NEXTAUTH_URL ||
@@ -65,26 +57,42 @@ async function runExtractionCycle() {
   const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
   const secret = process.env.INTERNAL_API_SECRET || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "";
 
-  const results = [];
+  // Fire extraction requests WITHOUT awaiting the response.
+  // Each fetch spawns a separate serverless invocation on Vercel with its
+  // own 300s timeout. We don't need to wait — just confirm the request was
+  // accepted (the TCP connection was established). A short 5s timeout is
+  // enough to verify the endpoint received the request.
+  const triggered = [];
   for (const t of templates) {
+    const url = `${baseUrl}${basePath}/api/library/${t.id}/extract`;
+    console.log(`[cron] Calling: ${url}`);
     try {
-      const res = await fetch(`${baseUrl}${basePath}/api/library/${t.id}/extract`, {
+      // Use a short timeout — we just need to confirm the server accepted
+      // the connection, not wait for extraction to complete
+      const res = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-internal-secret": secret,
         },
-        signal: AbortSignal.timeout(55_000), // Stay within 60s cron limit
+        signal: AbortSignal.timeout(5_000),
       });
-      const data = await res.json();
-      results.push({ id: t.id, title: t.title, status: res.status, result: data });
-      console.log(`[cron] ${t.title}: ${JSON.stringify(data)}`);
+      // If we got a response in 5s, great — log it
+      triggered.push({ id: t.id, title: t.title, status: res.status });
+      console.log(`[cron] Triggered ${t.title}: ${res.status}`);
     } catch (err) {
+      // Timeout after 5s is EXPECTED — it means the extract endpoint is
+      // running (it takes 30-120s). The request was accepted.
       const msg = err instanceof Error ? err.message : "unknown";
-      results.push({ id: t.id, title: t.title, status: "error", error: msg });
-      console.error(`[cron] Failed to process ${t.title}:`, msg);
+      if (msg.includes("abort") || msg.includes("timeout")) {
+        triggered.push({ id: t.id, title: t.title, status: "accepted" });
+        console.log(`[cron] Triggered ${t.title}: running (timed out waiting for response, which is expected)`);
+      } else {
+        triggered.push({ id: t.id, title: t.title, status: "error", error: msg });
+        console.error(`[cron] Failed to trigger ${t.title}: ${msg}`);
+      }
     }
   }
 
-  return NextResponse.json({ processed: results.length, results });
+  return NextResponse.json({ triggered: triggered.length, results: triggered });
 }

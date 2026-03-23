@@ -31,6 +31,7 @@ export async function POST(
   }
 
   const { templateId } = await params;
+  console.log(`[Extraction] Invoked for template ${templateId}`);
 
   try {
     // Load template
