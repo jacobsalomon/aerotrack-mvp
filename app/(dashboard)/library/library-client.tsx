@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -136,6 +137,7 @@ export default function LibraryClient({
 }: {
   templates: TemplateInfo[];
 }) {
+  const router = useRouter();
   const [showUpload, setShowUpload] = useState(false);
   const [templates, setTemplates] = useState(initialTemplates);
 
@@ -177,22 +179,12 @@ export default function LibraryClient({
 
     setProgress((prev) => ({ ...prev, ...updates }));
 
-    // If any template finished, update the template list with new status
+    // If any template finished, force a server refresh so the page
+    // reflects the final state even if the tab was backgrounded for hours.
     if (needsRefresh) {
-      setTemplates((prev) =>
-        prev.map((t) => {
-          const p = updates[t.id];
-          if (!p) return t;
-          return {
-            ...t,
-            status: p.status,
-            sectionCount: p.totalSections || t.sectionCount,
-            currentSectionIndex: p.completedSections,
-          };
-        })
-      );
+      router.refresh();
     }
-  }, [processingTemplates]);
+  }, [processingTemplates, router]);
 
   useEffect(() => {
     if (processingTemplates.length === 0) return;
