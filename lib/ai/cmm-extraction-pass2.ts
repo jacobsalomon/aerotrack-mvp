@@ -228,7 +228,8 @@ const MAX_PAGE_RETRIES = 3;
  */
 export async function extractSectionPage(
   templateId: string,
-  sectionId: string
+  sectionId: string,
+  preloadedPdf?: Buffer,
 ): Promise<"continue" | "finalize"> {
   const section = await prisma.inspectionSection.findUniqueOrThrow({
     where: { id: sectionId },
@@ -259,10 +260,15 @@ export async function extractSectionPage(
   const pageIdx = section.pageNumbers[progress.nextPageOffset];
 
   try {
-    // Download the PDF
-    const pdfResponse = await fetch(section.template.sourceFileUrl);
-    if (!pdfResponse.ok) throw new Error("Failed to download PDF");
-    const pdfBytes = Buffer.from(await pdfResponse.arrayBuffer());
+    // Use preloaded PDF if provided, otherwise download
+    let pdfBytes: Buffer;
+    if (preloadedPdf) {
+      pdfBytes = preloadedPdf;
+    } else {
+      const pdfResponse = await fetch(section.template.sourceFileUrl);
+      if (!pdfResponse.ok) throw new Error("Failed to download PDF");
+      pdfBytes = Buffer.from(await pdfResponse.arrayBuffer());
+    }
 
     // Extract this single page as base64 PDF
     const pageBase64 = await extractSinglePageAsBase64(pdfBytes, pageIdx);

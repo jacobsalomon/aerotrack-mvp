@@ -75,24 +75,31 @@ interface FigureGroup {
  * - "done" if all pages are classified (sections have been created)
  * - 0 if no sections were found (extraction should fail)
  */
-export async function runPass1Batch(templateId: string): Promise<"continue" | "done" | 0> {
+export async function runPass1Batch(
+  templateId: string,
+  preloadedPdf?: Buffer,
+): Promise<"continue" | "done" | 0> {
   const template = await prisma.inspectionTemplate.findUniqueOrThrow({
     where: { id: templateId },
   });
+
+  // Use preloaded PDF if provided, otherwise download (fallback for manual triggers)
+  async function getPdfBytes(): Promise<Buffer> {
+    if (preloadedPdf) return preloadedPdf;
+    const res = await fetch(template.sourceFileUrl);
+    if (!res.ok) throw new Error("Failed to download PDF");
+    return Buffer.from(await res.arrayBuffer());
+  }
 
   // Load or initialize progress
   let progress: Pass1Progress;
   const meta = template.extractionMetadata as Record<string, unknown> | null;
 
   if (meta?.pass1Progress) {
-    // Resume from saved progress
     progress = meta.pass1Progress as Pass1Progress;
   } else {
-    // First invocation — download PDF and determine pages
-    const pdfResponse = await fetch(template.sourceFileUrl);
-    if (!pdfResponse.ok) throw new Error("Failed to download PDF");
-    const pdfBytes = Buffer.from(await pdfResponse.arrayBuffer());
-    const pdf = await parsePdf(pdfBytes);
+    // First invocation — determine pages
+    const pdf = await parsePdf(await getPdfBytes());
 
     const pagesToProcess =
       template.inspectionPages.length > 0
@@ -117,7 +124,6 @@ export async function runPass1Batch(templateId: string): Promise<"continue" | "d
   );
 
   if (batchPages.length === 0) {
-    // All pages already classified — finalize
     return finalizePass1(templateId, progress);
   }
 
@@ -125,11 +131,7 @@ export async function runPass1Batch(templateId: string): Promise<"continue" | "d
     `[CMM Pass 1] Batch: pages ${progress.nextBatchStart + 1}–${progress.nextBatchStart + batchPages.length} of ${progress.pagesToProcess.length}`
   );
 
-  // Download and parse the PDF for this batch
-  const pdfResponse = await fetch(template.sourceFileUrl);
-  if (!pdfResponse.ok) throw new Error("Failed to download PDF");
-  const pdfBytes = Buffer.from(await pdfResponse.arrayBuffer());
-  const pdf = await parsePdf(pdfBytes);
+  const pdf = await parsePdf(await getPdfBytes());
 
   // Classify pages with light parallelism (PASS1_CONCURRENCY concurrent calls).
   // Each page is classified independently — no shared context between pages —

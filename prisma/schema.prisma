@@ -864,7 +864,7 @@ model InspectionTemplate {
 
   // Extraction job state (lease-based, modeled on SessionProcessingJob)
   extractionRunnerToken   String?                         // Random token held by the current extraction worker
-  extractionLeaseExpiresAt DateTime?                      // Lease expires after 2 minutes
+  extractionLeaseExpiresAt DateTime?                      // Lease expires after 6 minutes (maxDuration + buffer)
   currentSectionIndex     Int       @default(0)           // Which section is being processed next
 
   createdAt               DateTime  @default(now())
