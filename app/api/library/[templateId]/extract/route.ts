@@ -1,10 +1,9 @@
 // POST /api/library/[templateId]/extract
-// Processes one step of extraction for a template.
-// Primary invocation is via the cron job which calls processOneStep directly.
-// This HTTP endpoint exists as a fallback for manual triggers and the retry button.
+// Thin HTTP wrapper for manual triggers (retry button, admin tools).
+// Primary invocation is via the cron which calls processTemplate directly.
 
 import { NextResponse } from "next/server";
-import { processOneStep } from "@/lib/extraction-runner";
+import { processTemplate } from "@/lib/extraction-runner";
 
 export const maxDuration = 300;
 
@@ -19,6 +18,6 @@ export async function POST(
   }
 
   const { templateId } = await params;
-  const result = await processOneStep(templateId);
+  const result = await processTemplate(templateId);
   return NextResponse.json(result);
 }
