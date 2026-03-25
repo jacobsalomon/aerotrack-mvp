@@ -11,6 +11,8 @@ import { ChevronDown, ChevronRight, Image as ImageIcon, SkipForward } from "luci
 import { cn } from "@/lib/utils";
 import InspectionStatusIndicator from "./inspection-status-indicator";
 import NumericKeypad from "./numeric-keypad";
+import PhotoUpload from "./photo-upload";
+import PhotoThumbnails from "./photo-thumbnails";
 
 interface InspectionItem {
   id: string;
@@ -53,14 +55,24 @@ function progressKey(itemId: string, instanceIndex: number): string {
   return `${itemId}:${instanceIndex}`;
 }
 
+interface PhotoEvidence {
+  id: string;
+  fileUrl: string;
+  inspectionItemId: string | null;
+  instanceIndex: number | null;
+  capturedAt: string;
+}
+
 interface Props {
   items: InspectionItem[];
   progressMap: Map<string, ProgressRecord>;
+  photoMap: Map<string, PhotoEvidence[]>;
   sessionId: string;
   sectionId: string;
   isReadOnly: boolean;
   isOffline?: boolean;
   onItemCompleted: (itemId: string, status: string, result: string | null, measurement: ProgressRecord["measurement"], instanceIndex?: number) => void;
+  onPhotoUploaded: (photo: PhotoEvidence) => void;
   referenceImageUrls: string[];
   targetItemId?: string | null;
   onTargetItemHandled?: () => void;
@@ -69,11 +81,13 @@ interface Props {
 export default function ItemList({
   items,
   progressMap,
+  photoMap,
   sessionId,
   sectionId,
   isReadOnly,
   isOffline,
   onItemCompleted,
+  onPhotoUploaded,
   referenceImageUrls,
   targetItemId,
   onTargetItemHandled,
@@ -281,6 +295,25 @@ export default function ItemList({
                         )}
                       </div>
                       {item.notes && <p className="text-white/50 text-xs italic mb-2">{item.notes}</p>}
+
+                      {/* Photo evidence: upload + thumbnails (shared across instances) */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          {!isReadOnly && !isOffline && (
+                            <PhotoUpload
+                              sessionId={sessionId}
+                              inspectionItemId={item.id}
+                              onPhotoUploaded={onPhotoUploaded}
+                            />
+                          )}
+                          {(photoMap.get(item.id)?.length || 0) > 0 && (
+                            <span className="text-white/30 text-xs">
+                              {photoMap.get(item.id)!.length} photo{photoMap.get(item.id)!.length !== 1 ? "s" : ""}
+                            </span>
+                          )}
+                        </div>
+                        <PhotoThumbnails photos={photoMap.get(item.id) || []} />
+                      </div>
                     </div>
 
                     {/* Instance sub-rows */}
@@ -454,6 +487,26 @@ export default function ItemList({
                   {item.notes && (
                     <p className="text-white/50 text-xs italic">{item.notes}</p>
                   )}
+
+                  {/* Photo evidence: upload button + thumbnails */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      {!isReadOnly && !isOffline && (
+                        <PhotoUpload
+                          sessionId={sessionId}
+                          inspectionItemId={item.id}
+                          instanceIndex={0}
+                          onPhotoUploaded={onPhotoUploaded}
+                        />
+                      )}
+                      {(photoMap.get(item.id)?.length || 0) > 0 && (
+                        <span className="text-white/30 text-xs">
+                          {photoMap.get(item.id)!.length} photo{photoMap.get(item.id)!.length !== 1 ? "s" : ""}
+                        </span>
+                      )}
+                    </div>
+                    <PhotoThumbnails photos={photoMap.get(item.id) || []} />
+                  </div>
 
                   {/* Captured value display */}
                   {progress?.measurement && (

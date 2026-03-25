@@ -151,6 +151,16 @@ export default function InspectWorkspace({ session, component }: Props) {
   // Photo evidence count from polling
   const [photoCount, setPhotoCount] = useState(0);
 
+  // Photo evidence map: inspectionItemId (or "general") → array of photos
+  interface PhotoEvidence {
+    id: string;
+    fileUrl: string;
+    inspectionItemId: string | null;
+    instanceIndex: number | null;
+    capturedAt: string;
+  }
+  const [photoMap, setPhotoMap] = useState<Map<string, PhotoEvidence[]>>(new Map());
+
   // Build candidate items for measurement matching
   const allCandidates: CandidateItem[] = sections.flatMap((sec) =>
     sec.items.map((item) => ({
@@ -218,6 +228,22 @@ export default function InspectWorkspace({ session, component }: Props) {
         setSummary(fullData.summary || { total: 0, done: 0, problem: 0, skipped: 0, pending: 0, findings: 0 });
         setUnassignedCount(fullData.unassignedMeasurements?.length || 0);
         setPhotoCount(fullData.photoCount || 0);
+
+        // Fetch photos for this session
+        try {
+          const photoRes = await fetch(apiUrl(`/api/inspect/sessions/${session.id}/photos`));
+          const photoData = await photoRes.json();
+          if (photoRes.ok && photoData.success) {
+            const newPhotoMap = new Map<string, PhotoEvidence[]>();
+            for (const photo of photoData.data) {
+              const key = photo.inspectionItemId || "general";
+              const arr = newPhotoMap.get(key) || [];
+              arr.push(photo);
+              newPhotoMap.set(key, arr);
+            }
+            setPhotoMap(newPhotoMap);
+          }
+        } catch { /* non-critical — photos will load on next poll */ }
       }
 
       lastPollRef.current = new Date().toISOString();
@@ -264,6 +290,18 @@ export default function InspectWorkspace({ session, component }: Props) {
     setTimeout(() => {
       lastPollRef.current = null;
     }, 500);
+  }
+
+  // Called when a photo is uploaded from ItemList
+  function handlePhotoUploaded(photo: PhotoEvidence) {
+    const key = photo.inspectionItemId || "general";
+    setPhotoMap((prev) => {
+      const next = new Map(prev);
+      const arr = [...(next.get(key) || []), photo];
+      next.set(key, arr);
+      return next;
+    });
+    setPhotoCount((prev) => prev + 1);
   }
 
   const [targetItemId, setTargetItemId] = useState<string | null>(null);
@@ -376,11 +414,13 @@ export default function InspectWorkspace({ session, component }: Props) {
         <ItemList
           items={activeItems}
           progressMap={progressMap}
+          photoMap={photoMap}
           sessionId={session.id}
           sectionId={activeSectionId}
           isReadOnly={isReadOnly}
           isOffline={!isOnline}
           onItemCompleted={handleItemCompleted}
+          onPhotoUploaded={handlePhotoUploaded}
           referenceImageUrls={activeSection?.referenceImageUrls || []}
           targetItemId={targetItemId}
           onTargetItemHandled={() => setTargetItemId(null)}
