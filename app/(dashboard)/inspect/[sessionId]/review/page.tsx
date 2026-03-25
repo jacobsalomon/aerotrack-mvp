@@ -75,13 +75,20 @@ export default async function ReviewPage({ params }: PageProps) {
     where: { captureSessionId: sessionId, inspectionItemId: null },
   });
 
-  // Get distinct item IDs that have photo evidence (for missing-photo warnings)
-  const photosWithItems = await prisma.captureEvidence.findMany({
-    where: { sessionId, type: "PHOTO", inspectionItemId: { not: null } },
-    select: { inspectionItemId: true },
-    distinct: ["inspectionItemId"],
+  // Fetch all photo evidence for gallery + missing-photo warnings
+  const photos = await prisma.captureEvidence.findMany({
+    where: { sessionId, type: "PHOTO" },
+    select: {
+      id: true,
+      fileUrl: true,
+      inspectionItemId: true,
+      instanceIndex: true,
+      capturedAt: true,
+      inspectionItem: { select: { parameterName: true } },
+    },
+    orderBy: { capturedAt: "asc" },
   });
-  const photoItemIds = photosWithItems.map((p) => p.inspectionItemId!);
+  const photoItemIds = [...new Set(photos.filter((p) => p.inspectionItemId).map((p) => p.inspectionItemId!))];
 
   const isReconciling = !session.reconciliationSummary && !session.signedOffAt;
 
@@ -92,6 +99,7 @@ export default async function ReviewPage({ params }: PageProps) {
       unassignedCount={unassignedCount}
       isReconciling={isReconciling}
       photoItemIds={photoItemIds}
+      photos={JSON.parse(JSON.stringify(photos))}
     />
   );
 }
