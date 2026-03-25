@@ -88,15 +88,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     });
 
     // Build summary counts
-    // Total items for this template (not just items with progress)
-    const totalItems = session.inspectionTemplateId
-      ? await prisma.inspectionItem.count({
-          where: {
-            section: { templateId: session.inspectionTemplateId },
-          },
-        })
-      : 0;
-
+    // Count all progress records (instances), not just unique items
     const allProgress = since
       ? await prisma.inspectionProgress.findMany({
           where: { captureSessionId: id },
@@ -104,6 +96,7 @@ export async function GET(request: Request, { params }: RouteContext) {
         })
       : progress;
 
+    const totalItems = allProgress.length;
     const matched = allProgress.filter((p) => p.status === "done" || p.status === "problem").length;
     const passed = allProgress.filter((p) => p.result === "in_spec" || p.result === "pass").length;
     const failed = allProgress.filter((p) => p.result === "out_of_spec" || p.result === "fail").length;
@@ -123,6 +116,11 @@ export async function GET(request: Request, { params }: RouteContext) {
       select: { updatedAt: true },
     });
 
+    // Count photo evidence for badge
+    const photoCount = await prisma.captureEvidence.count({
+      where: { sessionId: id, type: "PHOTO" },
+    });
+
     return NextResponse.json({
       success: true,
       data: enrichedProgress,
@@ -135,6 +133,7 @@ export async function GET(request: Request, { params }: RouteContext) {
         unassignedMeasurements,
         lastMatchedAt: lastProgress?.updatedAt ?? null,
       },
+      photoCount,
     });
   } catch (error) {
     console.error("[inspect/sessions/[id]/progress GET]", error);
