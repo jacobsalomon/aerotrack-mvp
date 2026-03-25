@@ -201,9 +201,12 @@ export default function InspectionRecorder({ sessionId, onTranscript }: Props) {
             uploadChunk(event.data, currentChunkStartRef.current || Date.now());
           }
         };
+        // Clean up after the recorder finishes producing its final chunk
+        rec.onstop = () => cleanup();
         rec.stop();
+      } else {
+        cleanup();
       }
-      cleanup();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

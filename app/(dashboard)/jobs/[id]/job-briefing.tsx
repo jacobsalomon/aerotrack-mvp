@@ -86,11 +86,15 @@ export default function JobBriefing({ session, component }: Props) {
         updates.cmmRevisionAcknowledged = true;
       }
 
-      await fetch(apiUrl(`/api/inspect/sessions/${session.id}`), {
+      const res = await fetch(apiUrl(`/api/inspect/sessions/${session.id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
       });
+
+      if (!res.ok) {
+        throw new Error(`Server error (${res.status})`);
+      }
 
       // Reload the page — the server component will see progress=0 but
       // we'll pass a query param to skip the briefing
