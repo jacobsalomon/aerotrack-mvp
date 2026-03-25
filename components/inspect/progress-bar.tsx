@@ -8,7 +8,7 @@ import { ReactNode, useState, useRef, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { AlertTriangle, Eye, Lock, Pencil } from "lucide-react";
+import { AlertTriangle, Camera, Eye, Lock, Pencil } from "lucide-react";
 import { apiUrl } from "@/lib/api-url";
 
 interface Props {
@@ -30,6 +30,7 @@ interface Props {
   onReview: () => void;
   searchSlot?: ReactNode;
   recorderSlot?: ReactNode;
+  photoCount?: number;
 }
 
 export default function ProgressBar({
@@ -44,6 +45,7 @@ export default function ProgressBar({
   onReview,
   searchSlot,
   recorderSlot,
+  photoCount,
 }: Props) {
   const completedCount = summary.done + summary.skipped;
   const pct = summary.total > 0 ? Math.round((completedCount / summary.total) * 100) : 0;
@@ -144,6 +146,11 @@ export default function ProgressBar({
             </button>
           )}
 
+          {!!photoCount && photoCount > 0 && (
+            <Badge variant="secondary" className="bg-blue-500/20 text-blue-300 text-xs">
+              <Camera className="h-3 w-3 mr-1" /> {photoCount}
+            </Badge>
+          )}
           {unassignedCount > 0 && (
             <Badge variant="secondary" className="bg-amber-500/20 text-amber-300 text-xs animate-pulse">
               {unassignedCount} unassigned

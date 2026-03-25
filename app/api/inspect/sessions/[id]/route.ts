@@ -71,6 +71,11 @@ export async function GET(request: Request, { params }: RouteContext) {
       orderBy: { createdAt: "desc" },
     });
 
+    // Count photo evidence for the badge
+    const photoCount = await prisma.captureEvidence.count({
+      where: { sessionId: id, type: "PHOTO" },
+    });
+
     return NextResponse.json({
       success: true,
       data: {
@@ -78,6 +83,7 @@ export async function GET(request: Request, { params }: RouteContext) {
         summary,
         sectionProgress,
         unassignedMeasurements,
+        photoCount,
       },
     });
   } catch (error) {
