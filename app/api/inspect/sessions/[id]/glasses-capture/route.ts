@@ -250,7 +250,7 @@ async function handleMeasurement(
 
 // Handle a photo from the glasses
 async function handlePhoto(
-  body: { imageUrl: string; timestamp?: string; inspectionItemId?: string },
+  body: { imageUrl: string; timestamp?: string; inspectionItemId?: string; instanceIndex?: number },
   session: { id: string; organizationId: string },
   sessionId: string
 ) {
@@ -280,6 +280,8 @@ async function handlePhoto(
       fileUrl: body.imageUrl,
       mimeType,
       capturedAt: body.timestamp ? new Date(body.timestamp) : new Date(),
+      inspectionItemId: body.inspectionItemId || null,
+      instanceIndex: body.instanceIndex ?? null,
     },
   });
 
