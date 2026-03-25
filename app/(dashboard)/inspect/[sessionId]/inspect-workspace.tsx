@@ -3,7 +3,7 @@
 // Main inspection workspace — orchestrates section tabs, item list, progress bar.
 // Polls for progress updates and manages active section state.
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { apiUrl } from "@/lib/api-url";
 import SectionTabs from "@/components/inspect/section-tabs";
@@ -67,6 +67,7 @@ interface SessionData {
   inspectionTemplate: {
     id: string;
     title: string;
+    createdAt: string;
     revisionDate: string | null;
     version: number;
     sections: InspectionSection[];
@@ -128,7 +129,7 @@ export default function InspectWorkspace({ session, component }: Props) {
   // Progress map: itemId → progress record
   const [progressMap, setProgressMap] = useState<Map<string, ProgressRecord>>(new Map());
   const [sectionProgress, setSectionProgress] = useState<SectionProgressData[]>([]);
-  const [lastPoll, setLastPoll] = useState<string | null>(null);
+  const lastPollRef = useRef<string | null>(null);
 
   // Summary counts
   const [summary, setSummary] = useState({ total: 0, done: 0, problem: 0, skipped: 0, pending: 0, findings: 0 });
@@ -164,10 +165,12 @@ export default function InspectWorkspace({ session, component }: Props) {
   }) || [];
 
   // ── Load full session data (initial + polling) ──
+  // Uses a ref for lastPoll so the callback identity stays stable (no interval churn)
   const fetchSessionData = useCallback(async () => {
     try {
-      const url = lastPoll
-        ? apiUrl(`/api/inspect/sessions/${session.id}/progress?since=${lastPoll}`)
+      const lp = lastPollRef.current;
+      const url = lp
+        ? apiUrl(`/api/inspect/sessions/${session.id}/progress?since=${lp}`)
         : apiUrl(`/api/inspect/sessions/${session.id}`);
 
       const res = await fetch(url);
@@ -175,7 +178,7 @@ export default function InspectWorkspace({ session, component }: Props) {
 
       if (!res.ok || !data.success) return;
 
-      if (lastPoll) {
+      if (lp) {
         // Incremental update from progress endpoint
         const updates: ProgressRecord[] = data.data;
         if (updates.length > 0) {
@@ -207,11 +210,11 @@ export default function InspectWorkspace({ session, component }: Props) {
         setPhotoCount(fullData.photoCount || 0);
       }
 
-      setLastPoll(new Date().toISOString());
+      lastPollRef.current = new Date().toISOString();
     } catch (err) {
       console.error("[InspectWorkspace] polling error:", err);
     }
-  }, [session.id, lastPoll]);
+  }, [session.id]);
 
   // Initial load
   useEffect(() => {
@@ -247,9 +250,9 @@ export default function InspectWorkspace({ session, component }: Props) {
       next.set(itemId, { inspectionItemId: itemId, status, result, measurementId: measurement?.id || null, measurement });
       return next;
     });
-    // Refresh full data to update section progress + summary
+    // Force full reload on next poll to update section progress + summary
     setTimeout(() => {
-      setLastPoll(null); // Force full reload on next poll
+      lastPollRef.current = null;
     }, 500);
   }
 
@@ -269,6 +272,7 @@ export default function InspectWorkspace({ session, component }: Props) {
     async (suggestion: MeasurementSuggestion) => {
       if (!suggestion.match) return;
       // Accept = record this measurement for the matched item via the glasses-capture API
+      // Send the matched itemId so the server doesn't re-run matching (avoids race conditions)
       try {
         await fetch(apiUrl(`/api/inspect/sessions/${session.id}/glasses-capture`), {
           method: "POST",
@@ -278,10 +282,11 @@ export default function InspectWorkspace({ session, component }: Props) {
             value: suggestion.value,
             unit: suggestion.unit,
             confidence: suggestion.match.confidence,
+            assignToItemId: suggestion.match.itemId,
           }),
         });
         // Force a full poll to pick up the new progress
-        setLastPoll(null);
+        lastPollRef.current = null;
       } catch (err) {
         console.error("[InspectWorkspace] accept suggestion failed:", err);
       }
@@ -329,6 +334,7 @@ export default function InspectWorkspace({ session, component }: Props) {
         workOrderRef={session.workOrderRef}
         sessionId={session.id}
         templateTitle={template.title}
+        templateCreatedAt={template.createdAt}
         componentInfo={component}
         isReadOnly={isReadOnly}
         unassignedCount={unassignedCount}
