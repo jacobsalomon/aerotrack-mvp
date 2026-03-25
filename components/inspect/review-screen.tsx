@@ -85,15 +85,25 @@ interface SessionData {
   inspectionFindings: FindingRecord[];
 }
 
+interface PhotoData {
+  id: string;
+  fileUrl: string;
+  inspectionItemId: string | null;
+  instanceIndex: number | null;
+  capturedAt: string;
+  inspectionItem: { parameterName: string } | null;
+}
+
 interface Props {
   session: SessionData;
   component: { id: string; partNumber: string; serialNumber: string; description: string } | null;
   unassignedCount: number;
   isReconciling?: boolean;
   photoItemIds?: string[];
+  photos?: PhotoData[];
 }
 
-export default function ReviewScreen({ session, component, unassignedCount, isReconciling, photoItemIds = [] }: Props) {
+export default function ReviewScreen({ session, component, unassignedCount, isReconciling, photoItemIds = [], photos = [] }: Props) {
   const router = useRouter();
   const template = session.inspectionTemplate;
   const progress = session.inspectionProgress || [];
@@ -103,6 +113,7 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [signingOff, setSigningOff] = useState(false);
   const [showSignOffDialog, setShowSignOffDialog] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   // Build progress map
   const progressMap = new Map<string, ProgressRecord>();
@@ -328,6 +339,65 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
             ))}
           </CardContent>
         </Card>
+      )}
+
+      {/* Photo Gallery */}
+      {photos.length > 0 && (
+        <Card className="bg-white/5 border-white/10 mb-4">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-white text-lg flex items-center gap-2">
+              <Camera className="h-5 w-5" /> Photos
+              <span className="text-white/40 text-sm font-normal ml-1">{photos.length}</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+              {photos.map((photo) => (
+                <button
+                  key={photo.id}
+                  onClick={() => setLightboxUrl(photo.fileUrl)}
+                  className="relative aspect-square rounded-lg overflow-hidden border border-white/10
+                    hover:border-white/30 transition-colors group"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={photo.fileUrl}
+                    alt={photo.inspectionItem?.parameterName || "Photo"}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-x-0 bottom-0 bg-black/60 px-1 py-0.5">
+                    <p className="text-white/80 text-[10px] truncate">
+                      {photo.inspectionItem?.parameterName || "General"}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Lightbox overlay */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            onClick={() => setLightboxUrl(null)}
+            className="absolute top-4 right-4 text-white/70 hover:text-white z-10"
+          >
+            <span className="sr-only">Close</span>
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightboxUrl}
+            alt="Photo enlarged"
+            className="max-w-full max-h-full object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
 
       {/* Section-by-section breakdown */}
