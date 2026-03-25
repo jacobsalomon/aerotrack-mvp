@@ -10,15 +10,14 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   ClipboardList,
   Layers,
   Calendar,
-  Wifi,
   WifiOff,
   Mic,
-  MicOff,
+  ShieldCheck,
 } from "lucide-react";
 import { apiUrl } from "@/lib/api-url";
 
@@ -26,6 +25,7 @@ interface Props {
   session: {
     id: string;
     workOrderRef: string | null;
+    cmmRevisionAcknowledgedAt: string | null;
     inspectionTemplate: {
       id: string;
       title: string;
@@ -52,6 +52,10 @@ export default function JobBriefing({ session, component }: Props) {
   // WO# — editable before starting
   const [workOrderRef, setWorkOrderRef] = useState(session.workOrderRef || "");
 
+  // CMM revision acknowledgement — already acknowledged sessions skip this
+  const alreadyAcknowledged = !!session.cmmRevisionAcknowledgedAt;
+  const [cmmAcknowledged, setCmmAcknowledged] = useState(alreadyAcknowledged);
+
   // Loading state for the begin button
   const [starting, setStarting] = useState(false);
 
@@ -72,22 +76,20 @@ export default function JobBriefing({ session, component }: Props) {
   async function handleBeginInspection() {
     setStarting(true);
     try {
-      // Save work order ref if the inspector typed one
+      // Save WO#, CMM acknowledgement, and set status in one PATCH
       const trimmedWo = workOrderRef.trim();
+      const updates: Record<string, unknown> = { status: "inspecting" };
       if (trimmedWo && trimmedWo !== session.workOrderRef) {
-        await fetch(apiUrl(`/api/inspect/sessions/${session.id}`), {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ workOrderRef: trimmedWo }),
-        });
+        updates.workOrderRef = trimmedWo;
+      }
+      if (!alreadyAcknowledged) {
+        updates.cmmRevisionAcknowledged = true;
       }
 
-      // Create a "started" marker by setting status to inspecting
-      // (session may already be inspecting — this is idempotent)
       await fetch(apiUrl(`/api/inspect/sessions/${session.id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "inspecting" }),
+        body: JSON.stringify(updates),
       });
 
       // Reload the page — the server component will see progress=0 but
@@ -165,6 +167,28 @@ export default function JobBriefing({ session, component }: Props) {
           </CardContent>
         </Card>
 
+        {/* CMM Revision Acknowledgement */}
+        <Card className="bg-zinc-900 border-white/10">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center gap-3 mb-2">
+              <ShieldCheck className="h-5 w-5 text-amber-400 shrink-0" />
+              <p className="text-white font-medium">
+                CMM Rev. {template.version} — {revisionDate}
+              </p>
+            </div>
+            <label className="flex items-start gap-3 cursor-pointer mt-3">
+              <Checkbox
+                checked={cmmAcknowledged}
+                onCheckedChange={(checked) => setCmmAcknowledged(checked === true)}
+                className="mt-0.5"
+              />
+              <span className="text-sm text-white/70">
+                I confirm this is the latest CMM revision for this component
+              </span>
+            </label>
+          </CardContent>
+        </Card>
+
         {/* Work Order # */}
         <Card className="bg-zinc-900 border-white/10">
           <CardContent className="pt-4 pb-4">
@@ -204,7 +228,7 @@ export default function JobBriefing({ session, component }: Props) {
         {/* Begin Inspection button */}
         <Button
           onClick={handleBeginInspection}
-          disabled={starting}
+          disabled={starting || !cmmAcknowledged}
           className="w-full h-14 text-lg font-semibold bg-blue-600 hover:bg-blue-500 text-white"
           size="lg"
         >

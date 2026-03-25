@@ -116,6 +116,12 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     if (body.activeInspectionSectionId !== undefined) {
       updates.activeInspectionSectionId = body.activeInspectionSectionId;
     }
+
+    // CMM revision acknowledgement — stores timestamp and user ID
+    if (body.cmmRevisionAcknowledged === true) {
+      updates.cmmRevisionAcknowledgedAt = new Date();
+      updates.cmmRevisionAcknowledgedById = authResult.user.id;
+    }
     if (body.status !== undefined) {
       // Only allow valid transitions
       const validStatuses = ["inspecting", "reviewing", "cancelled"];
