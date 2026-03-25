@@ -2,16 +2,22 @@
 // Loads the session and renders the correct workspace based on sessionType:
 //   "inspection" → InspectWorkspace (guided CMM inspection)
 //   "capture"    → SessionDetailClient (freeform capture review)
+// For new inspections with no progress, shows the Job Briefing screen first.
 
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import InspectWorkspace from "@/app/(dashboard)/inspect/[sessionId]/inspect-workspace";
 import SessionDetailClient from "@/app/(dashboard)/sessions/[id]/page";
+import JobBriefing from "./job-briefing";
 
-type PageProps = { params: Promise<{ id: string }> };
+type PageProps = {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+};
 
-export default async function JobPage({ params }: PageProps) {
+export default async function JobPage({ params, searchParams }: PageProps) {
   const { id } = await params;
+  const search = await searchParams;
 
   const session = await prisma.captureSession.findUnique({
     where: { id },
@@ -72,6 +78,8 @@ export default async function JobPage({ params }: PageProps) {
           },
         },
       },
+      // Count progress records to decide whether to show the briefing
+      _count: { select: { inspectionProgress: true } },
     },
   });
 
@@ -79,7 +87,7 @@ export default async function JobPage({ params }: PageProps) {
     redirect("/jobs");
   }
 
-  // Guided inspection — render InspectWorkspace
+  // Guided inspection
   if (session.sessionType === "inspection") {
     let component = null;
     if (session.componentId) {
@@ -87,6 +95,19 @@ export default async function JobPage({ params }: PageProps) {
         where: { id: session.componentId },
         select: { id: true, partNumber: true, serialNumber: true, description: true },
       });
+    }
+
+    // Show Job Briefing if no progress yet and inspector hasn't just tapped "Begin"
+    const hasProgress = session._count.inspectionProgress > 0;
+    const justStarted = search.started === "true";
+
+    if (!hasProgress && !justStarted && !session.signedOffAt) {
+      return (
+        <JobBriefing
+          session={JSON.parse(JSON.stringify(session))}
+          component={component ? JSON.parse(JSON.stringify(component)) : null}
+        />
+      );
     }
 
     return (
