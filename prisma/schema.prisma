@@ -444,6 +444,10 @@ model CaptureSession {
   signedOffAt                 DateTime?                       // When the inspection was signed off
   signOffNotes                String?                         // Optional notes from sign-off
 
+  // CMM revision acknowledgement — inspector confirms they have the latest CMM before starting
+  cmmRevisionAcknowledgedAt    DateTime?                       // When the inspector acknowledged the CMM revision
+  cmmRevisionAcknowledgedById  String?                         // FK to User who acknowledged
+
   // Layer 3: Post-session reconciliation results (matched/unmatched/conflicts summary)
   reconciliationSummary       Json?
 
