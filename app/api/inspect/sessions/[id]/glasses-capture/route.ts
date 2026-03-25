@@ -186,9 +186,10 @@ async function handleMeasurement(
 
     await prisma.inspectionProgress.upsert({
       where: {
-        captureSessionId_inspectionItemId: {
+        captureSessionId_inspectionItemId_instanceIndex: {
           captureSessionId: sessionId,
           inspectionItemId: assignedItemId,
+          instanceIndex: 0,
         },
       },
       create: {

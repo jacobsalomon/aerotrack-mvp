@@ -114,9 +114,10 @@ export async function POST(request: Request, { params }: RouteContext) {
       // Update progress
       await tx.inspectionProgress.upsert({
         where: {
-          captureSessionId_inspectionItemId: {
+          captureSessionId_inspectionItemId_instanceIndex: {
             captureSessionId: id,
             inspectionItemId,
+            instanceIndex: 0,
           },
         },
         create: {
@@ -189,9 +190,10 @@ export async function POST(request: Request, { params }: RouteContext) {
 
         await prisma.inspectionProgress.upsert({
           where: {
-            captureSessionId_inspectionItemId: {
+            captureSessionId_inspectionItemId_instanceIndex: {
               captureSessionId: id,
               inspectionItemId: matchItem.id,
+              instanceIndex: 0,
             },
           },
           create: {

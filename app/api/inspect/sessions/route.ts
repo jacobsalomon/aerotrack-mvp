@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/rbac";
+import { MAX_INSTANCE_COUNT } from "@/lib/inspect/cmm-config";
 
 export async function POST(request: Request) {
   const authResult = await requireAuth(request);
@@ -41,8 +42,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "Template is not active" }, { status: 400 });
     }
 
-    // Collect applicable items (filtered by config variant)
-    const applicableItems: string[] = [];
+    // Collect applicable items with their instance counts (filtered by config variant)
+    const applicableItems: { itemId: string; instanceCount: number }[] = [];
     for (const section of template.sections) {
       // Skip sections not applicable to this config variant
       if (configurationVariant && section.configurationApplicability.length > 0 &&
@@ -55,7 +56,9 @@ export async function POST(request: Request) {
             !item.configurationApplicability.includes(configurationVariant)) {
           continue;
         }
-        applicableItems.push(item.id);
+        // Cap instance count at MAX_INSTANCE_COUNT to prevent runaway records
+        const count = Math.min(Math.max(item.instanceCount, 1), MAX_INSTANCE_COUNT);
+        applicableItems.push({ itemId: item.id, instanceCount: count });
       }
     }
 
@@ -76,15 +79,22 @@ export async function POST(request: Request) {
         },
       });
 
-      // Create InspectionProgress records for every applicable item (all start as "pending")
-      if (applicableItems.length > 0) {
-        await tx.inspectionProgress.createMany({
-          data: applicableItems.map((itemId) => ({
+      // Create InspectionProgress records for every applicable item-instance (all start as "pending")
+      // Multi-instance items get N records (one per instance), single items get 1 record with instanceIndex 0
+      const progressData: { captureSessionId: string; inspectionItemId: string; instanceIndex: number; status: string }[] = [];
+      for (const { itemId, instanceCount } of applicableItems) {
+        for (let i = 0; i < instanceCount; i++) {
+          progressData.push({
             captureSessionId: newSession.id,
             inspectionItemId: itemId,
+            instanceIndex: i,
             status: "pending",
-          })),
-        });
+          });
+        }
+      }
+
+      if (progressData.length > 0) {
+        await tx.inspectionProgress.createMany({ data: progressData });
       }
 
       return newSession;

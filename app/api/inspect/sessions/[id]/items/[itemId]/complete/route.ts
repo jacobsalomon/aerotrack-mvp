@@ -87,9 +87,10 @@ export async function POST(request: Request, { params }: RouteContext) {
     // Upsert InspectionProgress
     await prisma.inspectionProgress.upsert({
       where: {
-        captureSessionId_inspectionItemId: {
+        captureSessionId_inspectionItemId_instanceIndex: {
           captureSessionId: id,
           inspectionItemId: itemId,
+          instanceIndex: 0,
         },
       },
       create: {
