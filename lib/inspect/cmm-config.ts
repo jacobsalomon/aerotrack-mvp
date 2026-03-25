@@ -10,6 +10,12 @@ export const CMM_AGE_CRITICAL_DAYS = 90;
 // Max instance count for multi-instance items (prevents UI explosion)
 export const MAX_INSTANCE_COUNT = 100;
 
+// Composite key for multi-instance progress: "itemId:instanceIndex"
+// Used by progressMap in the workspace and item list
+export function progressKey(itemId: string, instanceIndex: number): string {
+  return `${itemId}:${instanceIndex}`;
+}
+
 // Helper: compute age warning level from a date
 export function getCmmAgeWarning(uploadedAt: Date | string): "ok" | "warning" | "critical" {
   const now = new Date();

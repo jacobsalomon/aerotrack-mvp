@@ -50,10 +50,7 @@ interface ProgressRecord {
   } | null;
 }
 
-// Composite key matching the workspace progressMap
-function progressKey(itemId: string, instanceIndex: number): string {
-  return `${itemId}:${instanceIndex}`;
-}
+import { progressKey } from "@/lib/inspect/cmm-config";
 
 interface PhotoEvidence {
   id: string;

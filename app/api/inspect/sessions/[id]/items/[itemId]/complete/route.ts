@@ -34,6 +34,11 @@ export async function POST(request: Request, { params }: RouteContext) {
     const { value, unit, notes, result: manualResult } = body;
     const instanceIndex = body.instanceIndex ?? 0;
 
+    // Validate instanceIndex is within bounds
+    if (instanceIndex < 0 || instanceIndex >= item.instanceCount) {
+      return NextResponse.json({ success: false, error: `Invalid instanceIndex ${instanceIndex} (item has ${item.instanceCount} instances)` }, { status: 400 });
+    }
+
     // For pass/fail items (visual_check, procedural_check), no numeric value needed
     const isPassFail = ["visual_check", "procedural_check", "safety_wire"].includes(item.itemType);
 

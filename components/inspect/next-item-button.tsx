@@ -5,6 +5,7 @@
 
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { progressKey } from "@/lib/inspect/cmm-config";
 
 interface InspectionItem {
   id: string;
@@ -54,7 +55,7 @@ export default function NextItemButton({
         // Check all instances — item is "next" if any instance is pending
         const count = item.instanceCount || 1;
         for (let i = 0; i < count; i++) {
-          const progress = progressMap.get(`${item.id}:${i}`);
+          const progress = progressMap.get(progressKey(item.id, i));
           if (!progress || progress.status === "pending") {
             return { sectionId: section.id, item };
           }

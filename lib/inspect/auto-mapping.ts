@@ -56,7 +56,23 @@ export async function autoMapMeasurement(
     },
   });
 
-  const pendingItems = pendingProgress.map((p) => p.inspectionItem);
+  // Deduplicate items — multi-instance items have N pending progress records for the same item
+  const seenItemIds = new Set<string>();
+  const pendingItems = pendingProgress
+    .map((p) => p.inspectionItem)
+    .filter((item) => {
+      if (seenItemIds.has(item.id)) return false;
+      seenItemIds.add(item.id);
+      return true;
+    });
+
+  // Build a map of itemId → first pending instanceIndex (for assignment)
+  const firstPendingInstance = new Map<string, number>();
+  for (const p of pendingProgress) {
+    if (!firstPendingInstance.has(p.inspectionItemId)) {
+      firstPendingInstance.set(p.inspectionItemId, p.instanceIndex);
+    }
+  }
 
   // Filter by config variant
   const applicableItems = pendingItems.filter((item) => {
@@ -71,7 +87,8 @@ export async function autoMapMeasurement(
       (item) => item.itemCallout === measurement.calloutNumber
     );
     if (calloutMatch) {
-      return await assignMeasurement(sessionId, measurement, calloutMatch, "callout match");
+      const instIdx = firstPendingInstance.get(calloutMatch.id) ?? 0;
+      return await assignMeasurement(sessionId, measurement, calloutMatch, instIdx, "callout match");
     }
   }
 
@@ -90,7 +107,8 @@ export async function autoMapMeasurement(
   });
 
   if (candidates.length === 1) {
-    return await assignMeasurement(sessionId, measurement, candidates[0], "single spec match");
+    const instIdx = firstPendingInstance.get(candidates[0].id) ?? 0;
+    return await assignMeasurement(sessionId, measurement, candidates[0], instIdx, "single spec match");
   }
 
   if (candidates.length > 1) {
@@ -113,11 +131,12 @@ export async function autoMapMeasurement(
   };
 }
 
-// Assign a measurement to an item and update progress
+// Assign a measurement to an item instance and update progress
 async function assignMeasurement(
   sessionId: string,
   measurement: ExtractedMeasurement,
   item: { id: string; specValueLow: number | null; specValueHigh: number | null },
+  instanceIndex: number,
   reason: string
 ): Promise<MappingResult> {
   const toleranceResult = checkInspectionTolerance(measurement.value, item.specValueLow, item.specValueHigh);
@@ -129,6 +148,7 @@ async function assignMeasurement(
       where: { id: measurement.measurementId },
       data: {
         inspectionItemId: item.id,
+        instanceIndex,
         toleranceLow: item.specValueLow,
         toleranceHigh: item.specValueHigh,
         inTolerance: toleranceResult === "in_spec" ? true : toleranceResult === "out_of_spec" ? false : null,
@@ -136,18 +156,19 @@ async function assignMeasurement(
       },
     });
 
-    // Update progress
+    // Update progress for the specific instance
     await tx.inspectionProgress.upsert({
       where: {
         captureSessionId_inspectionItemId_instanceIndex: {
           captureSessionId: sessionId,
           inspectionItemId: item.id,
-          instanceIndex: 0,
+          instanceIndex,
         },
       },
       create: {
         captureSessionId: sessionId,
         inspectionItemId: item.id,
+        instanceIndex,
         status: progressStatus,
         result: toleranceResult || "in_spec",
         measurementId: measurement.measurementId,

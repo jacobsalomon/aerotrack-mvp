@@ -154,11 +154,23 @@ async function handleMeasurement(
     };
   } else {
     // Get completed item IDs so we can deprioritize them
-    const completedProgress = await prisma.inspectionProgress.findMany({
-      where: { captureSessionId: sessionId, status: { in: ["done", "skipped"] } },
-      select: { inspectionItemId: true },
+    // Only mark an item as "completed" if ALL instances are done (not just one)
+    const allProgress = await prisma.inspectionProgress.findMany({
+      where: { captureSessionId: sessionId },
+      select: { inspectionItemId: true, status: true },
     });
-    const completedIds = new Set(completedProgress.map((p) => p.inspectionItemId));
+    const itemInstanceCounts = new Map<string, { total: number; done: number }>();
+    for (const p of allProgress) {
+      const entry = itemInstanceCounts.get(p.inspectionItemId) || { total: 0, done: 0 };
+      entry.total++;
+      if (p.status === "done" || p.status === "skipped") entry.done++;
+      itemInstanceCounts.set(p.inspectionItemId, entry);
+    }
+    const completedIds = new Set(
+      [...itemInstanceCounts.entries()]
+        .filter(([, v]) => v.done >= v.total)
+        .map(([k]) => k)
+    );
 
     // Run matching algorithm
     match = matchMeasurementToItem(

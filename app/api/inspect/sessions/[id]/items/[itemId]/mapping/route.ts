@@ -22,12 +22,16 @@ export async function DELETE(request: Request, { params }: RouteContext) {
     const guard = guardSignedOff(session);
     if (guard) return guard;
 
+    // Read instanceIndex from query string (DELETE has no body)
+    const { searchParams } = new URL(request.url);
+    const instanceIndex = parseInt(searchParams.get("instanceIndex") || "0", 10) || 0;
+
     const progress = await prisma.inspectionProgress.findUnique({
       where: {
         captureSessionId_inspectionItemId_instanceIndex: {
           captureSessionId: id,
           inspectionItemId: itemId,
-          instanceIndex: 0,
+          instanceIndex,
         },
       },
     });
@@ -49,7 +53,7 @@ export async function DELETE(request: Request, { params }: RouteContext) {
           captureSessionId_inspectionItemId_instanceIndex: {
             captureSessionId: id,
             inspectionItemId: itemId,
-            instanceIndex: 0,
+            instanceIndex,
           },
         },
         data: {

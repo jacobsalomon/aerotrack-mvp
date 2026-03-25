@@ -31,12 +31,14 @@ export async function POST(request: Request, { params }: RouteContext) {
     if (guard) return guard;
 
     const body = await request.json();
-    const { measurementId, inspectionItemId, bulkApply, resolveConflict } = body as {
+    const { measurementId, inspectionItemId, bulkApply, resolveConflict, instanceIndex: reqInstanceIndex } = body as {
       measurementId: string;
       inspectionItemId: string;
       bulkApply?: boolean;           // Apply to all matching-spec items in section
       resolveConflict?: "accept" | "reject";  // Reconciliation conflict resolution
+      instanceIndex?: number;
     };
+    const assignInstanceIndex = reqInstanceIndex ?? 0;
 
     // ── Reconciliation conflict resolution ──
     if (resolveConflict && measurementId) {
@@ -117,12 +119,13 @@ export async function POST(request: Request, { params }: RouteContext) {
           captureSessionId_inspectionItemId_instanceIndex: {
             captureSessionId: id,
             inspectionItemId,
-            instanceIndex: 0,
+            instanceIndex: assignInstanceIndex,
           },
         },
         create: {
           captureSessionId: id,
           inspectionItemId,
+          instanceIndex: assignInstanceIndex,
           status: specResult === "fail" ? "problem" : "done",
           result: toleranceResult,
           measurementId,
