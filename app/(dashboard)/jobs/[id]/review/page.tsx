@@ -81,6 +81,14 @@ export default async function JobReviewPage({ params }: PageProps) {
     where: { captureSessionId: id, inspectionItemId: null },
   });
 
+  // Get distinct item IDs that have photo evidence (for missing-photo warnings)
+  const photosWithItems = await prisma.captureEvidence.findMany({
+    where: { sessionId: id, type: "PHOTO", inspectionItemId: { not: null } },
+    select: { inspectionItemId: true },
+    distinct: ["inspectionItemId"],
+  });
+  const photoItemIds = photosWithItems.map((p) => p.inspectionItemId!);
+
   const isReconciling = !session.reconciliationSummary && !session.signedOffAt;
 
   return (
@@ -89,6 +97,7 @@ export default async function JobReviewPage({ params }: PageProps) {
       component={component ? JSON.parse(JSON.stringify(component)) : null}
       unassignedCount={unassignedCount}
       isReconciling={isReconciling}
+      photoItemIds={photoItemIds}
     />
   );
 }
