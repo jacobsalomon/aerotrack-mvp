@@ -29,6 +29,7 @@ interface Props {
   unassignedCount: number;
   onReview: () => void;
   searchSlot?: ReactNode;
+  recorderSlot?: ReactNode;
 }
 
 export default function ProgressBar({
@@ -42,6 +43,7 @@ export default function ProgressBar({
   unassignedCount,
   onReview,
   searchSlot,
+  recorderSlot,
 }: Props) {
   const completedCount = summary.done + summary.skipped;
   const pct = summary.total > 0 ? Math.round((completedCount / summary.total) * 100) : 0;
@@ -86,6 +88,7 @@ export default function ProgressBar({
           </span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
+          {recorderSlot}
           {searchSlot}
           {isReadOnly && (
             <Badge variant="outline" className="border-yellow-500/50 text-yellow-500 text-xs">
