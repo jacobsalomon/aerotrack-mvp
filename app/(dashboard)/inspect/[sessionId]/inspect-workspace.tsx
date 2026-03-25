@@ -13,6 +13,11 @@ import NetworkBanner, { useOnlineStatus } from "@/components/inspect/network-ban
 import NextItemButton from "@/components/inspect/next-item-button";
 import ItemSearch from "@/components/inspect/item-search";
 import InspectionRecorder from "@/components/inspect/inspection-recorder";
+import MeasurementToast, { type MeasurementSuggestion } from "@/components/inspect/measurement-toast";
+import {
+  matchMeasurementToItem,
+  type CandidateItem,
+} from "@/lib/inspect/match-measurement-to-item";
 
 // Types matching what the server component passes down
 interface InspectionItem {
@@ -131,6 +136,25 @@ export default function InspectWorkspace({ session, component }: Props) {
   // Unassigned measurement count
   const [unassignedCount, setUnassignedCount] = useState(0);
 
+  // Measurement suggestions from audio extraction (for toast UI)
+  const [suggestions, setSuggestions] = useState<MeasurementSuggestion[]>([]);
+
+  // Photo evidence count from polling
+  const [photoCount, setPhotoCount] = useState(0);
+
+  // Build candidate items for measurement matching
+  const allCandidates: CandidateItem[] = sections.flatMap((sec) =>
+    sec.items.map((item) => ({
+      id: item.id,
+      sectionId: sec.id,
+      parameterName: item.parameterName,
+      specUnit: item.specUnit,
+      specValueLow: item.specValueLow,
+      specValueHigh: item.specValueHigh,
+      itemCallout: item.itemCallout,
+    }))
+  );
+
   // Get the active section's items filtered by config variant
   const activeSection = sections.find((s) => s.id === activeSectionId);
   const activeItems = activeSection?.items.filter((item) => {
@@ -180,6 +204,7 @@ export default function InspectWorkspace({ session, component }: Props) {
         setSectionProgress(fullData.sectionProgress || []);
         setSummary(fullData.summary || { total: 0, done: 0, problem: 0, skipped: 0, pending: 0, findings: 0 });
         setUnassignedCount(fullData.unassignedMeasurements?.length || 0);
+        setPhotoCount(fullData.photoCount || 0);
       }
 
       setLastPoll(new Date().toISOString());
@@ -235,6 +260,50 @@ export default function InspectWorkspace({ session, component }: Props) {
     router.push(`/jobs/${session.id}/review`);
   }
 
+  // ── Measurement toast handlers ──
+  const handleDismissSuggestion = useCallback((id: string) => {
+    setSuggestions((prev) => prev.filter((s) => s.id !== id));
+  }, []);
+
+  const handleAcceptSuggestion = useCallback(
+    async (suggestion: MeasurementSuggestion) => {
+      if (!suggestion.match) return;
+      // Accept = record this measurement for the matched item via the glasses-capture API
+      try {
+        await fetch(apiUrl(`/api/inspect/sessions/${session.id}/glasses-capture`), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "measurement",
+            value: suggestion.value,
+            unit: suggestion.unit,
+            confidence: suggestion.match.confidence,
+          }),
+        });
+        // Force a full poll to pick up the new progress
+        setLastPoll(null);
+      } catch (err) {
+        console.error("[InspectWorkspace] accept suggestion failed:", err);
+      }
+      setSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
+    },
+    [session.id]
+  );
+
+  const handleReassignSuggestion = useCallback(
+    (_suggestion: MeasurementSuggestion) => {
+      // TODO: show item picker for manual assignment
+      // For now, just dismiss — the measurement is already stored as unassigned
+      setSuggestions((prev) => prev.filter((s) => s.id !== _suggestion.id));
+    },
+    []
+  );
+
+  // Called when InspectionRecorder gets a transcript with measurements
+  // The audio pipeline already extracts and stores measurements server-side,
+  // so we just need to detect new unassigned ones via polling and show toasts.
+  // This is a placeholder for future real-time transcript processing.
+
   function handleNavigateToItem(sectionId: string, itemId: string) {
     if (sectionId !== activeSectionId) {
       handleSectionChange(sectionId);
@@ -263,6 +332,7 @@ export default function InspectWorkspace({ session, component }: Props) {
         componentInfo={component}
         isReadOnly={isReadOnly}
         unassignedCount={unassignedCount}
+        photoCount={photoCount}
         onReview={handleReview}
         recorderSlot={
           !isReadOnly ? <InspectionRecorder sessionId={session.id} /> : undefined
@@ -308,6 +378,16 @@ export default function InspectWorkspace({ session, component }: Props) {
           progressMap={progressMap}
           onNavigate={handleNavigateToItem}
           disabled={!isOnline}
+        />
+      )}
+
+      {/* Measurement suggestion toasts — bottom of screen */}
+      {!isReadOnly && (
+        <MeasurementToast
+          suggestions={suggestions}
+          onAccept={handleAcceptSuggestion}
+          onReassign={handleReassignSuggestion}
+          onDismiss={handleDismissSuggestion}
         />
       )}
     </div>
