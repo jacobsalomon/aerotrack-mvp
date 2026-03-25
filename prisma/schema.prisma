@@ -491,11 +491,17 @@ model CaptureEvidence {
   capturedAt      DateTime  @default(now())
   createdAt       DateTime  @default(now())
 
+  // Link photo evidence to a specific inspection item (nullable — unlinked = general job photo)
+  inspectionItemId String?
+  inspectionItem   InspectionItem? @relation(fields: [inspectionItemId], references: [id])
+  instanceIndex    Int?                                  // Which instance (for multi-instance items), 0-based
+
   // Relationships
   videoAnnotations   VideoAnnotation[]
   measurementSources MeasurementSource[]
 
   @@index([sessionId])
+  @@index([inspectionItemId])
 }
 
 // ──────────────────────────────────────────────────────
@@ -987,6 +993,7 @@ model InspectionItem {
   measurements                Measurement[]               // Measurements linked to this inspection item
   inspectionProgress          InspectionProgress[]        // Progress records for this item
   inspectionFindings          InspectionFinding[]         // Findings attached to this item
+  captureEvidence             CaptureEvidence[]           // Photos linked to this item
 
   @@index([sectionId])
 }
