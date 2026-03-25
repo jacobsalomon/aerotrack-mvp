@@ -23,6 +23,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     if (guard) return guard;
 
     const body = await request.json();
+    const instanceIndex = body.instanceIndex ?? 0;
     if (!body.reason) {
       return NextResponse.json({ success: false, error: "reason is required to skip an item" }, { status: 400 });
     }
@@ -32,12 +33,13 @@ export async function POST(request: Request, { params }: RouteContext) {
         captureSessionId_inspectionItemId_instanceIndex: {
           captureSessionId: id,
           inspectionItemId: itemId,
-          instanceIndex: 0,
+          instanceIndex,
         },
       },
       create: {
         captureSessionId: id,
         inspectionItemId: itemId,
+        instanceIndex,
         status: "skipped",
         result: "not_applicable",
         skipReason: body.reason,

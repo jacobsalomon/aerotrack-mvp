@@ -11,6 +11,7 @@ interface InspectionItem {
   itemCallout: string | null;
   parameterName: string;
   sortOrder: number;
+  instanceCount: number;
 }
 
 interface Section {
@@ -50,9 +51,13 @@ export default function NextItemButton({
       const section = sorted[idx];
 
       for (const item of [...section.items].sort((a, b) => a.sortOrder - b.sortOrder)) {
-        const progress = progressMap.get(item.id);
-        if (!progress || progress.status === "pending") {
-          return { sectionId: section.id, item };
+        // Check all instances — item is "next" if any instance is pending
+        const count = item.instanceCount || 1;
+        for (let i = 0; i < count; i++) {
+          const progress = progressMap.get(`${item.id}:${i}`);
+          if (!progress || progress.status === "pending") {
+            return { sectionId: section.id, item };
+          }
         }
       }
     }

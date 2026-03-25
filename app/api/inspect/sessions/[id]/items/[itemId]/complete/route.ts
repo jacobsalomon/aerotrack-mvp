@@ -32,6 +32,7 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     const body = await request.json();
     const { value, unit, notes, result: manualResult } = body;
+    const instanceIndex = body.instanceIndex ?? 0;
 
     // For pass/fail items (visual_check, procedural_check), no numeric value needed
     const isPassFail = ["visual_check", "procedural_check", "safety_wire"].includes(item.itemType);
@@ -52,6 +53,7 @@ export async function POST(request: Request, { params }: RouteContext) {
           captureSessionId: id,
           componentId: session.componentId,
           inspectionItemId: itemId,
+          instanceIndex,
           measurementType: item.itemType,
           parameterName: item.parameterName,
           value,
@@ -90,12 +92,13 @@ export async function POST(request: Request, { params }: RouteContext) {
         captureSessionId_inspectionItemId_instanceIndex: {
           captureSessionId: id,
           inspectionItemId: itemId,
-          instanceIndex: 0,
+          instanceIndex,
         },
       },
       create: {
         captureSessionId: id,
         inspectionItemId: itemId,
+        instanceIndex,
         status: progressStatus,
         result: progressResult,
         measurementId: measurement?.id || null,
