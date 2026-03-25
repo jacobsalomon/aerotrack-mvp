@@ -108,6 +108,11 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     const body = await request.json();
     const updates: Record<string, unknown> = {};
 
+    // Allow updating work order reference at any time
+    if (body.workOrderRef !== undefined) {
+      updates.workOrderRef = body.workOrderRef || null;
+    }
+
     if (body.activeInspectionSectionId !== undefined) {
       updates.activeInspectionSectionId = body.activeInspectionSectionId;
     }

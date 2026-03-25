@@ -17,10 +17,20 @@ export async function GET() {
     orderBy: { createdAt: "desc" },
     include: {
       _count: { select: { sections: true } },
+      sections: {
+        select: { _count: { select: { items: true } } },
+      },
     },
   });
 
-  return NextResponse.json({ templates });
+  // Add total item count to each template for the UI
+  const enriched = templates.map((t) => {
+    const totalItems = t.sections.reduce((sum, s) => sum + s._count.items, 0);
+    const { sections: _sections, ...rest } = t;
+    return { ...rest, totalItems };
+  });
+
+  return NextResponse.json({ templates: enriched });
 }
 
 export async function POST(request: Request) {

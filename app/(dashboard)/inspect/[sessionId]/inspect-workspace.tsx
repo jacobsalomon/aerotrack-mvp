@@ -257,6 +257,7 @@ export default function InspectWorkspace({ session, component }: Props) {
         summary={summary}
         configVariant={session.configurationVariant}
         workOrderRef={session.workOrderRef}
+        sessionId={session.id}
         templateTitle={template.title}
         componentInfo={component}
         isReadOnly={isReadOnly}
