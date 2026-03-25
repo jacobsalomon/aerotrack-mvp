@@ -17,19 +17,27 @@ import {
 import { FileUp, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+// Pre-fill values when updating an existing template
+interface Prefill {
+  title?: string;
+  partNumbers?: string;
+}
+
 export default function UploadModal({
   onClose,
   onUploaded,
+  prefill,
 }: {
   onClose: () => void;
   onUploaded?: (template: { id: string; title: string; status: string }) => void;
+  prefill?: Prefill;
 }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(prefill?.title || "");
   const [revisionDate, setRevisionDate] = useState("");
-  const [partNumbers, setPartNumbers] = useState("");
+  const [partNumbers, setPartNumbers] = useState(prefill?.partNumbers || "");
   const [inspectionPages, setInspectionPages] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
@@ -126,10 +134,11 @@ export default function UploadModal({
     <Dialog open onOpenChange={() => onClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Upload CMM</DialogTitle>
+          <DialogTitle>{prefill ? "Update CMM" : "Upload CMM"}</DialogTitle>
           <DialogDescription>
-            Upload a Component Maintenance Manual PDF. AeroVision will extract
-            torque specs, tool requirements, and inspection checks automatically.
+            {prefill
+              ? "Upload a fresh revision. The previous version will be archived and any in-progress jobs will keep their original template."
+              : "Upload a Component Maintenance Manual PDF. AeroVision will extract torque specs, tool requirements, and inspection checks automatically."}
           </DialogDescription>
         </DialogHeader>
 

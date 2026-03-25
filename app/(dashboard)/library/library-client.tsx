@@ -139,6 +139,8 @@ export default function LibraryClient({
 }) {
   const router = useRouter();
   const [showUpload, setShowUpload] = useState(false);
+  // When updating an existing template, store its prefill data
+  const [updatePrefill, setUpdatePrefill] = useState<{ title: string; partNumbers: string } | null>(null);
   const [templates, setTemplates] = useState(initialTemplates);
 
   // State for the delete confirmation dialog
@@ -298,10 +300,11 @@ export default function LibraryClient({
             ].includes(template.status);
             const tp = progress[template.id];
 
-            // Should we show the three-dot menu? (not on active templates)
+            // Should we show the three-dot menu?
             const showRetry = RETRYABLE_STATUSES.includes(template.status);
+            const showUpdate = template.status === "active" || template.status === "review_ready";
             const showDelete = template.status !== "active";
-            const showMenu = showRetry || showDelete;
+            const showMenu = showRetry || showDelete || showUpdate;
 
             const cardContent = (
               <Card
@@ -392,6 +395,20 @@ export default function LibraryClient({
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            {showUpdate && (
+                              <DropdownMenuItem
+                                onSelect={() => {
+                                  setUpdatePrefill({
+                                    title: template.title,
+                                    partNumbers: template.partNumbersCovered.join(", "),
+                                  });
+                                  setShowUpload(true);
+                                }}
+                              >
+                                <Upload className="h-4 w-4" />
+                                Update CMM
+                              </DropdownMenuItem>
+                            )}
                             {showRetry && (
                               <DropdownMenuItem
                                 onSelect={() => handleRetry(template.id)}
@@ -461,10 +478,11 @@ export default function LibraryClient({
         </details>
       )}
 
-      {/* Upload modal */}
+      {/* Upload modal (also used for CMM updates with prefill) */}
       {showUpload && (
         <UploadModal
-          onClose={() => setShowUpload(false)}
+          onClose={() => { setShowUpload(false); setUpdatePrefill(null); }}
+          prefill={updatePrefill || undefined}
           onUploaded={(t) => {
             // Add the new template to the top of the list immediately
             // so the user sees it with a "processing" badge right away.
