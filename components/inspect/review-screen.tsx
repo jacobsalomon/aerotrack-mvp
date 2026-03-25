@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   AlertTriangle,
+  Camera,
   Check,
   ChevronDown,
   ChevronRight,
@@ -32,6 +33,7 @@ interface MeasurementData {
 interface InspectionItemData {
   id: string;
   parameterName: string;
+  itemType: string;
   specValueLow: number | null;
   specValueHigh: number | null;
   checkReference: string | null;
@@ -88,9 +90,10 @@ interface Props {
   component: { id: string; partNumber: string; serialNumber: string; description: string } | null;
   unassignedCount: number;
   isReconciling?: boolean;
+  photoItemIds?: string[];
 }
 
-export default function ReviewScreen({ session, component, unassignedCount, isReconciling }: Props) {
+export default function ReviewScreen({ session, component, unassignedCount, isReconciling, photoItemIds = [] }: Props) {
   const router = useRouter();
   const template = session.inspectionTemplate;
   const progress = session.inspectionProgress || [];
@@ -121,6 +124,13 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
     const item = p.inspectionItem;
     return (item?.checkReference || item?.repairReference) && p.status === "pending";
   });
+
+  // Visual check items missing photo evidence
+  const photoItemIdSet = new Set(photoItemIds);
+  const allVisualChecks = (template?.sections || []).flatMap((s) =>
+    s.items.filter((i) => i.itemType === "visual_check")
+  );
+  const missingPhotoItems = allVisualChecks.filter((i) => !photoItemIdSet.has(i.id));
 
   async function handleSignOff() {
     setSigningOff(true);
@@ -299,6 +309,23 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
             <p className="text-amber-400 text-sm">
               ⚠ {unassignedCount} unassigned measurement{unassignedCount > 1 ? "s" : ""} remaining
             </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Missing photo evidence for visual checks */}
+      {missingPhotoItems.length > 0 && (
+        <Card className="bg-amber-500/5 border-amber-500/20 mb-4">
+          <CardContent className="py-3">
+            <p className="text-amber-400 text-sm font-medium mb-2 flex items-center gap-2">
+              <Camera className="h-4 w-4" />
+              {missingPhotoItems.length} visual check{missingPhotoItems.length !== 1 ? "s" : ""} missing photo evidence
+            </p>
+            {missingPhotoItems.map((item) => (
+              <p key={item.id} className="text-white/50 text-xs">
+                {item.parameterName}
+              </p>
+            ))}
           </CardContent>
         </Card>
       )}

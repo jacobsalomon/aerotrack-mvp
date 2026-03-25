@@ -7,7 +7,7 @@
 import { useState, useEffect, useRef } from "react";
 import { apiUrl } from "@/lib/api-url";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronRight, Image as ImageIcon, SkipForward } from "lucide-react";
+import { Camera, Check, ChevronDown, ChevronRight, Image as ImageIcon, SkipForward } from "lucide-react";
 import { cn } from "@/lib/utils";
 import InspectionStatusIndicator from "./inspection-status-indicator";
 import NumericKeypad from "./numeric-keypad";
@@ -274,6 +274,21 @@ export default function ItemList({
                     </span>
                   </span>
 
+                  {/* Required photo indicator for visual check items */}
+                  {item.itemType === "visual_check" && (
+                    (photoMap.get(item.id)?.length || 0) > 0 ? (
+                      <span className="text-green-400 flex items-center" title="Photo attached">
+                        <Camera className="h-3.5 w-3.5" />
+                        <Check className="h-2.5 w-2.5 -ml-0.5" />
+                      </span>
+                    ) : (
+                      <span className="relative text-white/30 flex items-center" title="Photo required">
+                        <Camera className="h-3.5 w-3.5" />
+                        <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
+                      </span>
+                    )
+                  )}
+
                   {isExpanded
                     ? <ChevronDown className="h-4 w-4 text-white/30 flex-shrink-0" />
                     : <ChevronRight className="h-4 w-4 text-white/30 flex-shrink-0" />
@@ -402,6 +417,21 @@ export default function ItemList({
                 )}>
                   {item.parameterName}
                 </span>
+
+                {/* Required photo indicator for visual check items */}
+                {item.itemType === "visual_check" && (
+                  (photoMap.get(item.id)?.length || 0) > 0 ? (
+                    <span className="text-green-400 flex items-center" title="Photo attached">
+                      <Camera className="h-3.5 w-3.5" />
+                      <Check className="h-2.5 w-2.5 -ml-0.5" />
+                    </span>
+                  ) : (
+                    <span className="relative text-white/30 flex items-center" title="Photo required">
+                      <Camera className="h-3.5 w-3.5" />
+                      <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
+                    </span>
+                  )
+                )}
 
                 {/* Show captured value if done */}
                 {progress?.measurement && (
