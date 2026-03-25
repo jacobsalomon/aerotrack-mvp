@@ -18,7 +18,9 @@ import {
   Search,
   Camera,
   FileText,
+  Clock,
 } from "lucide-react";
+import { getCmmAgeWarning } from "@/lib/inspect/cmm-config";
 
 // ─── Status mapping (mechanic-friendly labels) ───────────────────────
 
@@ -85,6 +87,7 @@ interface LibraryTemplate {
   status: string;
   partNumbersCovered: string[];
   totalItems: number;
+  createdAt: string;
   _count: { sections: number };
 }
 
@@ -402,6 +405,7 @@ export default function JobsPage() {
               const isReady = t.status === "active" || t.status === "review_ready";
               const statusInfo = TEMPLATE_STATUS[t.status] || { label: t.status, color: "bg-slate-100 text-slate-500" };
               const isStarting = startingId === t.id;
+              const ageLevel = getCmmAgeWarning(t.createdAt);
 
               return (
                 <div
@@ -427,7 +431,25 @@ export default function JobsPage() {
                       {isReady && t.totalItems > 0 && (
                         <p>{t.totalItems} items &middot; {t._count.sections} sections</p>
                       )}
+                      {/* CMM age: uploaded date + staleness warning */}
+                      <p className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        Uploaded {new Date(t.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </p>
                     </div>
+                    {/* Age warning badges */}
+                    {ageLevel === "warning" && (
+                      <div className="mt-2 flex items-center gap-1.5 text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1 text-[11px] font-medium">
+                        <AlertTriangle className="h-3 w-3 shrink-0" />
+                        CMM may be stale (30+ days)
+                      </div>
+                    )}
+                    {ageLevel === "critical" && (
+                      <div className="mt-2 flex items-center gap-1.5 text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1 text-[11px] font-medium">
+                        <AlertTriangle className="h-3 w-3 shrink-0" />
+                        CMM likely stale (90+ days)
+                      </div>
+                    )}
                   </div>
 
                   {isReady && (
