@@ -208,6 +208,10 @@ export default function InspectWorkspace({ session, component }: Props) {
             return next;
           });
         }
+        // Update photo count from progress endpoint (refreshes every poll)
+        if (data.photoCount != null) {
+          setPhotoCount(data.photoCount);
+        }
       } else {
         // Full load from session endpoint
         const fullData = data.data;
