@@ -337,6 +337,46 @@ export default function JobsPage() {
         )}
       </div>
 
+      {/* ── Active Jobs (resume) ─────────────────────────────────── */}
+      {!loading && jobs.filter((j) => displayStatus(j.status) === "In Progress").length > 0 && (
+        <div className="mb-6">
+          <h2
+            className="text-sm font-semibold uppercase tracking-wider mb-3"
+            style={{ color: "rgb(140, 140, 140)" }}
+          >
+            Resume
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {jobs
+              .filter((j) => displayStatus(j.status) === "In Progress")
+              .map((job) => (
+                <button
+                  key={job.id}
+                  onClick={() => router.push(`/jobs/${job.id}`)}
+                  className="rounded-lg border-2 border-blue-200 bg-blue-50 p-4 text-left transition-all hover:border-blue-400 hover:shadow-sm"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">
+                      In Progress
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      {job.sessionType === "inspection" ? "Guided" : "Freeform"}
+                    </span>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-800 mt-2">
+                    {job.component?.description || job.workOrderRef || "Untitled Job"}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1 font-mono">
+                    {job.component?.partNumber && `P/N: ${job.component.partNumber}`}
+                    {job.workOrderRef && !job.component?.partNumber && job.workOrderRef}
+                    {!job.component?.partNumber && !job.workOrderRef && `Started ${formatDate(job.startedAt)}`}
+                  </p>
+                </button>
+              ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Start New Inspection (template cards) ──────────────────── */}
       <div className="mb-8">
         <h2
