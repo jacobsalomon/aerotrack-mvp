@@ -99,10 +99,7 @@ interface ProgressRecord {
   } | null;
 }
 
-// Composite key for multi-instance progress: "itemId:instanceIndex"
-function progressKey(itemId: string, instanceIndex: number): string {
-  return `${itemId}:${instanceIndex}`;
-}
+import { progressKey } from "@/lib/inspect/cmm-config";
 
 // Section progress from summary
 interface SectionProgressData {

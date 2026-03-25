@@ -28,6 +28,12 @@ export async function POST(request: Request, { params }: RouteContext) {
       return NextResponse.json({ success: false, error: "reason is required to skip an item" }, { status: 400 });
     }
 
+    // Validate instanceIndex bounds
+    const item = await prisma.inspectionItem.findUnique({ where: { id: itemId }, select: { instanceCount: true } });
+    if (item && (instanceIndex < 0 || instanceIndex >= item.instanceCount)) {
+      return NextResponse.json({ success: false, error: `Invalid instanceIndex ${instanceIndex}` }, { status: 400 });
+    }
+
     await prisma.inspectionProgress.upsert({
       where: {
         captureSessionId_inspectionItemId_instanceIndex: {
