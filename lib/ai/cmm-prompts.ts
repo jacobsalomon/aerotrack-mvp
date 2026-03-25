@@ -143,6 +143,16 @@ Configuration-Specific Items:
 - "P/N 1709614C CONFIGURATION" → configurationApplicability: ["1709614C"]
 - If applies to all configurations, leave as empty array
 
+Multi-Instance Items (IMPORTANT for repeated measurements):
+- If the CMM specifies a quantity of identical parts that each require the SAME measurement, set instanceCount to that quantity.
+- Look for language like: "15 springs", "all 10 bolts", "each of the 6 bearings", "12 places", "QTY 8"
+- Example: "Measure displacement of each of the 15 return springs" → instanceCount: 15
+- Example: "Torque all 8 housing bolts to 45-50 LB-IN" → instanceCount: 8
+- If instanceLabels are specified in the CMM (e.g., "L1", "L2", "L3"), populate the instanceLabels array.
+- If no specific labels, leave instanceLabels as an empty array (the UI auto-numbers them).
+- If ambiguous or no quantity language, leave instanceCount as 1 (the default).
+- NEVER set instanceCount > 100.
+
 Test Results and Data Tables:
 - If the page contains a test results form, data table, or measurement log, extract EVERY row as a separate item
 - Use "general_note" for test results that don't fit other categories (electrical tests, surge tests, resistance checks, etc.)
@@ -234,6 +244,31 @@ Extracted item:
   "configurationApplicability": [],
   "notes": null,
   "confidence": 0.99
+}
+
+Example 4 — Multi-Instance Item (repeated measurement):
+Source text: "CHECK DISPLACEMENT OF EACH OF THE 15 RETURN SPRINGS — 0.450-0.550 INCH"
+Extracted item:
+{
+  "itemType": "dimension_check",
+  "itemCallout": "350",
+  "parameterName": "Item 350 Return Spring Displacement",
+  "specification": "0.450-0.550 INCH",
+  "specValueLow": 0.450,
+  "specValueHigh": 0.550,
+  "specUnit": "INCH",
+  "specValueLowMetric": null,
+  "specValueHighMetric": null,
+  "specUnitMetric": null,
+  "toolsRequired": null,
+  "checkReference": null,
+  "repairReference": null,
+  "specialAssemblyRef": null,
+  "configurationApplicability": [],
+  "notes": null,
+  "confidence": 0.95,
+  "instanceCount": 15,
+  "instanceLabels": []
 }
 
 OUTPUT FORMAT:
@@ -374,6 +409,17 @@ export const CMM_EXTRACTION_SCHEMA = {
           confidence: {
             type: "number",
             description: "Confidence score 0.0-1.0. 0.9+ for clear specs, 0.7-0.9 for readable but interpreted, below 0.7 for ambiguous.",
+          },
+          instanceCount: {
+            type: "integer",
+            nullable: true,
+            description: "Number of identical instances that each require this measurement (e.g., 15 springs). Default 1 if not a multi-instance item. Max 100.",
+          },
+          instanceLabels: {
+            type: "array",
+            nullable: true,
+            items: { type: "string" },
+            description: "Optional labels for each instance (e.g., ['L1', 'L2', 'L3']). Empty array if auto-numbered.",
           },
         },
         required: [
