@@ -2,12 +2,14 @@
 
 // Sticky progress bar at top of inspection workspace
 // Shows: completion percentage, item counts, problems, config variant, review button
+// WO# is editable inline — click to edit, Enter/blur to save
 
-import { ReactNode } from "react";
+import { ReactNode, useState, useRef, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { AlertTriangle, Eye, Lock } from "lucide-react";
+import { AlertTriangle, Eye, Lock, Pencil } from "lucide-react";
+import { apiUrl } from "@/lib/api-url";
 
 interface Props {
   summary: {
@@ -20,6 +22,7 @@ interface Props {
   };
   configVariant: string | null;
   workOrderRef: string | null;
+  sessionId: string;
   templateTitle: string;
   componentInfo: { partNumber: string; serialNumber: string; description: string } | null;
   isReadOnly: boolean;
@@ -32,6 +35,7 @@ export default function ProgressBar({
   summary,
   configVariant,
   workOrderRef,
+  sessionId,
   templateTitle,
   componentInfo,
   isReadOnly,
@@ -41,6 +45,31 @@ export default function ProgressBar({
 }: Props) {
   const completedCount = summary.done + summary.skipped;
   const pct = summary.total > 0 ? Math.round((completedCount / summary.total) * 100) : 0;
+
+  // Editable WO# state
+  const [editing, setEditing] = useState(false);
+  const [woValue, setWoValue] = useState(workOrderRef || "");
+  const [savedWo, setSavedWo] = useState(workOrderRef);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Focus input when editing starts
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  async function saveWo() {
+    setEditing(false);
+    const trimmed = woValue.trim();
+    if (trimmed === (savedWo || "")) return; // no change
+    setSavedWo(trimmed || null);
+    try {
+      await fetch(apiUrl(`/api/inspect/sessions/${sessionId}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workOrderRef: trimmed || null }),
+      });
+    } catch { /* silent — will show stale value but not crash */ }
+  }
 
   return (
     <div className="sticky top-0 z-20 bg-zinc-900 border-b border-white/10 px-4 py-3">
@@ -89,9 +118,29 @@ export default function ProgressBar({
               {configVariant}
             </Badge>
           )}
-          {workOrderRef && (
-            <span className="text-white/30 text-xs">{workOrderRef}</span>
+
+          {/* Editable WO# — click to type, Enter/blur to save */}
+          {!isReadOnly && editing ? (
+            <input
+              ref={inputRef}
+              value={woValue}
+              onChange={(e) => setWoValue(e.target.value)}
+              onBlur={() => void saveWo()}
+              onKeyDown={(e) => { if (e.key === "Enter") void saveWo(); if (e.key === "Escape") { setEditing(false); setWoValue(savedWo || ""); } }}
+              placeholder="WO#"
+              className="bg-white/10 text-white/70 text-xs rounded px-2 py-0.5 w-28 outline-none focus:ring-1 focus:ring-blue-500 placeholder:text-white/20"
+            />
+          ) : (
+            <button
+              onClick={() => !isReadOnly && setEditing(true)}
+              className="flex items-center gap-1 text-white/30 text-xs hover:text-white/60 transition-colors"
+              title={isReadOnly ? "Signed off — cannot edit" : "Click to edit work order"}
+            >
+              {savedWo || "Add WO#"}
+              {!isReadOnly && <Pencil className="h-2.5 w-2.5" />}
+            </button>
           )}
+
           {unassignedCount > 0 && (
             <Badge variant="secondary" className="bg-amber-500/20 text-amber-300 text-xs animate-pulse">
               {unassignedCount} unassigned
