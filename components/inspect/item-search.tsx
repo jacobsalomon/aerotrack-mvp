@@ -95,7 +95,7 @@ export default function ItemSearch({ sections, progressMap, onSelect }: Props) {
       {results.length > 0 && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-800 border border-white/10 rounded-lg shadow-xl max-h-64 overflow-y-auto z-50">
           {results.slice(0, 20).map((item) => {
-            const progress = progressMap.get(item.id);
+            const progress = progressMap.get(`${item.id}:0`);
             return (
               <button
                 key={item.id}

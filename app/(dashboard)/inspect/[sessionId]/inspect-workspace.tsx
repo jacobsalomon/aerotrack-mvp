@@ -38,6 +38,8 @@ interface InspectionItem {
   configurationApplicability: string[];
   notes: string | null;
   sortOrder: number;
+  instanceCount: number;
+  instanceLabels: string[];
 }
 
 interface InspectionSection {
@@ -83,6 +85,7 @@ interface ComponentData {
 // Progress data from polling
 interface ProgressRecord {
   inspectionItemId: string;
+  instanceIndex: number;
   status: string;
   result: string | null;
   measurementId: string | null;
@@ -93,6 +96,11 @@ interface ProgressRecord {
     inTolerance: boolean | null;
     status: string;
   } | null;
+}
+
+// Composite key for multi-instance progress: "itemId:instanceIndex"
+function progressKey(itemId: string, instanceIndex: number): string {
+  return `${itemId}:${instanceIndex}`;
 }
 
 // Section progress from summary
@@ -182,7 +190,7 @@ export default function InspectWorkspace({ session, component }: Props) {
           setProgressMap((prev) => {
             const next = new Map(prev);
             for (const p of updates) {
-              next.set(p.inspectionItemId, p);
+              next.set(progressKey(p.inspectionItemId, p.instanceIndex ?? 0), p);
             }
             return next;
           });
@@ -192,8 +200,10 @@ export default function InspectWorkspace({ session, component }: Props) {
         const fullData = data.data;
         const newMap = new Map<string, ProgressRecord>();
         for (const p of fullData.session.inspectionProgress || []) {
-          newMap.set(p.inspectionItemId, {
+          const idx = p.instanceIndex ?? 0;
+          newMap.set(progressKey(p.inspectionItemId, idx), {
             inspectionItemId: p.inspectionItemId,
+            instanceIndex: idx,
             status: p.status,
             result: p.result,
             measurementId: p.measurementId,
@@ -241,10 +251,10 @@ export default function InspectWorkspace({ session, component }: Props) {
   }
 
   // ── Item completion callback (called from ItemList) ──
-  function handleItemCompleted(itemId: string, status: string, result: string | null, measurement: ProgressRecord["measurement"]) {
+  function handleItemCompleted(itemId: string, status: string, result: string | null, measurement: ProgressRecord["measurement"], instanceIndex = 0) {
     setProgressMap((prev) => {
       const next = new Map(prev);
-      next.set(itemId, { inspectionItemId: itemId, status, result, measurementId: measurement?.id || null, measurement });
+      next.set(progressKey(itemId, instanceIndex), { inspectionItemId: itemId, instanceIndex, status, result, measurementId: measurement?.id || null, measurement });
       return next;
     });
     // Refresh full data to update section progress + summary
