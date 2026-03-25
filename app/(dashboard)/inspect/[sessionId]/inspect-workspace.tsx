@@ -12,6 +12,7 @@ import ProgressBar from "@/components/inspect/progress-bar";
 import NetworkBanner, { useOnlineStatus } from "@/components/inspect/network-banner";
 import NextItemButton from "@/components/inspect/next-item-button";
 import ItemSearch from "@/components/inspect/item-search";
+import InspectionRecorder from "@/components/inspect/inspection-recorder";
 
 // Types matching what the server component passes down
 interface InspectionItem {
@@ -263,6 +264,9 @@ export default function InspectWorkspace({ session, component }: Props) {
         isReadOnly={isReadOnly}
         unassignedCount={unassignedCount}
         onReview={handleReview}
+        recorderSlot={
+          !isReadOnly ? <InspectionRecorder sessionId={session.id} /> : undefined
+        }
         searchSlot={
           <ItemSearch
             sections={sections}
