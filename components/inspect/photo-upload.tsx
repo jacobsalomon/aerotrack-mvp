@@ -7,14 +7,7 @@
 import { useRef, useState } from "react";
 import { Camera, Loader2 } from "lucide-react";
 import { apiUrl } from "@/lib/api-url";
-
-interface PhotoEvidence {
-  id: string;
-  fileUrl: string;
-  inspectionItemId: string | null;
-  instanceIndex: number | null;
-  capturedAt: string;
-}
+import type { PhotoEvidence } from "./photo-types";
 
 interface Props {
   sessionId: string;
