@@ -139,9 +139,10 @@ async function assignMeasurement(
     // Update progress
     await tx.inspectionProgress.upsert({
       where: {
-        captureSessionId_inspectionItemId: {
+        captureSessionId_inspectionItemId_instanceIndex: {
           captureSessionId: sessionId,
           inspectionItemId: item.id,
+          instanceIndex: 0,
         },
       },
       create: {

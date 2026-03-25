@@ -24,9 +24,10 @@ export async function DELETE(request: Request, { params }: RouteContext) {
 
     const progress = await prisma.inspectionProgress.findUnique({
       where: {
-        captureSessionId_inspectionItemId: {
+        captureSessionId_inspectionItemId_instanceIndex: {
           captureSessionId: id,
           inspectionItemId: itemId,
+          instanceIndex: 0,
         },
       },
     });
@@ -45,9 +46,10 @@ export async function DELETE(request: Request, { params }: RouteContext) {
       // Reset progress to pending
       await tx.inspectionProgress.update({
         where: {
-          captureSessionId_inspectionItemId: {
+          captureSessionId_inspectionItemId_instanceIndex: {
             captureSessionId: id,
             inspectionItemId: itemId,
+            instanceIndex: 0,
           },
         },
         data: {

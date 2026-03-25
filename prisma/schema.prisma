@@ -733,6 +733,9 @@ model Measurement {
   inspectionItemId    String?                         // FK to InspectionItem — which template item this measurement fulfills
   inspectionItem      InspectionItem? @relation(fields: [inspectionItemId], references: [id], onDelete: SetNull)
 
+  // Multi-instance: which instance of a repeated item this measurement is for (0 = first/only)
+  instanceIndex       Int       @default(0)
+
   // Relationships
   sources             MeasurementSource[]
   inspectionProgress  InspectionProgress[]
@@ -973,6 +976,10 @@ model InspectionItem {
   editedById                  String?                     // User who last edited this item during review
   editedAt                    DateTime?                   // When the item was last manually edited
 
+  // Multi-instance support: items that repeat N times (e.g., 15 springs each needing measurement)
+  instanceCount               Int       @default(1)       // How many instances of this item (1 = normal single item)
+  instanceLabels              String[]                     // Optional labels: ["Spring 1", "Spring 2", ...] — empty = auto-numbered
+
   createdAt                   DateTime  @default(now())
   updatedAt                   DateTime  @updatedAt
 
@@ -1020,6 +1027,9 @@ model InspectionProgress {
   inspectionItemId    String
   inspectionItem      InspectionItem @relation(fields: [inspectionItemId], references: [id], onDelete: Cascade)
 
+  // Multi-instance: which instance of a repeated item this progress record is for (0 = first/only)
+  instanceIndex       Int       @default(0)
+
   status              String    @default("pending")       // pending, done, problem, skipped
   result              String?                             // pass, fail, in_spec, out_of_spec, not_applicable (null when pending)
   measurementId       String?                             // FK to Measurement — THE source of truth for captured values
@@ -1032,7 +1042,7 @@ model InspectionProgress {
   completedBy         User? @relation("progressCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
   updatedAt           DateTime  @updatedAt                // Needed for polling endpoint
 
-  @@unique([captureSessionId, inspectionItemId])          // One progress record per item per session
+  @@unique([captureSessionId, inspectionItemId, instanceIndex])  // One progress record per item-instance per session
   @@index([captureSessionId, updatedAt])                  // For incremental polling: "what changed since X?"
   @@index([inspectionItemId])
 }

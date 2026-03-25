@@ -89,16 +89,22 @@ export async function getSectionProgress(
     findingCounts.map((f) => [f.inspectionSectionId, f._count])
   );
 
-  const progressMap = new Map(
-    progress.map((p) => [p.inspectionItemId, p.status])
-  );
+  // Group all progress records by itemId (multi-instance items have N records per item)
+  const progressByItem = new Map<string, { status: string }[]>();
+  for (const p of progress) {
+    const existing = progressByItem.get(p.inspectionItemId) || [];
+    existing.push(p);
+    progressByItem.set(p.inspectionItemId, existing);
+  }
 
   return sections.map((section) => {
     const itemIds = section.items.map((i) => i.id);
-    const done = itemIds.filter((id) => progressMap.get(id) === "done").length;
-    const problem = itemIds.filter((id) => progressMap.get(id) === "problem").length;
-    const skipped = itemIds.filter((id) => progressMap.get(id) === "skipped").length;
-    const total = itemIds.length;
+    // Count all progress records (instances) for items in this section
+    const sectionProgress = itemIds.flatMap((id) => progressByItem.get(id) || []);
+    const done = sectionProgress.filter((p) => p.status === "done").length;
+    const problem = sectionProgress.filter((p) => p.status === "problem").length;
+    const skipped = sectionProgress.filter((p) => p.status === "skipped").length;
+    const total = sectionProgress.length;
     const findings = findingMap[section.id] ?? 0;
 
     // Section status: gray (not started), blue (in progress), green (complete), red (has problems)

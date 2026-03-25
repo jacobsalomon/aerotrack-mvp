@@ -360,9 +360,10 @@ async function performAssignment(
     // Check for re-measurement: does this item already have an assigned measurement?
     const existingProgress = await tx.inspectionProgress.findUnique({
       where: {
-        captureSessionId_inspectionItemId: {
+        captureSessionId_inspectionItemId_instanceIndex: {
           captureSessionId: sessionId,
           inspectionItemId: item.id,
+          instanceIndex: 0,
         },
       },
       select: { measurementId: true },
@@ -401,9 +402,10 @@ async function performAssignment(
     // Upsert InspectionProgress for this item
     await tx.inspectionProgress.upsert({
       where: {
-        captureSessionId_inspectionItemId: {
+        captureSessionId_inspectionItemId_instanceIndex: {
           captureSessionId: sessionId,
           inspectionItemId: item.id,
+          instanceIndex: 0,
         },
       },
       create: {

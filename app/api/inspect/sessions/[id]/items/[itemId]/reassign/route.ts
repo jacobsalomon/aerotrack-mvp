@@ -31,9 +31,10 @@ export async function POST(request: Request, { params }: RouteContext) {
     // Find the current progress record to get the measurement
     const currentProgress = await prisma.inspectionProgress.findUnique({
       where: {
-        captureSessionId_inspectionItemId: {
+        captureSessionId_inspectionItemId_instanceIndex: {
           captureSessionId: id,
           inspectionItemId: itemId,
+          instanceIndex: 0,
         },
       },
     });
@@ -59,9 +60,10 @@ export async function POST(request: Request, { params }: RouteContext) {
       // Reset source progress
       await tx.inspectionProgress.update({
         where: {
-          captureSessionId_inspectionItemId: {
+          captureSessionId_inspectionItemId_instanceIndex: {
             captureSessionId: id,
             inspectionItemId: itemId,
+            instanceIndex: 0,
           },
         },
         data: {
@@ -82,9 +84,10 @@ export async function POST(request: Request, { params }: RouteContext) {
       // Update target progress
       await tx.inspectionProgress.upsert({
         where: {
-          captureSessionId_inspectionItemId: {
+          captureSessionId_inspectionItemId_instanceIndex: {
             captureSessionId: id,
             inspectionItemId: targetItemId,
+            instanceIndex: 0,
           },
         },
         create: {
