@@ -55,6 +55,8 @@ export interface ExtractedItem {
   notes?: string | null;
   confidence: number;
   reviewReason?: string | null; // Set during extraction — explains why confidence is low
+  instanceCount?: number | null; // How many instances of this item (e.g., 15 springs)
+  instanceLabels?: string[]; // Optional labels for each instance (e.g., ["Spring 1", "Spring 2"])
 }
 
 export interface ValidationResult {

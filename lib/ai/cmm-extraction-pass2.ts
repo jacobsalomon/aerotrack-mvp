@@ -445,6 +445,8 @@ export async function finalizeSectionExtraction(
           sortOrder: sortOrder++,
           confidence: adjustedConfidence,
           reviewReason: reviewReason || null,
+          instanceCount: Math.min(Math.max(item.instanceCount ?? 1, 1), 100),
+          instanceLabels: item.instanceLabels || [],
         },
       });
     }
