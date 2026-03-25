@@ -44,6 +44,7 @@ interface InspectionItemData {
 interface ProgressRecord {
   id: string;
   inspectionItemId: string;
+  instanceIndex: number;
   status: string;
   result: string | null;
   measurement: MeasurementData | null;
@@ -116,11 +117,14 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
   const [showSignOffDialog, setShowSignOffDialog] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
-  // Build progress map
+  // Build progress map with composite key (handles multi-instance items)
   const progressMap = new Map<string, ProgressRecord>();
   for (const p of progress) {
-    progressMap.set(p.inspectionItemId, p);
+    progressMap.set(`${p.inspectionItemId}:${p.instanceIndex ?? 0}`, p);
   }
+
+  // Also build a simple itemId→true lookup for section completion counting
+  const itemHasProgress = new Set(progress.map((p) => p.inspectionItemId));
 
   // Summary counts
   const total = progress.length;
@@ -390,7 +394,8 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
           const sectionItems = section.items || [];
           const isExpanded = expandedSection === section.id;
           const sectionDone = sectionItems.filter((i) => {
-            const p = progressMap.get(i.id);
+            // Check if any progress record exists for this item (across all instances)
+            const p = progressMap.get(`${i.id}:0`);
             return p?.status === "done" || p?.status === "problem" || p?.status === "skipped";
           }).length;
 
@@ -410,7 +415,7 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
               {isExpanded && (
                 <div className="px-4 pb-3 space-y-1">
                   {sectionItems.map((item) => {
-                    const p = progressMap.get(item.id);
+                    const p = progressMap.get(`${item.id}:0`);
                     return (
                       <div key={item.id} className="flex items-center gap-3 py-2 border-t border-white/5">
                         <InspectionStatusIndicator status={p?.status || "pending"} size="sm" />
