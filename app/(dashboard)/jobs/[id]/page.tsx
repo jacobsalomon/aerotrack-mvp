@@ -41,6 +41,7 @@ export default async function JobPage({ params, searchParams }: PageProps) {
         select: {
           id: true,
           title: true,
+          createdAt: true,
           revisionDate: true,
           version: true,
           sections: {

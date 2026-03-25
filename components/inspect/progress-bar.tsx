@@ -8,8 +8,9 @@ import { ReactNode, useState, useRef, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { AlertTriangle, Camera, Eye, Lock, Pencil } from "lucide-react";
+import { AlertTriangle, Camera, Clock, Eye, Lock, Pencil } from "lucide-react";
 import { apiUrl } from "@/lib/api-url";
+import { getCmmAgeWarning } from "@/lib/inspect/cmm-config";
 
 interface Props {
   summary: {
@@ -24,6 +25,7 @@ interface Props {
   workOrderRef: string | null;
   sessionId: string;
   templateTitle: string;
+  templateCreatedAt?: string | null;
   componentInfo: { partNumber: string; serialNumber: string; description: string } | null;
   isReadOnly: boolean;
   unassignedCount: number;
@@ -39,6 +41,7 @@ export default function ProgressBar({
   workOrderRef,
   sessionId,
   templateTitle,
+  templateCreatedAt,
   componentInfo,
   isReadOnly,
   unassignedCount,
@@ -87,6 +90,20 @@ export default function ProgressBar({
           )}
           <span className="text-white/40 text-xs truncate hidden sm:inline">
             {templateTitle}
+            {templateCreatedAt && (() => {
+              const ageLevel = getCmmAgeWarning(templateCreatedAt);
+              const dateStr = new Date(templateCreatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+              return (
+                <span className={`ml-2 inline-flex items-center gap-1 ${
+                  ageLevel === "critical" ? "text-red-400" :
+                  ageLevel === "warning" ? "text-amber-400" :
+                  "text-white/30"
+                }`}>
+                  <Clock className="h-3 w-3" />
+                  {dateStr}
+                </span>
+              );
+            })()}
           </span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
