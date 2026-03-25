@@ -4,13 +4,8 @@
 // Click any thumbnail to enlarge it in a lightbox overlay.
 
 import { useState } from "react";
-import { X } from "lucide-react";
-
-interface PhotoEvidence {
-  id: string;
-  fileUrl: string;
-  capturedAt: string;
-}
+import type { PhotoEvidence } from "./photo-types";
+import PhotoLightbox from "./photo-lightbox";
 
 interface Props {
   photos: PhotoEvidence[];
@@ -41,26 +36,8 @@ export default function PhotoThumbnails({ photos }: Props) {
         ))}
       </div>
 
-      {/* Lightbox overlay */}
       {lightboxUrl && (
-        <div
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
-          onClick={() => setLightboxUrl(null)}
-        >
-          <button
-            onClick={() => setLightboxUrl(null)}
-            className="absolute top-4 right-4 text-white/70 hover:text-white"
-          >
-            <X className="h-6 w-6" />
-          </button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={lightboxUrl}
-            alt="Photo evidence enlarged"
-            className="max-w-full max-h-full object-contain rounded-lg"
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>
+        <PhotoLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
       )}
     </>
   );

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import InspectionStatusIndicator from "./inspection-status-indicator";
+import PhotoLightbox from "./photo-lightbox";
 
 // Types matching the JSON-serialized data from the server component
 interface MeasurementData {
@@ -379,25 +380,7 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
 
       {/* Lightbox overlay */}
       {lightboxUrl && (
-        <div
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
-          onClick={() => setLightboxUrl(null)}
-        >
-          <button
-            onClick={() => setLightboxUrl(null)}
-            className="absolute top-4 right-4 text-white/70 hover:text-white z-10"
-          >
-            <span className="sr-only">Close</span>
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={lightboxUrl}
-            alt="Photo enlarged"
-            className="max-w-full max-h-full object-contain rounded-lg"
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>
+        <PhotoLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
       )}
 
       {/* Section-by-section breakdown */}

@@ -13,6 +13,7 @@ import InspectionStatusIndicator from "./inspection-status-indicator";
 import NumericKeypad from "./numeric-keypad";
 import PhotoUpload from "./photo-upload";
 import PhotoThumbnails from "./photo-thumbnails";
+import type { PhotoEvidence } from "./photo-types";
 
 interface InspectionItem {
   id: string;
@@ -51,14 +52,6 @@ interface ProgressRecord {
 }
 
 import { progressKey } from "@/lib/inspect/cmm-config";
-
-interface PhotoEvidence {
-  id: string;
-  fileUrl: string;
-  inspectionItemId: string | null;
-  instanceIndex: number | null;
-  capturedAt: string;
-}
 
 interface Props {
   items: InspectionItem[];

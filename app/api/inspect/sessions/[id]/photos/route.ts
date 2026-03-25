@@ -23,7 +23,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     // Verify session exists, belongs to org, and is not signed off
     const session = await prisma.captureSession.findUnique({
       where: { id: sessionId },
-      select: { id: true, organizationId: true, signedOffAt: true },
+      select: { id: true, organizationId: true, signedOffAt: true, inspectionTemplateId: true },
     });
 
     if (!session || session.organizationId !== authResult.user.organizationId) {
@@ -55,10 +55,21 @@ export async function POST(request: Request, { params }: RouteContext) {
       return NextResponse.json({ success: false, error: "File too large (max 5MB)" }, { status: 400 });
     }
 
-    // Upload to Vercel Blob
+    // Validate inspectionItemId belongs to this session's template (prevent cross-session linkage)
+    if (inspectionItemId && session.inspectionTemplateId) {
+      const itemExists = await prisma.inspectionItem.findFirst({
+        where: { id: inspectionItemId, section: { templateId: session.inspectionTemplateId } },
+        select: { id: true },
+      });
+      if (!itemExists) {
+        return NextResponse.json({ success: false, error: "Inspection item not found in this session" }, { status: 400 });
+      }
+    }
+
+    // Upload to Vercel Blob (random suffix prevents collision on concurrent uploads)
     const ext = file.type === "image/png" ? "png" : file.type === "image/heic" ? "heic" : "jpg";
-    const timestamp = Date.now();
-    const blobPath = `photos/${sessionId}/${timestamp}.${ext}`;
+    const suffix = Math.random().toString(36).slice(2, 8);
+    const blobPath = `photos/${sessionId}/${Date.now()}-${suffix}.${ext}`;
 
     const blob = await put(blobPath, file, {
       access: "public",

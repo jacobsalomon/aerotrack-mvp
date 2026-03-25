@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { apiUrl } from "@/lib/api-url";
+import type { PhotoEvidence } from "@/components/inspect/photo-types";
 import SectionTabs from "@/components/inspect/section-tabs";
 import ItemList from "@/components/inspect/item-list";
 import ProgressBar from "@/components/inspect/progress-bar";
@@ -145,17 +146,11 @@ export default function InspectWorkspace({ session, component }: Props) {
   // Measurement suggestions from audio extraction (for toast UI)
   const [suggestions, setSuggestions] = useState<MeasurementSuggestion[]>([]);
 
-  // Photo evidence count from polling
+  // Photo evidence count from polling (ref tracks latest for stale-closure comparison)
   const [photoCount, setPhotoCount] = useState(0);
+  const photoCountRef = useRef(0);
 
   // Photo evidence map: inspectionItemId (or "general") → array of photos
-  interface PhotoEvidence {
-    id: string;
-    fileUrl: string;
-    inspectionItemId: string | null;
-    instanceIndex: number | null;
-    capturedAt: string;
-  }
   const [photoMap, setPhotoMap] = useState<Map<string, PhotoEvidence[]>>(new Map());
 
   // Build candidate items for measurement matching
@@ -205,9 +200,27 @@ export default function InspectWorkspace({ session, component }: Props) {
             return next;
           });
         }
-        // Update photo count from progress endpoint (refreshes every poll)
+        // Update photo count; re-fetch photo list if count changed (e.g., glasses photos arrived)
         if (data.photoCount != null) {
+          const countChanged = data.photoCount !== photoCountRef.current;
           setPhotoCount(data.photoCount);
+          photoCountRef.current = data.photoCount;
+          if (countChanged) {
+            try {
+              const photoRes = await fetch(apiUrl(`/api/inspect/sessions/${session.id}/photos`));
+              const photoData = await photoRes.json();
+              if (photoRes.ok && photoData.success) {
+                const newPhotoMap = new Map<string, PhotoEvidence[]>();
+                for (const photo of photoData.data) {
+                  const key = photo.inspectionItemId || "general";
+                  const arr = newPhotoMap.get(key) || [];
+                  arr.push(photo);
+                  newPhotoMap.set(key, arr);
+                }
+                setPhotoMap(newPhotoMap);
+              }
+            } catch { /* non-critical */ }
+          }
         }
       } else {
         // Full load from session endpoint
@@ -229,6 +242,7 @@ export default function InspectWorkspace({ session, component }: Props) {
         setSummary(fullData.summary || { total: 0, done: 0, problem: 0, skipped: 0, pending: 0, findings: 0 });
         setUnassignedCount(fullData.unassignedMeasurements?.length || 0);
         setPhotoCount(fullData.photoCount || 0);
+        photoCountRef.current = fullData.photoCount || 0;
 
         // Fetch photos for this session
         try {
@@ -302,7 +316,11 @@ export default function InspectWorkspace({ session, component }: Props) {
       next.set(key, arr);
       return next;
     });
-    setPhotoCount((prev) => prev + 1);
+    setPhotoCount((prev) => {
+      const newCount = prev + 1;
+      photoCountRef.current = newCount;
+      return newCount;
+    });
   }
 
   const [targetItemId, setTargetItemId] = useState<string | null>(null);
