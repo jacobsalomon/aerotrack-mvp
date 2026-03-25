@@ -74,6 +74,8 @@ export default async function JobPage({ params, searchParams }: PageProps) {
                   configurationApplicability: true,
                   notes: true,
                   sortOrder: true,
+                  instanceCount: true,
+                  instanceLabels: true,
                 },
               },
             },
