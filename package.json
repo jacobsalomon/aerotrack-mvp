@@ -26,6 +26,7 @@
     "test:integration": "vitest run tests/unit/exception-engine.test.ts",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:e2e:public": "playwright test tests/e2e/public-pages.spec.ts",
     "test:all": "vitest run && playwright test"
   },
   "dependencies": {

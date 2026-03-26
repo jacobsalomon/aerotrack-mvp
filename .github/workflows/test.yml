@@ -3,8 +3,26 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "tasks/**"
+      - "eval/**"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "tasks/**"
+      - "eval/**"
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PLAYWRIGHT_BROWSERS_PATH: ~/.cache/ms-playwright
 
 jobs:
   verify:
@@ -17,6 +35,12 @@ jobs:
         with:
           node-version-file: ".nvmrc"
           cache: "npm"
+
+      - name: Cache Playwright browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
 
       - name: Install dependencies
         run: npm ci
@@ -32,3 +56,24 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Public browser smoke
+        env:
+          AUTH_SECRET: ci-playwright-secret
+          AUTH_TRUST_HOST: "true"
+          PLAYWRIGHT_WEB_SERVER_COMMAND: npm run start
+        run: npm run test:e2e:public
+
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+          retention-days: 7
