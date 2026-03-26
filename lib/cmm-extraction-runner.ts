@@ -1,20 +1,12 @@
-import { randomUUID } from "crypto";
+// CMM extraction orchestration — template discovery and step execution.
+// Used by the manual extraction trigger API and legacy callers.
+// The cron endpoint now calls extraction-runner.ts directly for parallel processing.
 
 import { prisma } from "@/lib/db";
-import { runPass1Batch } from "@/lib/ai/cmm-extraction-pass1";
-import {
-  extractSectionPage,
-  finalizeSectionExtraction,
-} from "@/lib/ai/cmm-extraction-pass2";
 
 export const EXTRACTION_STEP_MAX_DURATION_MS = 5 * 60 * 1000;
-// How long to wait before considering a running extraction stale and reclaimable.
-// 3 minutes: long enough for most pages to finish, short enough to self-heal quickly.
 export const EXTRACTION_STALE_THRESHOLD_MS = 3 * 60 * 1000;
 
-// Lease duration: 6 minutes. Covers the 5-min serverless max with 1 min buffer.
-// If a function dies, the lease clears in 6 min max (or 3 min via stale threshold).
-const LEASE_DURATION_MS = 6 * 60 * 1000;
 const POLLABLE_TEMPLATE_STATUSES = [
   "pending_extraction",
   "extracting_index",
@@ -39,83 +31,14 @@ export interface ExtractionStepResult {
   phase?: "indexing" | "page_extraction" | "section_finalization";
 }
 
-function getStaleBefore(now: Date) {
-  return new Date(now.getTime() - EXTRACTION_STALE_THRESHOLD_MS);
-}
-
-async function releaseExtractionLease(templateId: string, data: Record<string, unknown> = {}) {
-  await prisma.inspectionTemplate.update({
-    where: { id: templateId },
-    data: {
-      extractionRunnerToken: null,
-      extractionLeaseExpiresAt: null,
-      ...data,
-    },
-  });
-}
-
-// Revive stale extracting sections so they can be picked up again.
-// Keeps pass2Progress intact — we only reset the section status, not page work.
-// If all pages are already done (completed or exhausted retries), finalize instead.
-async function reviveStaleExtractingSections(templateId: string, staleBefore: Date) {
-  const staleSections = await prisma.inspectionSection.findMany({
-    where: {
-      templateId,
-      status: "extracting",
-      updatedAt: { lt: staleBefore },
-    },
-    select: { id: true, figureNumber: true, pageNumbers: true, pass2Progress: true },
-  });
-
-  if (staleSections.length === 0) return;
-
-  for (const section of staleSections) {
-    const progress = section.pass2Progress as { nextPageOffset: number } | null;
-    const allPagesDone = progress && progress.nextPageOffset >= section.pageNumbers.length;
-
-    if (allPagesDone) {
-      // All pages processed (completed or skipped) — finalize instead of resetting
-      console.log(
-        `[Extraction] Stale section Fig. ${section.figureNumber} has all pages done — finalizing`
-      );
-      try {
-        await finalizeSectionExtraction(section.id);
-      } catch (err) {
-        console.error(`[Extraction] Failed to finalize stale section ${section.id}:`, err);
-        await prisma.inspectionSection.update({
-          where: { id: section.id },
-          data: { status: "failed" },
-        });
-      }
-    } else {
-      // Still has pages to process — reset to pending so it gets picked up
-      await prisma.inspectionSection.update({
-        where: { id: section.id },
-        data: { status: "pending" },
-      });
-      console.warn(
-        `[Extraction] Revived stale section Fig. ${section.figureNumber} (page progress preserved)`
-      );
-    }
-  }
-}
-
 export async function findTemplatesReadyForExtraction(options: {
   limit?: number;
   templateId?: string;
 } = {}) {
-  const now = new Date();
-  const staleBefore = getStaleBefore(now);
-
   return prisma.inspectionTemplate.findMany({
     where: {
       ...(options.templateId ? { id: options.templateId } : {}),
       status: { in: [...POLLABLE_TEMPLATE_STATUSES] },
-      OR: [
-        { extractionRunnerToken: null },
-        { extractionLeaseExpiresAt: { lt: now } },
-        { updatedAt: { lt: staleBefore } },
-      ],
     },
     orderBy: [{ updatedAt: "asc" }, { createdAt: "asc" }],
     take: options.limit ?? 3,
@@ -128,23 +51,23 @@ export async function findTemplatesReadyForExtraction(options: {
   });
 }
 
+/**
+ * Run a single extraction step for a template.
+ * This is the legacy single-step function used by the manual trigger API.
+ * For parallel processing, the cron endpoint uses extraction-runner.ts directly.
+ */
 export async function runTemplateExtractionStep(
   templateId: string
 ): Promise<ExtractionStepResult> {
+  const { processTemplate } = await import("@/lib/extraction-runner");
+
   const existingTemplate = await prisma.inspectionTemplate.findUnique({
     where: { id: templateId },
-    select: {
-      id: true,
-      status: true,
-    },
+    select: { id: true, status: true },
   });
 
   if (!existingTemplate) {
-    return {
-      templateId,
-      status: "not_found",
-      message: "Template not found",
-    };
+    return { templateId, status: "not_found", message: "Template not found" };
   }
 
   if (TERMINAL_TEMPLATE_STATUSES.has(existingTemplate.status)) {
@@ -156,221 +79,13 @@ export async function runTemplateExtractionStep(
     };
   }
 
-  const now = new Date();
-  const staleBefore = getStaleBefore(now);
-  const runnerToken = randomUUID();
+  // Delegate to the unified runner
+  const result = await processTemplate(templateId);
 
-  const leaseResult = await prisma.inspectionTemplate.updateMany({
-    where: {
-      id: templateId,
-      OR: [
-        { extractionRunnerToken: null },
-        { extractionLeaseExpiresAt: { lt: now } },
-        { updatedAt: { lt: staleBefore } },
-      ],
-    },
-    data: {
-      extractionRunnerToken: runnerToken,
-      extractionLeaseExpiresAt: new Date(now.getTime() + LEASE_DURATION_MS),
-    },
-  });
-
-  if (leaseResult.count === 0) {
-    return {
-      templateId,
-      status: "locked",
-      message: "Another extraction worker is processing this template",
-    };
-  }
-
-  try {
-    const template = await prisma.inspectionTemplate.findUniqueOrThrow({
-      where: { id: templateId },
-    });
-
-    if (TERMINAL_TEMPLATE_STATUSES.has(template.status)) {
-      await releaseExtractionLease(templateId);
-      return {
-        templateId,
-        status: "already_complete",
-        templateStatus: template.status,
-        message: "Already complete",
-      };
-    }
-
-    // ── Pass 1: Page classification ──────────────────────────────────
-    if (
-      template.status === "pending_extraction" ||
-      template.status === "extracting_index"
-    ) {
-      console.log(`[Extraction] Starting/continuing Pass 1 for template ${templateId}`);
-
-      await prisma.inspectionTemplate.update({
-        where: { id: templateId },
-        data: { status: "extracting_index" },
-      });
-
-      const result = await runPass1Batch(templateId);
-
-      if (result === 0) {
-        await releaseExtractionLease(templateId, {
-          status: "extraction_failed",
-        });
-        return {
-          templateId,
-          status: "failed",
-          message: "No inspection diagrams found in the PDF",
-          phase: "indexing",
-        };
-      }
-
-      await releaseExtractionLease(templateId, result === "done" ? { currentSectionIndex: 0 } : {});
-
-      return {
-        templateId,
-        status: result === "continue" ? "indexing_batch_complete" : "index_complete",
-        phase: "indexing",
-      };
-    }
-
-    // ── Pass 2: Page-at-a-time deep extraction ───────────────────────
-    if (
-      template.status === "extracting_details" ||
-      template.status === "extraction_failed"
-    ) {
-      await reviveStaleExtractingSections(templateId, staleBefore);
-
-      // Find a section that needs work. Priority:
-      // 1. Section currently extracting with unfinished pages (resume in-progress work)
-      // 2. Section in pending status (start new section)
-      const inProgressSection = await prisma.inspectionSection.findFirst({
-        where: {
-          templateId,
-          status: "extracting",
-        },
-        orderBy: { sortOrder: "asc" },
-      });
-
-      const workSection = inProgressSection || await prisma.inspectionSection.findFirst({
-        where: {
-          templateId,
-          status: "pending",
-        },
-        orderBy: { sortOrder: "asc" },
-      });
-
-      if (!workSection) {
-        // No sections need work — check if we're done
-        const sections = await prisma.inspectionSection.findMany({
-          where: { templateId },
-          select: { status: true },
-        });
-
-        const hasAnyExtracted = sections.some((section) => section.status === "extracted");
-
-        await releaseExtractionLease(templateId, {
-          status: hasAnyExtracted ? "review_ready" : "extraction_failed",
-        });
-
-        console.log(
-          `[Extraction] Complete for template ${templateId}: ${
-            hasAnyExtracted ? "review_ready" : "extraction_failed"
-          }`
-        );
-
-        return {
-          templateId,
-          status: hasAnyExtracted ? "review_ready" : "extraction_failed",
-          sections: sections.length,
-        };
-      }
-
-      // Check if this section's pages are all done and just needs finalization
-      const progress = workSection.pass2Progress as { nextPageOffset: number } | null;
-      const allPagesDone = progress && progress.nextPageOffset >= workSection.pageNumbers.length;
-
-      if (allPagesDone) {
-        // Finalize: merge, dedup, validate, save items
-        console.log(
-          `[Extraction] Finalizing Fig. ${workSection.figureNumber} for template ${templateId}`
-        );
-
-        const itemCount = await finalizeSectionExtraction(workSection.id);
-        const completedCount = await prisma.inspectionSection.count({
-          where: {
-            templateId,
-            status: { in: ["extracted", "failed"] },
-          },
-        });
-
-        await releaseExtractionLease(templateId, {
-          currentSectionIndex: completedCount,
-        });
-
-        return {
-          templateId,
-          status: "section_finalized",
-          figureNumber: workSection.figureNumber,
-          itemsExtracted: itemCount,
-          progress: completedCount,
-          phase: "section_finalization",
-        };
-      }
-
-      // Extract one page of this section
-      const currentPage = progress?.nextPageOffset ?? 0;
-      const totalPages = workSection.pageNumbers.length;
-
-      console.log(
-        `[Extraction] Fig. ${workSection.figureNumber} page ${currentPage + 1}/${totalPages} for template ${templateId}`
-      );
-
-      const pageResult = await extractSectionPage(templateId, workSection.id);
-
-      if (pageResult === "finalize") {
-        // All pages done after this one — finalize in the same step
-        const itemCount = await finalizeSectionExtraction(workSection.id);
-        const completedCount = await prisma.inspectionSection.count({
-          where: {
-            templateId,
-            status: { in: ["extracted", "failed"] },
-          },
-        });
-
-        await releaseExtractionLease(templateId, {
-          currentSectionIndex: completedCount,
-        });
-
-        return {
-          templateId,
-          status: "section_finalized",
-          figureNumber: workSection.figureNumber,
-          itemsExtracted: itemCount,
-          progress: completedCount,
-          pageProgress: { current: totalPages, total: totalPages },
-          phase: "section_finalization",
-        };
-      }
-
-      // More pages to go
-      await releaseExtractionLease(templateId);
-
-      return {
-        templateId,
-        status: "page_complete",
-        figureNumber: workSection.figureNumber,
-        pageProgress: { current: currentPage + 1, total: totalPages },
-        phase: "page_extraction",
-      };
-    }
-
-    await releaseExtractionLease(templateId);
-    return {
-      templateId,
-      status: template.status,
-    };
-  } catch (error) {
-    await releaseExtractionLease(templateId).catch(() => {});
-    throw error;
-  }
+  return {
+    templateId,
+    status: result.lastStatus,
+    message: result.detail,
+    templateStatus: result.lastStatus,
+  };
 }

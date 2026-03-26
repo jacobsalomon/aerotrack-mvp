@@ -1,13 +1,15 @@
 // GET /api/library/retry-stuck — Cron-driven extraction runner
 //
-// Runs every 1 minute via Vercel cron. Finds ONE template needing extraction
-// and processes as many steps as possible within the 300s timeout.
-// Downloads the PDF once and reuses it across all steps.
-// No HTTP calls to other endpoints — imports extraction logic directly.
+// Runs every 1 minute via Vercel cron. Each invocation either:
+//   1. Runs a Pass 1 batch (template-level, sequential)
+//   2. Claims and processes one section (section-level, parallel)
+//
+// Multiple cron ticks run concurrently — each claims a different
+// section via fenced leasing. No conflicts, no duplicate work.
 
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
-import { processTemplate } from "@/lib/extraction-runner";
+import { processPass1, processSection } from "@/lib/extraction-runner";
 
 export const maxDuration = 300;
 
@@ -32,13 +34,10 @@ export async function POST(request: Request) {
 }
 
 async function runExtractionCycle() {
+  // Find a template that needs work (one at a time — highest priority first)
   const template = await prisma.inspectionTemplate.findFirst({
     where: {
       status: { in: ["pending_extraction", "extracting_index", "extracting_details"] },
-      OR: [
-        { extractionRunnerToken: null },
-        { extractionLeaseExpiresAt: { lt: new Date() } },
-      ],
     },
     select: { id: true, title: true, status: true },
     orderBy: { updatedAt: "asc" },
@@ -48,9 +47,17 @@ async function runExtractionCycle() {
     return NextResponse.json({ message: "No work to do" });
   }
 
-  console.log(`[cron] Starting: ${template.title} (${template.status})`);
-  const result = await processTemplate(template.id);
-  console.log(`[cron] Done: ${template.title} → ${result.lastStatus} (${result.stepsCompleted} steps, ${(result.elapsedMs / 1000).toFixed(0)}s)`);
+  // Pass 1: template-level lease — only one worker at a time
+  if (template.status === "pending_extraction" || template.status === "extracting_index") {
+    console.log(`[cron] Pass 1: ${template.title} (${template.status})`);
+    const result = await processPass1(template.id);
+    console.log(`[cron] Pass 1 done: ${template.title} → ${result.lastStatus} (${result.stepsCompleted} steps, ${(result.elapsedMs / 1000).toFixed(0)}s)`);
+    return NextResponse.json(result);
+  }
 
+  // Pass 2: section-level lease — multiple workers can run in parallel
+  console.log(`[cron] Pass 2: claiming section for ${template.title}`);
+  const result = await processSection(template.id);
+  console.log(`[cron] Pass 2 done: ${template.title} → ${result.lastStatus} (${result.stepsCompleted} pages, ${(result.elapsedMs / 1000).toFixed(0)}s)`);
   return NextResponse.json(result);
 }
