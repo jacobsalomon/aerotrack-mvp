@@ -2,6 +2,9 @@
   "name": "aerovision-mvp",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20 <25"
+  },
   "scripts": {
     "predev": "npm run prisma:generate",
     "dev": "next dev --turbopack",

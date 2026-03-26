@@ -129,6 +129,24 @@ export async function PATCH(
     const updateData: Record<string, unknown> = {};
     if (expectedSteps !== undefined) updateData.expectedSteps = expectedSteps;
     if (description !== undefined) updateData.description = description;
+
+    // Allow the web dashboard to mark a session as "active" (ready for glasses).
+    // This deactivates any other active sessions for the same user so
+    // the iOS glasses app always sees exactly one active job.
+    const isActivating = status === "active";
+    if (isActivating) {
+      // Deactivate any other active sessions for this user
+      await prisma.captureSession.updateMany({
+        where: {
+          userId: session.userId,
+          status: "active",
+          id: { not: session.id },
+        },
+        data: { status: "paused" },
+      });
+      updateData.status = "active";
+    }
+
     // Allow the web dashboard to end a session (capturing → capture_complete)
     const isEnding = status === "capture_complete" && session.status === "capturing";
     if (isEnding) {
