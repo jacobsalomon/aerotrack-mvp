@@ -1,8 +1,4 @@
-# Test Suite — disabled after Postgres migration.
-# The CI used SQLite (file:./test.db) which no longer matches the Postgres schema.
-# Re-enable when tests are updated for Postgres (remove the `if: false` line).
-
-name: Test Suite
+name: CI
 
 on:
   push:
@@ -11,8 +7,28 @@ on:
     branches: [main]
 
 jobs:
-  test:
-    if: false
+  verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit and smoke tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
