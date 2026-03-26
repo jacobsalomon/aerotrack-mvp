@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Download,
   FileText,
+  Images,
   Lock,
   Loader2,
   FileCheck,
@@ -120,6 +121,8 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [zippingPhotos, setZippingPhotos] = useState(false);
+  const [zipError, setZipError] = useState<string | null>(null);
 
   // Build progress map with composite key (handles multi-instance items)
   const progressMap = new Map<string, ProgressRecord>();
@@ -207,6 +210,65 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
       setPdfError(err instanceof Error ? err.message : "Failed to generate report");
     } finally {
       setGeneratingPdf(false);
+    }
+  }
+
+  // Download all photos as a zip file
+  async function handleDownloadPhotos() {
+    setZippingPhotos(true);
+    setZipError(null);
+    try {
+      const JSZip = (await import("jszip")).default;
+      const zip = new JSZip();
+
+      if (photos.length === 0) {
+        setZipError("No photos to download");
+        return;
+      }
+
+      let added = 0;
+      for (let i = 0; i < photos.length; i++) {
+        const photo = photos[i];
+        try {
+          const res = await fetch(photo.fileUrl);
+          if (!res.ok) continue;
+          const blob = await res.blob();
+          const ext = photo.fileUrl.split(".").pop()?.split("?")[0] || "jpg";
+          let name: string;
+          if (photo.inspectionItem) {
+            const param = photo.inspectionItem.parameterName?.replace(/[^a-zA-Z0-9]/g, "") || "Item";
+            name = `Item_${param}_${i + 1}.${ext}`;
+          } else {
+            name = `General_${i + 1}.${ext}`;
+          }
+          zip.file(name, blob);
+          added++;
+        } catch {
+          // Skip failed photo fetches
+        }
+      }
+
+      if (added === 0) {
+        setZipError("Could not download any photos");
+        return;
+      }
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const wo = session.workOrderRef?.replace(/[^a-zA-Z0-9-]/g, "") || "NoWO";
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Photos_${wo}_${dateStr}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Photo zip error:", err);
+      setZipError(err instanceof Error ? err.message : "Failed to create photo package");
+    } finally {
+      setZippingPhotos(false);
     }
   }
 
@@ -306,6 +368,27 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
                 <div className="text-red-400 text-xs text-center">
                   {pdfError}{" "}
                   <button onClick={handleGenerateReport} className="underline hover:text-red-300">
+                    Retry
+                  </button>
+                </div>
+              )}
+              <Button
+                variant="outline"
+                className="w-full border-zinc-700 hover:bg-zinc-800"
+                onClick={handleDownloadPhotos}
+                disabled={zippingPhotos || photos.length === 0}
+              >
+                {zippingPhotos ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Images className="h-4 w-4 mr-2" />
+                )}
+                {zippingPhotos ? "Packaging Photos..." : `Download Photos (${photos.length})`}
+              </Button>
+              {zipError && (
+                <div className="text-red-400 text-xs text-center">
+                  {zipError}{" "}
+                  <button onClick={handleDownloadPhotos} className="underline hover:text-red-300">
                     Retry
                   </button>
                 </div>
