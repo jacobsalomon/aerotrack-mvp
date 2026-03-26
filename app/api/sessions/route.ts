@@ -98,7 +98,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { description, targetFormType, orgDocumentId, workOrderRef } = body;
+    const { description, targetFormType, orgDocumentId, workOrderRef, forGlasses } = body;
     const user = authResult.user;
 
     // Look up user profile by the logged-in user's email
@@ -153,6 +153,21 @@ export async function POST(request: Request) {
       );
     }
 
+    // "active" = ready for glasses capture (iOS app will pick it up)
+    // "capturing" = web desk-mic capture (live view shown immediately)
+    const initialStatus = forGlasses ? "active" : "capturing";
+
+    // If creating a glasses job, deactivate any other active sessions
+    if (forGlasses) {
+      await prisma.captureSession.updateMany({
+        where: {
+          userId: userProfile.id,
+          status: "active",
+        },
+        data: { status: "paused" },
+      });
+    }
+
     const session = await prisma.captureSession.create({
       data: {
         userId: userProfile.id,
@@ -161,7 +176,7 @@ export async function POST(request: Request) {
         targetFormType: orgDocumentId ? null : (targetFormType || null),
         orgDocumentId: orgDocumentId || null,
         workOrderRef: workOrderRef || null,
-        status: "capturing",
+        status: initialStatus,
       },
     });
 

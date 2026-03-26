@@ -47,6 +47,7 @@ import {
   Mic,
   Sparkles,
   Upload,
+  Glasses,
 } from "lucide-react";
 
 // The 3 FAA forms AeroVision can auto-generate
@@ -202,7 +203,7 @@ export default function SessionsPage() {
   }
 
   // Start a new capture session with the selected target form or org document
-  async function handleStartSession(targetFormType: string, orgDocumentId?: string) {
+  async function handleStartSession(targetFormType: string, orgDocumentId?: string, forGlasses?: boolean) {
     setShowFormPicker(false);
     setCreatingSession(true);
     setCreateError(null);
@@ -217,9 +218,12 @@ export default function SessionsPage() {
             ? `Capture for ${orgDocLabel}`
             : formLabel
               ? `Capture for ${formLabel}`
-              : "Web capture session",
+              : forGlasses
+                ? "Glasses capture"
+                : "Web capture session",
           targetFormType: orgDocumentId ? null : (targetFormType || null),
           orgDocumentId: orgDocumentId || null,
+          forGlasses: forGlasses || false,
         }),
       });
       if (!res.ok) {
@@ -581,6 +585,25 @@ export default function SessionsPage() {
               </div>
             </>
           )}
+
+          {/* Glasses capture — creates job in "active" status for the iOS app to pick up */}
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mt-3">Capture Method</p>
+          <button
+            onClick={() => void handleStartSession("", undefined, true)}
+            className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 text-left transition-colors hover:bg-emerald-50 hover:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 w-full"
+          >
+            <div className="shrink-0 mt-0.5 w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center">
+              <Glasses className="h-4 w-4 text-emerald-700" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-900">
+                Send to Glasses
+              </p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Job appears on the mechanic&apos;s glasses app automatically
+              </p>
+            </div>
+          </button>
 
           <button
             onClick={() => void handleStartSession("")}
