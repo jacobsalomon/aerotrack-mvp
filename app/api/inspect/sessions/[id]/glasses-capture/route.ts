@@ -69,10 +69,8 @@ export async function POST(request: Request, { params }: RouteContext) {
       return NextResponse.json({ success: false, error: "Not an inspection session" }, { status: 400 });
     }
 
-    // Prevent modifications to signed-off sessions (compliance requirement)
-    if (session.signedOffAt) {
-      return NextResponse.json({ success: false, error: "Session is signed off" }, { status: 403 });
-    }
+    const signedOffResponse = guardSignedOff(session);
+    if (signedOffResponse) return signedOffResponse;
 
     const body = await request.json();
 
@@ -313,4 +311,3 @@ function isInTolerance(value: number, item: CandidateItem): boolean | null {
   const high = item.specValueHigh ?? Infinity;
   return value >= low && value <= high;
 }
-

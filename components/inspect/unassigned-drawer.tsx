@@ -7,7 +7,6 @@ import { useState, useEffect } from "react";
 import { apiUrl } from "@/lib/api-url";
 import { Button } from "@/components/ui/button";
 import { X, AlertCircle } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 interface UnassignedMeasurement {
   id: string;

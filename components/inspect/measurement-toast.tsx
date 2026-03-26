@@ -4,7 +4,7 @@
 // workspace with Accept/Reassign/Dismiss actions. Stacks max 3 toasts, auto-dismisses
 // after 30 seconds if not acted on.
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Check, ArrowRightLeft, X, Glasses } from "lucide-react";
 import type { MatchResult } from "@/lib/inspect/match-measurement-to-item";

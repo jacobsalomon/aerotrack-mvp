@@ -5,7 +5,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { BookOpen, Upload, FileText, Trash2, ExternalLink } from "lucide-react";
+import { BookOpen, Upload, FileText, ExternalLink } from "lucide-react";
 
 interface CmmManual {
   id: string;

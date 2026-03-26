@@ -546,7 +546,6 @@ export default function SessionDetailPage() {
   const pendingDocs = session.documents.filter(
     (doc) => doc.status !== "approved" && doc.status !== "rejected"
   );
-  const approvedDocs = session.documents.filter((doc) => doc.status === "approved");
   const allApproved = session.documents.length > 0 && pendingDocs.length === 0;
 
   // Progress state for header badge

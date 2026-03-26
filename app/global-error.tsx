@@ -1,13 +1,19 @@
 // Global error boundary — catches unhandled errors in the app.
 "use client";
 
+import { useEffect } from "react";
+
 export default function GlobalError({
-  error: _error,
+  error,
   reset,
 }: {
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    console.error(error);
+  }, [error]);
+
   return (
     <html>
       <body className="flex min-h-screen items-center justify-center bg-gray-50">

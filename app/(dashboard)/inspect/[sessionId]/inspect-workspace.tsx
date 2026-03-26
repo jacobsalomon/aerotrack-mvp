@@ -15,10 +15,6 @@ import NextItemButton from "@/components/inspect/next-item-button";
 import ItemSearch from "@/components/inspect/item-search";
 import InspectionRecorder from "@/components/inspect/inspection-recorder";
 import MeasurementToast, { type MeasurementSuggestion } from "@/components/inspect/measurement-toast";
-import {
-  matchMeasurementToItem,
-  type CandidateItem,
-} from "@/lib/inspect/match-measurement-to-item";
 
 // Types matching what the server component passes down
 interface InspectionItem {
@@ -152,19 +148,6 @@ export default function InspectWorkspace({ session, component }: Props) {
 
   // Photo evidence map: inspectionItemId (or "general") → array of photos
   const [photoMap, setPhotoMap] = useState<Map<string, PhotoEvidence[]>>(new Map());
-
-  // Build candidate items for measurement matching
-  const allCandidates: CandidateItem[] = sections.flatMap((sec) =>
-    sec.items.map((item) => ({
-      id: item.id,
-      sectionId: sec.id,
-      parameterName: item.parameterName,
-      specUnit: item.specUnit,
-      specValueLow: item.specValueLow,
-      specValueHigh: item.specValueHigh,
-      itemCallout: item.itemCallout,
-    }))
-  );
 
   // Get the active section's items filtered by config variant
   const activeSection = sections.find((s) => s.id === activeSectionId);
@@ -435,7 +418,6 @@ export default function InspectWorkspace({ session, component }: Props) {
           progressMap={progressMap}
           photoMap={photoMap}
           sessionId={session.id}
-          sectionId={activeSectionId}
           isReadOnly={isReadOnly}
           isOffline={!isOnline}
           onItemCompleted={handleItemCompleted}

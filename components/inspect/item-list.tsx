@@ -58,7 +58,6 @@ interface Props {
   progressMap: Map<string, ProgressRecord>;
   photoMap: Map<string, PhotoEvidence[]>;
   sessionId: string;
-  sectionId: string;
   isReadOnly: boolean;
   isOffline?: boolean;
   onItemCompleted: (itemId: string, status: string, result: string | null, measurement: ProgressRecord["measurement"], instanceIndex?: number) => void;
@@ -73,7 +72,6 @@ export default function ItemList({
   progressMap,
   photoMap,
   sessionId,
-  sectionId,
   isReadOnly,
   isOffline,
   onItemCompleted,
@@ -217,6 +215,7 @@ export default function ItemList({
           </button>
           {diagramOpen && (
             <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={referenceImageUrls[0]}
                 alt="Reference diagram"

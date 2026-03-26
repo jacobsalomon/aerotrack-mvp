@@ -300,15 +300,6 @@ export default function GlassesDemoPage() {
   // Fetched from the API when demo starts; null means not yet loaded
   const [cmmData, setCmmData] = useState<CmmLookupResult | null>(null);
 
-  // Build a CMM reference string from the API data, or fall back to hardcoded
-  const cmmRef = useCallback((section: string, fallback: string) => {
-    if (cmmData?.manual) {
-      // manual.title is e.g. "HPC-7 Hydraulic Pump CMM Rev. 12"
-      return `Within tolerance per ${cmmData.manual.title}, ${section}`;
-    }
-    return fallback;
-  }, [cmmData]);
-
   // Full CMM title for the form header (e.g. "Full overhaul per CMM 881700-OH Rev. 12...")
   const cmmTitle = cmmData?.manual
     ? cmmData.manual.title
