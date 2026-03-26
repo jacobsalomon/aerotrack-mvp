@@ -133,7 +133,8 @@ export async function PATCH(
     // Allow the web dashboard to mark a session as "active" (ready for glasses).
     // This deactivates any other active sessions for the same user so
     // the iOS glasses app always sees exactly one active job.
-    const isActivating = status === "active";
+    // Only allow activation from paused or capturing states — don't resurrect completed/approved jobs
+    const isActivating = status === "active" && ["paused", "capturing", "capture_complete"].includes(session.status);
     if (isActivating) {
       // Deactivate any other active sessions for this user
       await prisma.captureSession.updateMany({

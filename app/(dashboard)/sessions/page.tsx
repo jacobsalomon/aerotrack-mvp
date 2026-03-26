@@ -151,6 +151,8 @@ export default function SessionsPage() {
   const [showFormPicker, setShowFormPicker] = useState(false);
   const [orgDocuments, setOrgDocuments] = useState<{ id: string; title: string; fileSizeBytes: number }[]>([]);
   const [loadingOrgDocs, setLoadingOrgDocs] = useState(false);
+  // Two-step dialog: first pick a form, then pick capture method (web mic vs glasses)
+  const [selectedForm, setSelectedForm] = useState<{ targetFormType: string; orgDocumentId?: string; label: string } | null>(null);
 
   const fetchSessions = useCallback(async () => {
     setLoading(true);
@@ -518,99 +520,144 @@ export default function SessionsPage() {
         </CardContent>
       </Card>
 
-      {/* Form picker dialog — select which form this session will populate */}
-      <Dialog open={showFormPicker} onOpenChange={setShowFormPicker}>
+      {/* Form picker dialog — two steps: 1) pick a form, 2) pick capture method */}
+      <Dialog open={showFormPicker} onOpenChange={(open) => { setShowFormPicker(open); if (!open) setSelectedForm(null); }}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-bold" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
-              What are you working on?
-            </DialogTitle>
-            <p className="text-sm text-slate-500 mt-1">
-              Pick the form AeroVision should auto-populate from your capture.
-            </p>
-          </DialogHeader>
-
-          {/* FAA Forms */}
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mt-2">FAA Forms</p>
-          <div className="grid gap-2">
-            {TARGET_FORMS.map((form) => (
-              <button
-                key={form.id}
-                onClick={() => void handleStartSession(form.id)}
-                className="flex items-start gap-3 rounded-lg border border-slate-200 p-4 text-left transition-colors hover:bg-slate-50 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <div className="shrink-0 mt-0.5 w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
-                  <Sparkles className="h-4 w-4 text-blue-600" />
-                </div>
-                <div className="min-w-0">
-                  <p className="font-mono text-sm font-semibold text-slate-900">
-                    {form.formNumber}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {form.shortDesc}
-                  </p>
-                </div>
-              </button>
-            ))}
-          </div>
-
-          {/* Internal Forms (org documents) */}
-          {loadingOrgDocs ? (
-            <div className="flex items-center justify-center py-4">
-              <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
-            </div>
-          ) : orgDocuments.length > 0 && (
+          {selectedForm === null ? (
             <>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mt-3">Internal Forms</p>
+              {/* Step 1: Pick a form */}
+              <DialogHeader>
+                <DialogTitle className="text-lg font-bold" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
+                  What are you working on?
+                </DialogTitle>
+                <p className="text-sm text-slate-500 mt-1">
+                  Pick the form AeroVision should auto-populate from your capture.
+                </p>
+              </DialogHeader>
+
+              {/* FAA Forms */}
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mt-2">FAA Forms</p>
               <div className="grid gap-2">
-                {orgDocuments.map((doc) => (
+                {TARGET_FORMS.map((form) => (
                   <button
-                    key={doc.id}
-                    onClick={() => void handleStartSession("", doc.id)}
+                    key={form.id}
+                    onClick={() => setSelectedForm({ targetFormType: form.id, label: form.formNumber })}
                     className="flex items-start gap-3 rounded-lg border border-slate-200 p-4 text-left transition-colors hover:bg-slate-50 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <div className="shrink-0 mt-0.5 w-9 h-9 rounded-lg bg-orange-50 flex items-center justify-center">
-                      <Upload className="h-4 w-4 text-orange-600" />
+                    <div className="shrink-0 mt-0.5 w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
+                      <Sparkles className="h-4 w-4 text-blue-600" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-900">
-                        {doc.title}
+                      <p className="font-mono text-sm font-semibold text-slate-900">
+                        {form.formNumber}
                       </p>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        {doc.fileSizeBytes ? `${Math.round(doc.fileSizeBytes / 1024)} KB` : "Uploaded PDF"}
+                        {form.shortDesc}
                       </p>
                     </div>
                   </button>
                 ))}
               </div>
+
+              {/* Internal Forms (org documents) */}
+              {loadingOrgDocs ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                </div>
+              ) : orgDocuments.length > 0 && (
+                <>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mt-3">Internal Forms</p>
+                  <div className="grid gap-2">
+                    {orgDocuments.map((doc) => (
+                      <button
+                        key={doc.id}
+                        onClick={() => setSelectedForm({ targetFormType: "", orgDocumentId: doc.id, label: doc.title })}
+                        className="flex items-start gap-3 rounded-lg border border-slate-200 p-4 text-left transition-colors hover:bg-slate-50 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <div className="shrink-0 mt-0.5 w-9 h-9 rounded-lg bg-orange-50 flex items-center justify-center">
+                          <Upload className="h-4 w-4 text-orange-600" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-900">
+                            {doc.title}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            {doc.fileSizeBytes ? `${Math.round(doc.fileSizeBytes / 1024)} KB` : "Uploaded PDF"}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <button
+                onClick={() => setSelectedForm({ targetFormType: "", label: "" })}
+                className="mt-1 text-sm text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                Skip — just record without a form
+              </button>
+            </>
+          ) : (
+            <>
+              {/* Step 2: Pick capture method */}
+              <DialogHeader>
+                <DialogTitle className="text-lg font-bold" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
+                  How will you capture?
+                </DialogTitle>
+                <p className="text-sm text-slate-500 mt-1">
+                  {selectedForm.label
+                    ? <>Capturing for <span className="font-semibold text-slate-700">{selectedForm.label}</span></>
+                    : "No form selected — recording only"}
+                </p>
+              </DialogHeader>
+
+              <div className="grid gap-2 mt-2">
+                {/* Desk mic / web capture */}
+                <button
+                  onClick={() => void handleStartSession(selectedForm.targetFormType, selectedForm.orgDocumentId)}
+                  className="flex items-start gap-3 rounded-lg border border-slate-200 p-4 text-left transition-colors hover:bg-slate-50 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <div className="shrink-0 mt-0.5 w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
+                    <Mic className="h-4 w-4 text-blue-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-900">
+                      Record on Web
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Use your desk microphone to capture audio now
+                    </p>
+                  </div>
+                </button>
+
+                {/* Send to glasses */}
+                <button
+                  onClick={() => void handleStartSession(selectedForm.targetFormType, selectedForm.orgDocumentId, true)}
+                  className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 text-left transition-colors hover:bg-emerald-50 hover:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <div className="shrink-0 mt-0.5 w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center">
+                    <Glasses className="h-4 w-4 text-emerald-700" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-900">
+                      Send to Glasses
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Job appears on the mechanic&apos;s glasses app automatically
+                    </p>
+                  </div>
+                </button>
+              </div>
+
+              <button
+                onClick={() => setSelectedForm(null)}
+                className="mt-1 text-sm text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                &larr; Back to form selection
+              </button>
             </>
           )}
-
-          {/* Glasses capture — creates job in "active" status for the iOS app to pick up */}
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mt-3">Capture Method</p>
-          <button
-            onClick={() => void handleStartSession("", undefined, true)}
-            className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 text-left transition-colors hover:bg-emerald-50 hover:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 w-full"
-          >
-            <div className="shrink-0 mt-0.5 w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center">
-              <Glasses className="h-4 w-4 text-emerald-700" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-900">
-                Send to Glasses
-              </p>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Job appears on the mechanic&apos;s glasses app automatically
-              </p>
-            </div>
-          </button>
-
-          <button
-            onClick={() => void handleStartSession("")}
-            className="mt-1 text-sm text-slate-400 hover:text-slate-600 transition-colors"
-          >
-            Skip — just record without a form
-          </button>
         </DialogContent>
       </Dialog>
     </div>
