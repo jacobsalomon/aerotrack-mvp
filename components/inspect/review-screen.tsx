@@ -15,6 +15,8 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Download,
+  FileText,
   Lock,
   Loader2,
   FileCheck,
@@ -116,6 +118,8 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
   const [signingOff, setSigningOff] = useState(false);
   const [showSignOffDialog, setShowSignOffDialog] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   // Build progress map with composite key (handles multi-instance items)
   const progressMap = new Map<string, ProgressRecord>();
@@ -171,6 +175,38 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
     } finally {
       setSigningOff(false);
       setShowSignOffDialog(false);
+    }
+  }
+
+  // Generate and download inspection report PDF
+  async function handleGenerateReport() {
+    setGeneratingPdf(true);
+    setPdfError(null);
+    try {
+      const res = await fetch(apiUrl(`/api/inspect/sessions/${session.id}/generate-report`), {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Failed to generate report");
+      }
+      // Get the PDF blob and trigger download
+      const blob = await res.blob();
+      const filename = res.headers.get("Content-Disposition")?.match(/filename="?(.+?)"?$/)?.[1]
+        || "Inspection_Report.pdf";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("PDF generation error:", err);
+      setPdfError(err instanceof Error ? err.message : "Failed to generate report");
+    } finally {
+      setGeneratingPdf(false);
     }
   }
 
@@ -250,6 +286,32 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
               Evidence Provenance Audit
             </Button>
           </div>
+
+          {/* Report download buttons (only after sign-off) */}
+          {isSignedOff && (
+            <div className="pt-2 border-t border-white/10 space-y-2">
+              <Button
+                className="w-full bg-blue-600 hover:bg-blue-700"
+                onClick={handleGenerateReport}
+                disabled={generatingPdf}
+              >
+                {generatingPdf ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <FileText className="h-4 w-4 mr-2" />
+                )}
+                {generatingPdf ? "Generating Report..." : "Generate Report"}
+              </Button>
+              {pdfError && (
+                <div className="text-red-400 text-xs text-center">
+                  {pdfError}{" "}
+                  <button onClick={handleGenerateReport} className="underline hover:text-red-300">
+                    Retry
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
