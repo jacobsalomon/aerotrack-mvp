@@ -204,7 +204,6 @@ function drawHeader(
   // Info grid — two columns
   const col1 = MARGIN + 5;
   const col2 = MARGIN + CONTENT_W / 2;
-  const lineH = 14;
 
   const orgName = data.organization?.name || "—";
   const wo = data.workOrderRef || "—";

@@ -166,7 +166,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     const dateStr = new Date().toISOString().slice(0, 10);
     const filename = `Inspection_Report_${wo}_${pn}_${dateStr}.pdf`;
 
-    return new Response(pdfBytes, {
+    return new Response(Buffer.from(pdfBytes), {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
