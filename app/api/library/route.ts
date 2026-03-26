@@ -26,7 +26,8 @@ export async function GET() {
   // Add total item count to each template for the UI
   const enriched = templates.map((t) => {
     const totalItems = t.sections.reduce((sum, s) => sum + s._count.items, 0);
-    const { sections: _sections, ...rest } = t;
+    const { sections, ...rest } = t;
+    void sections;
     return { ...rest, totalItems };
   });
 

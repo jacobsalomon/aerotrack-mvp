@@ -256,7 +256,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       // Step 6: Run reconciliation on the full stitched transcript
       const fullTranscript = audioChunks
         .filter((c) => c.transcription)
-        .map((c, idx) => {
+        .map((c) => {
           const minutes = Math.floor(
             ((c.capturedAt?.getTime() || 0) - (audioChunks[0].capturedAt?.getTime() || 0)) /
               60000

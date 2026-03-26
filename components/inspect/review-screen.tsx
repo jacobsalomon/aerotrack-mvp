@@ -129,9 +129,6 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
     progressMap.set(`${p.inspectionItemId}:${p.instanceIndex ?? 0}`, p);
   }
 
-  // Also build a simple itemId→true lookup for section completion counting
-  const itemHasProgress = new Set(progress.map((p) => p.inspectionItemId));
-
   // Summary counts
   const total = progress.length;
   const done = progress.filter((p) => p.status === "done").length;
