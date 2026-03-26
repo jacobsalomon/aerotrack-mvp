@@ -35,10 +35,18 @@ describe("AI fallback metadata", () => {
 
     const { generateDocuments } = await import("@/lib/ai/openai");
     const result = await generateDocuments({
+      organizationName: "Mechanical Vision",
+      organizationCert: "ABC123",
+      organizationAddress: "123 Hangar Way",
+      userName: "Jake Salomon",
+      userBadge: "MX-1",
+      componentInfo: null,
       photoExtractions: [],
       videoAnalysis: null,
       videoAnnotations: [],
       audioTranscript: null,
+      cmmReference: null,
+      referenceData: null,
     });
 
     expect(result.modelUsed).toBe("claude-sonnet-4-6-20250217");

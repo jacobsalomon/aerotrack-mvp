@@ -51,7 +51,6 @@ const nextConfig: NextConfig = {
     "prisma",
     "pdf-lib",
     "pdf-parse",
-    "pdfjs-dist",
     "@anthropic-ai/sdk",
     "bcryptjs",
     "resend",
