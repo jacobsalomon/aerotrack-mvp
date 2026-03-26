@@ -218,6 +218,102 @@ interface Pass2Progress {
 // Max retries per page before giving up on that page and moving on
 const MAX_PAGE_RETRIES = 3;
 
+// ── Batch OCR pre-warming ─────────────────────────────────────────────
+
+/**
+ * Run OCR on all remaining pages of a section in parallel.
+ * Stores results in pass2Progress so extractSectionPage finds cached OCR
+ * and skips the Mathpix API call. This turns sequential OCR (5s × N pages)
+ * into parallel OCR (~5s total regardless of page count).
+ *
+ * Safe to call multiple times — skips pages that already have OCR results.
+ * Returns the number of pages OCR'd.
+ */
+export async function prewarmOcrForSection(
+  sectionId: string,
+  pdfBytes: Buffer,
+): Promise<number> {
+  const section = await prisma.inspectionSection.findUniqueOrThrow({
+    where: { id: sectionId },
+    select: { pageNumbers: true, figureNumber: true, pass2Progress: true },
+  });
+
+  // Load existing progress (may have partial OCR from previous runs)
+  const progress: Pass2Progress = section.pass2Progress
+    ? (section.pass2Progress as unknown as Pass2Progress)
+    : { pageResults: [], nextPageOffset: 0 };
+
+  // Find pages that still need OCR
+  const pagesNeedingOcr: { pageIdx: number; pageOffset: number }[] = [];
+  for (let offset = progress.nextPageOffset; offset < section.pageNumbers.length; offset++) {
+    const pageIdx = section.pageNumbers[offset];
+    const existing = progress.pageResults.find(r => r.pageIndex === pageIdx && r.ocrResult);
+    if (!existing) {
+      pagesNeedingOcr.push({ pageIdx, pageOffset: offset });
+    }
+  }
+
+  if (pagesNeedingOcr.length === 0) return 0;
+
+  console.log(
+    `[OCR Batch] Pre-warming ${pagesNeedingOcr.length} pages for Fig. ${section.figureNumber}`
+  );
+
+  // Extract all pages as base64 in parallel
+  const pageExtractions = await Promise.all(
+    pagesNeedingOcr.map(async ({ pageIdx }) => ({
+      pageIdx,
+      base64: await extractSinglePageAsBase64(pdfBytes, pageIdx),
+    }))
+  );
+
+  // Run OCR on all pages in parallel
+  const ocrResults = await Promise.allSettled(
+    pageExtractions.map(async ({ pageIdx, base64 }) => ({
+      pageIdx,
+      result: await ocrPage(base64),
+    }))
+  );
+
+  // Store successful OCR results in pass2Progress as placeholder entries
+  // (extractSectionPage will find these and skip the OCR call)
+  let ocrCount = 0;
+  for (const settled of ocrResults) {
+    if (settled.status === "fulfilled") {
+      const { pageIdx, result } = settled.value;
+      // Only add if not already present
+      if (!progress.pageResults.find(r => r.pageIndex === pageIdx)) {
+        progress.pageResults.push({
+          pageIndex: pageIdx,
+          items: [], // Empty — extraction hasn't happened yet
+          geminiSucceeded: false,
+          claudeSucceeded: false,
+          agreementRate: 0,
+          disagreements: [],
+          completedAt: "",
+          ocrResult: result,
+        });
+      }
+      ocrCount++;
+    } else {
+      console.warn(`[OCR Batch] OCR failed for a page — will retry during extraction`);
+    }
+  }
+
+  // Persist the pre-warmed OCR results
+  if (ocrCount > 0) {
+    await prisma.inspectionSection.update({
+      where: { id: sectionId },
+      data: { pass2Progress: JSON.parse(JSON.stringify(progress)) },
+    });
+    console.log(
+      `[OCR Batch] Pre-warmed ${ocrCount}/${pagesNeedingOcr.length} pages for Fig. ${section.figureNumber}`
+    );
+  }
+
+  return ocrCount;
+}
+
 // ── Page-resumable extraction ─────────────────────────────────────────
 
 /**
