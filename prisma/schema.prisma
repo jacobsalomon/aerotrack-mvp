@@ -920,6 +920,10 @@ model InspectionSection {
   pass2Progress               Json?                       // Per-page extraction state for resumable Pass 2
   notes                       String?                     // Reviewer annotations
 
+  // Section-level lease for parallel extraction — multiple workers can claim different sections
+  extractionRunnerToken       String?                     // Random token held by the worker processing this section
+  extractionLeaseExpiresAt    DateTime?                   // Lease expires after 6 minutes (maxDuration + buffer)
+
   createdAt                   DateTime  @default(now())
   updatedAt                   DateTime  @updatedAt
 
@@ -929,6 +933,7 @@ model InspectionSection {
 
   @@index([templateId])
   @@index([organizationId])
+  @@index([status, extractionLeaseExpiresAt])             // Fast lookup for claimable sections
 }
 
 // ──────────────────────────────────────────────────────
