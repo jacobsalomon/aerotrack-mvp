@@ -12,7 +12,7 @@
 import { prisma } from "@/lib/db";
 import { randomUUID } from "crypto";
 import { runPass1Batch } from "@/lib/ai/cmm-extraction-pass1";
-import { extractSectionPage, finalizeSectionExtraction } from "@/lib/ai/cmm-extraction-pass2";
+import { extractSectionPage, finalizeSectionExtraction, prewarmOcrForSection } from "@/lib/ai/cmm-extraction-pass2";
 
 // Lease = maxDuration (300s) + 1 min buffer. If the function dies,
 // recovery happens in ~6 min instead of 15.
@@ -189,6 +189,10 @@ export async function processSection(templateId: string): Promise<ExtractionResu
   }
 
   try {
+    // Batch OCR: run Mathpix on all remaining pages in parallel
+    // This turns sequential OCR (5s × N pages) into ~5s total
+    await prewarmOcrForSection(claimedSectionId, pdfBytes);
+
     // Process all pages of this section within the soft deadline
     let rateLimitRetries = 0;
 
