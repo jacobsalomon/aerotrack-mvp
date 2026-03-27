@@ -141,7 +141,7 @@ export default function LibraryClient({
   const router = useRouter();
   const [showUpload, setShowUpload] = useState(false);
   // When updating an existing template, store its prefill data
-  const [updatePrefill, setUpdatePrefill] = useState<{ title: string; partNumbers: string } | null>(null);
+  const [updatePrefill, setUpdatePrefill] = useState<{ title: string; partNumbers: string; oem?: string } | null>(null);
   const [templates, setTemplates] = useState(initialTemplates);
 
   // State for the delete confirmation dialog
@@ -508,6 +508,7 @@ export default function LibraryClient({
                   title: t.title,
                   status: t.status,
                   partNumbersCovered: [],
+                  oem: null,
                   revisionDate: null,
                   totalPages: 0,
                   sectionCount: 0,
