@@ -29,6 +29,7 @@ export default async function LibraryPage() {
         title: t.title,
         status: t.status,
         partNumbersCovered: t.partNumbersCovered,
+        oem: t.oem ?? null,
         revisionDate: t.revisionDate?.toISOString() ?? null,
         totalPages: t.totalPages,
         sectionCount: t._count.sections,
