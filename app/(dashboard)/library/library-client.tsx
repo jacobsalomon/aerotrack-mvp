@@ -264,7 +264,7 @@ export default function LibraryClient({
         </div>
         <Button onClick={() => setShowUpload(true)} className="shrink-0 ml-4">
           <Upload className="h-4 w-4 mr-2" />
-          Upload CMM
+          Upload CMMs
         </Button>
       </div>
 
