@@ -264,7 +264,7 @@ export default function LibraryClient({
         </div>
         <Button onClick={() => setShowUpload(true)} className="shrink-0 ml-4">
           <Upload className="h-4 w-4 mr-2" />
-          Upload CMMs
+          Upload
         </Button>
       </div>
 
@@ -285,7 +285,7 @@ export default function LibraryClient({
               onClick={() => setShowUpload(true)}
             >
               <FileUp className="h-4 w-4 mr-2" />
-              Upload your first CMM
+              Upload your first document
             </Button>
           </CardContent>
         </Card>
@@ -420,7 +420,7 @@ export default function LibraryClient({
                                 }}
                               >
                                 <Upload className="h-4 w-4" />
-                                Update CMM
+                                Update
                               </DropdownMenuItem>
                             )}
                             {showRetry && (

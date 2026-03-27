@@ -139,6 +139,8 @@ export default function UploadModal({
     if (valid.length === 1 && !title) {
       setTitle(valid[0].name.replace(/\.pdf$/i, ""));
     }
+    // Reset input so re-selecting the same files works
+    e.target.value = "";
   }
 
   const isSingle = files.length <= 1;
@@ -147,7 +149,7 @@ export default function UploadModal({
     <Dialog open onOpenChange={() => onClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{prefill ? "Update CMM" : "Upload CMMs"}</DialogTitle>
+          <DialogTitle>{prefill ? "Update Document" : "Upload"}</DialogTitle>
           <DialogDescription>
             {prefill
               ? "Upload a fresh revision. The previous version will be archived and any in-progress jobs will keep their original template."
@@ -168,7 +170,7 @@ export default function UploadModal({
                 id="cmm-file"
                 type="file"
                 accept=".pdf,application/pdf"
-                multiple={!prefill}
+                multiple
                 className="hidden"
                 onChange={handleFileSelect}
               />
