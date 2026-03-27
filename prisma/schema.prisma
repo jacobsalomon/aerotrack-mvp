@@ -866,6 +866,7 @@ model InspectionTemplate {
   sourceFileName          String                          // Original filename
   revisionDate            DateTime?                       // CMM revision date
   partNumbersCovered      String[]                        // Part numbers this template applies to (for auto-linking)
+  oem                     String?                         // OEM / manufacturer (e.g., "Collins Aerospace")
   status                  String    @default("pending_extraction")
                                                           // pending_extraction, extracting_index, extracting_details,
                                                           // review_ready, active, archived, extraction_failed

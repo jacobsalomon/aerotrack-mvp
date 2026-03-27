@@ -40,6 +40,13 @@ interface TableMetadata {
   continuesToNext: boolean;
 }
 
+// Document-level metadata extracted from individual pages (aggregated after Pass 1)
+interface DocumentMetadata {
+  documentTitle: string | null;
+  oem: string | null;
+  revisionDate: string | null; // ISO date string
+}
+
 // The structure Gemini returns for each page
 interface PageClassification {
   pageType: "diagram" | "inspection_text" | "parts_list" | "data_table" | "ignore";
@@ -48,6 +55,7 @@ interface PageClassification {
   sheetNumber: number | null;
   totalSheets: number | null;
   partNumbers: string[];
+  documentMetadata?: DocumentMetadata;
   notes: string | null;
   explicitReferences?: ExplicitReferences;
   tableMetadata?: TableMetadata; // Present when pageType is "data_table"
@@ -507,6 +515,62 @@ async function finalizePass1(templateId: string, progress: Pass1Progress): Promi
     });
   }
 
+  // Aggregate document-level metadata from all classified pages.
+  // Use the longest/most specific value found across pages — title pages and
+  // cover sheets often have the best metadata but may be classified as "ignore".
+  const allDocMeta = classifications
+    .map((c) => c.result.documentMetadata)
+    .filter((m): m is DocumentMetadata => !!m);
+
+  const extractedDocTitle = allDocMeta
+    .map((m) => m.documentTitle)
+    .filter((t): t is string => !!t)
+    .sort((a, b) => b.length - a.length)[0] ?? null;
+
+  const extractedOem = allDocMeta
+    .map((m) => m.oem)
+    .filter((o): o is string => !!o)
+    .sort((a, b) => b.length - a.length)[0] ?? null;
+
+  const extractedRevisionDate = allDocMeta
+    .map((m) => m.revisionDate)
+    .filter((d): d is string => !!d)[0] ?? null;
+
+  // Aggregate part numbers found across all pages (union with user-provided ones)
+  const extractedPartNumbers = [
+    ...new Set(
+      classifications.flatMap((c) => c.result.partNumbers).filter(Boolean)
+    ),
+  ];
+
+  // Merge AI-extracted metadata into the template — fill gaps, don't overwrite user input
+  const metadataUpdate: Record<string, unknown> = {};
+
+  if (extractedOem && !template.oem) {
+    metadataUpdate.oem = extractedOem;
+  }
+  if (extractedDocTitle && template.title === template.sourceFileName.replace(/\.pdf$/i, "")) {
+    // User didn't provide a custom title (still using filename) — use AI-extracted one
+    metadataUpdate.title = extractedDocTitle;
+  }
+  if (extractedRevisionDate && !template.revisionDate) {
+    metadataUpdate.revisionDate = new Date(extractedRevisionDate);
+  }
+  // Merge AI-extracted part numbers with user-provided ones
+  if (extractedPartNumbers.length > 0) {
+    const merged = [...new Set([...template.partNumbersCovered, ...extractedPartNumbers])];
+    if (merged.length > template.partNumbersCovered.length) {
+      metadataUpdate.partNumbersCovered = merged;
+    }
+  }
+
+  if (Object.keys(metadataUpdate).length > 0) {
+    console.log(
+      `[CMM Pass 1] AI-extracted metadata:`,
+      JSON.stringify(metadataUpdate, null, 2)
+    );
+  }
+
   // Store the full index in extractionMetadata (replace pass1Progress with final data)
   const indexData = {
     completedAt: new Date().toISOString(),
@@ -542,6 +606,7 @@ async function finalizePass1(templateId: string, progress: Pass1Progress): Promi
     data: {
       extractionMetadata: JSON.parse(JSON.stringify(indexData)),
       status: "extracting_details",
+      ...metadataUpdate,
     },
   });
 

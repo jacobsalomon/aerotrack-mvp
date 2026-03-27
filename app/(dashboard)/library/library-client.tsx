@@ -42,6 +42,7 @@ interface TemplateInfo {
   title: string;
   status: string;
   partNumbersCovered: string[];
+  oem: string | null;
   revisionDate: string | null;
   totalPages: number;
   sectionCount: number;
@@ -256,9 +257,9 @@ export default function LibraryClient({
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Library</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Upload Component Maintenance Manuals to create structured inspection
-            templates. AI extracts torque specs, tool requirements, and checks
-            from your CMM diagrams.
+            Upload CMM pages for the specific procedures you need — a full
+            manual or just the sections for a particular flow. AI extracts
+            torque specs, tool requirements, and inspection checks automatically.
           </p>
         </div>
         <Button onClick={() => setShowUpload(true)} className="shrink-0 ml-4">
@@ -273,10 +274,11 @@ export default function LibraryClient({
           <CardContent className="py-12 text-center">
             <BookOpen className="h-12 w-12 text-slate-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-slate-700 mb-1">
-              No CMMs uploaded yet
+              No procedures uploaded yet
             </h3>
             <p className="text-sm text-slate-500 mb-4">
-              Upload your first Component Maintenance Manual to get started.
+              Upload CMM pages for the procedures you need — a full manual or
+              just the specific sections for a job.
             </p>
             <Button
               variant="outline"
@@ -335,6 +337,13 @@ export default function LibraryClient({
                         )}
                       </div>
 
+                      {/* OEM */}
+                      {template.oem && (
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {template.oem}
+                        </p>
+                      )}
+
                       {/* Live progress detail when processing */}
                       {isProcessing && tp?.currentSection && (
                         <p className="text-xs text-blue-600 mt-1">
@@ -376,6 +385,10 @@ export default function LibraryClient({
                             {new Date(template.revisionDate).toLocaleDateString()}
                           </span>
                         )}
+                        <span>
+                          Uploaded{" "}
+                          {new Date(template.createdAt).toLocaleDateString()}
+                        </span>
                         <span>by {template.createdBy}</span>
                       </div>
                     </div>
@@ -401,6 +414,7 @@ export default function LibraryClient({
                                   setUpdatePrefill({
                                     title: template.title,
                                     partNumbers: template.partNumbersCovered.join(", "),
+                                    oem: template.oem || "",
                                   });
                                   setShowUpload(true);
                                 }}

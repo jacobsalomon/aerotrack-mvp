@@ -100,7 +100,7 @@ export default function DocsPage() {
             <TocLink href="#jobs" label="Jobs" />
             <TocLink href="#freeform" label="Freeform Capture" />
             <TocLink href="#guided" label="Guided Inspection" />
-            <TocLink href="#templates" label="CMM Templates" />
+            <TocLink href="#templates" label="CMM Library" />
             <TocLink href="#forms" label="Forms" />
             <TocLink href="#team" label="Team" />
             <TocLink href="#settings" label="Settings" />
@@ -220,16 +220,18 @@ export default function DocsPage() {
           </Section>
 
           {/* CMM Templates */}
-          <Section id="templates" title="CMM Templates" icon={BookOpen}>
+          <Section id="templates" title="CMM Library" icon={BookOpen}>
             <p>
-              Templates are the backbone of guided inspections. Upload a CMM PDF
-              and the AI extracts a structured inspection checklist — measurements,
-              tolerances, pass/fail items, and configuration-specific sections.
+              The Library is the backbone of guided inspections. Upload the CMM
+              pages you need — a full manual or just the sections for a specific
+              flow — and the AI extracts a structured inspection checklist with
+              measurements, tolerances, pass/fail items, and configuration-specific
+              sections.
             </p>
             <Steps
               steps={[
-                "Go to Templates in the sidebar",
-                "Click \"Upload Template\" and select a CMM PDF (supports up to 500 pages)",
+                "Go to Library in the sidebar",
+                "Click \"Upload CMM\" and select a PDF — a full manual or just the pages for your procedure",
                 "The AI processes the PDF in two passes — first indexing pages, then extracting details",
                 "Review the extracted sections and items for accuracy",
                 "You can re-extract individual sections if something looks off",

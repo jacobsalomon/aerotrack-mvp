@@ -42,6 +42,9 @@ export default async function ReviewPage({
         status: template.status,
         sourceFileUrl: template.sourceFileUrl,
         partNumbersCovered: template.partNumbersCovered,
+        oem: template.oem,
+        revisionDate: template.revisionDate?.toISOString() ?? null,
+        createdAt: template.createdAt.toISOString(),
         totalPages: template.totalPages,
         sections: template.sections.map((s) => ({
           id: s.id,
