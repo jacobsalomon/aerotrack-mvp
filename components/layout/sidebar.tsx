@@ -48,9 +48,9 @@ const supportNavItems: NavItem[] = [
   },
   {
     href: "/library",
-    label: "Templates",
+    label: "Library",
     icon: BookOpen,
-    description: "CMM inspection templates",
+    description: "CMM inspection procedures",
   },
   {
     href: "/technicians",

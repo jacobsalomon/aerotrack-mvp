@@ -21,6 +21,7 @@ import { toast } from "sonner";
 interface Prefill {
   title?: string;
   partNumbers?: string;
+  oem?: string;
 }
 
 export default function UploadModal({
@@ -38,6 +39,7 @@ export default function UploadModal({
   const [title, setTitle] = useState(prefill?.title || "");
   const [revisionDate, setRevisionDate] = useState("");
   const [partNumbers, setPartNumbers] = useState(prefill?.partNumbers || "");
+  const [oem, setOem] = useState(prefill?.oem || "");
   const [inspectionPages, setInspectionPages] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
@@ -77,6 +79,7 @@ export default function UploadModal({
           title: title || file.name.replace(/\.pdf$/i, ""),
           revisionDate: revisionDate || null,
           partNumbers: partNumbers || null,
+          oem: oem || null,
           inspectionPages: inspectionPages || null,
         }),
       });
@@ -138,7 +141,7 @@ export default function UploadModal({
           <DialogDescription>
             {prefill
               ? "Upload a fresh revision. The previous version will be archived and any in-progress jobs will keep their original template."
-              : "Upload a Component Maintenance Manual PDF. AeroVision will extract torque specs, tool requirements, and inspection checks automatically."}
+              : "Upload the CMM pages you need — a full manual or just the sections for a specific procedure. AeroVision will extract torque specs, tool requirements, and inspection checks automatically."}
           </DialogDescription>
         </DialogHeader>
 
@@ -221,6 +224,24 @@ export default function UploadModal({
             />
             <p className="text-xs text-slate-400 mt-1">
               Comma-separated. Used to auto-link templates to components.
+            </p>
+          </div>
+
+          {/* OEM / Manufacturer */}
+          <div>
+            <Label htmlFor="cmm-oem">
+              OEM / Manufacturer{" "}
+              <span className="text-slate-400 font-normal">(optional)</span>
+            </Label>
+            <Input
+              id="cmm-oem"
+              value={oem}
+              onChange={(e) => setOem(e.target.value)}
+              placeholder="e.g., Collins Aerospace, Honeywell"
+              className="mt-1.5"
+            />
+            <p className="text-xs text-slate-400 mt-1">
+              Leave blank and AI will try to detect it from the document.
             </p>
           </div>
 

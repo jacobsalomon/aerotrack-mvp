@@ -19,6 +19,11 @@ Return JSON matching this exact structure:
   "sheetNumber": 1,
   "totalSheets": 3,
   "partNumbers": ["739515", "745329"],
+  "documentMetadata": {
+    "documentTitle": "Component Maintenance Manual — Integrated Drive Generator" or null,
+    "oem": "Collins Aerospace" or null,
+    "revisionDate": "2024-03-15" or null
+  },
   "notes": "any relevant context about what this page covers",
   "explicitReferences": {
     "figureReferences": ["812", "823"],
@@ -50,6 +55,12 @@ RULES:
 - Look for "SHEET X OF Y" patterns for multi-sheet figures
 - Extract the sub-assembly title from figure captions (e.g., "ASSEMBLY OF END HOUSING UNIT")
 - Extract any part number patterns (typically 6-7 digit numbers, sometimes with letter suffixes)
+
+DOCUMENT-LEVEL METADATA (extract from title pages, headers, footers, and cover sheets):
+- "documentTitle": The official document/manual title — look for the CMM title, manual name, or document header (e.g., "Component Maintenance Manual — Integrated Drive Generator", "Overhaul Manual — Fuel Control Unit"). Null if not visible on this page.
+- "oem": The OEM or manufacturer — look for company names like "Collins Aerospace", "Honeywell", "GE Aviation", "Pratt & Whitney", "Safran", "Parker Hannifin", "Hamilton Sundstrand", etc. Check headers, footers, logos, and title blocks. Null if not visible on this page.
+- "revisionDate": The document's revision or effective date — look for "Rev. Date", "Revision Date", "Effective Date", "Date of Issue" patterns. Return as ISO date string (YYYY-MM-DD). Null if not visible on this page.
+- These fields will be aggregated across all pages — include them whenever visible, even on "ignore" pages like title pages.
 
 EXPLICIT REFERENCE EXTRACTION:
 - Look for cross-references to other figures: "REFER TO FIGURE 812", "SEE FIGURE 823", "FIG. 812", "FIGURE 812"

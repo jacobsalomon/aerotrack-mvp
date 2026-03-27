@@ -39,6 +39,9 @@ interface TemplateData {
   status: string;
   sourceFileUrl: string;
   partNumbersCovered: string[];
+  oem: string | null;
+  revisionDate: string | null;
+  createdAt: string;
   totalPages: number;
   sections: SectionData[];
 }
@@ -83,6 +86,9 @@ export default function ReviewClient({
       status: data.template.status,
       sourceFileUrl: data.template.sourceFileUrl,
       partNumbersCovered: data.template.partNumbersCovered,
+      oem: data.template.oem ?? null,
+      revisionDate: data.template.revisionDate ?? null,
+      createdAt: data.template.createdAt,
       totalPages: data.template.totalPages,
       sections: data.template.sections.map((s: SectionData & { items: InspectionItemData[] }) => ({
         id: s.id,
@@ -181,7 +187,24 @@ export default function ReviewClient({
             <h1 className="text-lg font-bold text-slate-900 truncate">
               {template.title}
             </h1>
-            <div className="flex items-center gap-3 text-xs text-slate-400 mt-0.5">
+            <div className="flex items-center gap-3 text-xs text-slate-400 mt-0.5 flex-wrap">
+              {template.oem && (
+                <span className="text-slate-500 font-medium">{template.oem}</span>
+              )}
+              {template.partNumbersCovered.length > 0 && (
+                <span className="font-mono">
+                  {template.partNumbersCovered.join(", ")}
+                </span>
+              )}
+              {template.revisionDate && (
+                <span>
+                  Rev. {new Date(template.revisionDate).toLocaleDateString()}
+                </span>
+              )}
+              <span>
+                Uploaded {new Date(template.createdAt).toLocaleDateString()}
+              </span>
+              <span className="text-slate-300">|</span>
               <span>{totalItems} items extracted</span>
               {flaggedItems > 0 && (
                 <span className="flex items-center gap-1 text-amber-600">

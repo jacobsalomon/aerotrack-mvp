@@ -43,12 +43,13 @@ export async function POST(request: Request) {
   try {
     // Client uploads the PDF directly to Vercel Blob, then sends us the URL + metadata
     const body = await request.json();
-    const { blobUrl, fileName, title, revisionDate, partNumbers, inspectionPages } = body as {
+    const { blobUrl, fileName, title, revisionDate, partNumbers, oem, inspectionPages } = body as {
       blobUrl: string;
       fileName: string;
       title?: string;
       revisionDate?: string | null;
       partNumbers?: string | null;
+      oem?: string | null;
       inspectionPages?: string | null;
     };
 
@@ -66,6 +67,9 @@ export async function POST(request: Request) {
 
     // Parse revision date
     const parsedRevisionDate = revisionDate ? new Date(revisionDate) : null;
+
+    // Parse OEM
+    const parsedOem = oem?.trim() || null;
 
     // Parse inspection page ranges
     const parsedInspectionPages = inspectionPages?.trim()
@@ -113,6 +117,7 @@ export async function POST(request: Request) {
         sourceFileName: fileName,
         revisionDate: parsedRevisionDate,
         partNumbersCovered,
+        oem: parsedOem,
         status: "pending_extraction",
         totalPages,
         inspectionPages: parsedInspectionPages,
