@@ -20,6 +20,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   ClipboardCheck,
   Loader2,
   RefreshCw,
@@ -29,6 +35,7 @@ import {
   Camera,
   FileText,
   Clock,
+  MoreVertical,
   Trash2,
 } from "lucide-react";
 import { getCmmAgeWarning } from "@/lib/inspect/cmm-config";
@@ -401,13 +408,25 @@ export default function JobsPage() {
                       <span className="text-[10px] text-slate-400">
                         {job.sessionType === "inspection" ? "Guided" : "Freeform"}
                       </span>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setDiscardJobId(job.id); }}
-                        className="p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-600 transition-colors"
-                        title="Discard job"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-1 rounded hover:bg-blue-100 text-slate-400 hover:text-slate-600 transition-colors"
+                          >
+                            <MoreVertical className="h-3.5 w-3.5" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenuItem
+                            onClick={() => setDiscardJobId(job.id)}
+                            className="text-red-600 focus:text-red-600"
+                          >
+                            <Trash2 className="h-3.5 w-3.5 mr-2" />
+                            Discard
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                   <p className="text-sm font-semibold text-slate-800 mt-2">
