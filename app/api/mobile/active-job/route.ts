@@ -25,11 +25,12 @@ export async function GET(request: Request) {
   try {
     // Find the mechanic's active job — should be at most one
     // "active" = ready for glasses, "capturing" = glasses already recording
+    // "inspecting" = guided inspection started from Jobs page
     const activeJob = await prisma.captureSession.findFirst({
       where: {
         userId: auth.user.id,
         organizationId: auth.user.organizationId,
-        status: { in: ["active", "capturing"] },
+        status: { in: ["active", "capturing", "inspecting"] },
       },
       orderBy: { startedAt: "desc" },
       select: {
@@ -38,6 +39,7 @@ export async function GET(request: Request) {
         workOrderRef: true,
         targetFormType: true,
         status: true,
+        sessionType: true,
         componentId: true,
         startedAt: true,
         _count: {
@@ -56,6 +58,7 @@ export async function GET(request: Request) {
               workOrderRef: activeJob.workOrderRef,
               targetFormType: activeJob.targetFormType,
               status: activeJob.status,
+              sessionType: activeJob.sessionType,
               componentId: activeJob.componentId,
               startedAt: activeJob.startedAt,
               evidenceCount: activeJob._count.evidence,
