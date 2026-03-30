@@ -10,6 +10,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { apiUrl } from "@/lib/api-url";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   ClipboardCheck,
   Loader2,
   RefreshCw,
@@ -19,6 +29,7 @@ import {
   Camera,
   FileText,
   Clock,
+  Trash2,
 } from "lucide-react";
 import { getCmmAgeWarning } from "@/lib/inspect/cmm-config";
 
@@ -104,6 +115,10 @@ export default function JobsPage() {
   const [loadingTemplates, setLoadingTemplates] = useState(true);
   const [startingId, setStartingId] = useState<string | null>(null); // which card is loading
 
+  // Discard job confirmation
+  const [discardJobId, setDiscardJobId] = useState<string | null>(null);
+  const [discarding, setDiscarding] = useState(false);
+
   // Search bar
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -144,6 +159,26 @@ export default function JobsPage() {
   }, []);
 
   useEffect(() => { void fetchJobs(); void fetchTemplates(); }, [fetchJobs, fetchTemplates]);
+
+  // ─── Discard (delete) a job ──────────────────────────────────────────
+
+  async function handleDiscardJob() {
+    if (!discardJobId) return;
+    setDiscarding(true);
+    try {
+      const res = await fetch(apiUrl(`/api/jobs/${discardJobId}`), { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Delete failed: ${res.status}`);
+      }
+      setJobs((prev) => prev.filter((j) => j.id !== discardJobId));
+    } catch (err) {
+      console.error("Failed to discard job:", err);
+    } finally {
+      setDiscarding(false);
+      setDiscardJobId(null);
+    }
+  }
 
   // ─── One-click: start guided inspection from a template card ────────
 
@@ -353,18 +388,27 @@ export default function JobsPage() {
             {jobs
               .filter((j) => displayStatus(j.status) === "In Progress")
               .map((job) => (
-                <button
+                <div
                   key={job.id}
+                  className="rounded-lg border-2 border-blue-200 bg-blue-50 p-4 text-left transition-all hover:border-blue-400 hover:shadow-sm cursor-pointer"
                   onClick={() => router.push(`/jobs/${job.id}`)}
-                  className="rounded-lg border-2 border-blue-200 bg-blue-50 p-4 text-left transition-all hover:border-blue-400 hover:shadow-sm"
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">
                       In Progress
                     </span>
-                    <span className="text-[10px] text-slate-400">
-                      {job.sessionType === "inspection" ? "Guided" : "Freeform"}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-slate-400">
+                        {job.sessionType === "inspection" ? "Guided" : "Freeform"}
+                      </span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDiscardJobId(job.id); }}
+                        className="p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-600 transition-colors"
+                        title="Discard job"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
                   <p className="text-sm font-semibold text-slate-800 mt-2">
                     {job.component?.description || job.workOrderRef || "Untitled Job"}
@@ -374,7 +418,7 @@ export default function JobsPage() {
                     {job.workOrderRef && !job.component?.partNumber && job.workOrderRef}
                     {!job.component?.partNumber && !job.workOrderRef && `Started ${formatDate(job.startedAt)}`}
                   </p>
-                </button>
+                </div>
               ))}
           </div>
         </div>
@@ -588,6 +632,29 @@ export default function JobsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Discard job confirmation dialog ────────────────────────── */}
+      <AlertDialog open={!!discardJobId} onOpenChange={(open) => { if (!open) setDiscardJobId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard this job?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the job and all captured evidence. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={discarding}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDiscardJob}
+              disabled={discarding}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {discarding && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Discard
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
