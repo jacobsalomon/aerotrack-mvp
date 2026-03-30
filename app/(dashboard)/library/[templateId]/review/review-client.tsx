@@ -267,79 +267,38 @@ export default function ReviewClient({
         {/* Center: PDF viewer */}
         <div className="flex-1 min-w-0 px-3">
           {isFullDocMode ? (
-            /* Full document browsing — page-by-page through the entire PDF */
+            /* Full document browsing — scrollable through entire PDF */
             <div className="h-full flex flex-col">
               <div className="text-xs text-slate-400 mb-2">
-                Full Document — Page {activePdfPage + 1} of {template.totalPages}
+                Full Document — {template.totalPages} pages
               </div>
               <div className="flex-1 rounded-lg overflow-hidden border border-slate-200">
                 <PdfViewer
                   fileUrl={template.sourceFileUrl}
-                  pageIndex={activePdfPage}
+                  mode="scroll"
+                  scrollToPage={viewingPageIdx ?? 0}
                 />
-              </div>
-
-              {/* Page navigation — prev/next + page number */}
-              <div className="flex items-center gap-2 mt-2 justify-center">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-6 text-[10px] px-2"
-                  disabled={activePdfPage === 0}
-                  onClick={() => setViewingPageIdx(activePdfPage - 1)}
-                >
-                  Prev
-                </Button>
-                <span className="text-xs text-slate-500 tabular-nums">
-                  {activePdfPage + 1} / {template.totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-6 text-[10px] px-2"
-                  disabled={activePdfPage >= template.totalPages - 1}
-                  onClick={() => setViewingPageIdx(activePdfPage + 1)}
-                >
-                  Next
-                </Button>
               </div>
             </div>
           ) : activeSection ? (
             <div className="h-full flex flex-col">
               <div className="text-xs text-slate-400 mb-2">
                 {activeSection.figureNumber.startsWith("DOC-")
-                  ? `${activeSection.title} — Page `
-                  : `Fig. ${activeSection.figureNumber} — Page `}
-                {activePdfPage + 1} of {template.totalPages}
-                {activeSection.pageNumbers.length > 1 && (
-                  <span className="ml-2">
-                    (PDF pages: {activeSection.pageNumbers.map((p) => p + 1).join(", ")})
-                  </span>
-                )}
+                  ? activeSection.title
+                  : `Fig. ${activeSection.figureNumber}`}
+                {" — "}
+                {activeSection.pageNumbers.length} page{activeSection.pageNumbers.length !== 1 ? "s" : ""}
+                <span className="ml-2 text-slate-300">
+                  (PDF pages: {activeSection.pageNumbers.map((p) => p + 1).join(", ")})
+                </span>
               </div>
               <div className="flex-1 rounded-lg overflow-hidden border border-slate-200">
                 <PdfViewer
                   fileUrl={template.sourceFileUrl}
-                  pageIndex={activePdfPage}
+                  mode="scroll"
+                  scrollToPage={activePdfPage}
                 />
               </div>
-
-              {/* Page navigation for multi-sheet sections */}
-              {activeSection.pageNumbers.length > 1 && (
-                <div className="flex items-center gap-1 mt-2 justify-center">
-                  {activeSection.pageNumbers.map((pageIdx) => (
-                    <Button
-                      key={pageIdx}
-                      variant={pageIdx === activePdfPage ? "default" : "outline"}
-                      size="sm"
-                      className="h-6 w-8 text-[10px]"
-                      onClick={() => setViewingPageIdx(pageIdx)}
-                    >
-                      {pageIdx + 1}
-                    </Button>
-                  ))}
-                </div>
-              )}
             </div>
           ) : (
             <div className="flex items-center justify-center h-full text-sm text-slate-400">
