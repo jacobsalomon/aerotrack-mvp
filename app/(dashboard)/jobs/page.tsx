@@ -1,14 +1,22 @@
 "use client";
 
-// Jobs page — unified list of all work (guided inspections + freeform captures)
-// Template-first design: CMM cards shown inline for one-click job creation.
+// Jobs page — unified launcher for starting and resuming work.
+// Search-first design: type a part number, doc name, or WO# and cards filter instantly.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { apiUrl } from "@/lib/api-url";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,20 +33,22 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { apiUrl } from "@/lib/api-url";
 import {
   ClipboardCheck,
   Loader2,
   RefreshCw,
   AlertTriangle,
-  Sparkles,
   Search,
   Camera,
   FileText,
-  Clock,
+  Upload,
   MoreVertical,
   Trash2,
 } from "lucide-react";
 import { getCmmAgeWarning } from "@/lib/inspect/cmm-config";
+import PdfThumbnail from "@/components/pdf-thumbnail";
+import UploadModal from "../library/upload-modal";
 
 // ─── Status mapping (mechanic-friendly labels) ───────────────────────
 
@@ -66,7 +76,7 @@ const STATUS_COLORS: Record<JobDisplayStatus, string> = {
   "Cancelled": "bg-slate-100 text-slate-500",
 };
 
-// Friendly labels for CMM extraction status
+// Friendly labels for template extraction status
 const TEMPLATE_STATUS: Record<string, { label: string; color: string }> = {
   active: { label: "Ready", color: "bg-emerald-100 text-emerald-700" },
   review_ready: { label: "Ready", color: "bg-emerald-100 text-emerald-700" },
@@ -103,6 +113,8 @@ interface LibraryTemplate {
   id: string;
   title: string;
   status: string;
+  sourceFileName: string;
+  sourceFileUrl: string;
   partNumbersCovered: string[];
   totalItems: number;
   createdAt: string;
@@ -120,22 +132,26 @@ export default function JobsPage() {
   // Template cards
   const [templates, setTemplates] = useState<LibraryTemplate[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(true);
-  const [startingId, setStartingId] = useState<string | null>(null); // which card is loading
+  const [startingId, setStartingId] = useState<string | null>(null);
+
+  // Search — filters cards in real-time (no server call)
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Pre-start dialog
+  const [showPreStart, setShowPreStart] = useState(false);
+  const [preStartTemplate, setPreStartTemplate] = useState<LibraryTemplate | null>(null);
+  const [preStartMode, setPreStartMode] = useState<"guided" | "freeform">("guided");
+  const [preStartWO, setPreStartWO] = useState("");
+
+  // Upload modal (reused from Library page)
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
   // Discard job confirmation
   const [discardJobId, setDiscardJobId] = useState<string | null>(null);
   const [discarding, setDiscarding] = useState(false);
 
-  // Search bar
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searching, setSearching] = useState(false);
-  const [searchResult, setSearchResult] = useState<{
-    component: { id: string; partNumber: string; serialNumber: string | null; description: string };
-    template: { id: string; title: string; itemCount: number } | null;
-  } | null>(null);
-  const [searchDone, setSearchDone] = useState(false);
+  // ─── Data fetching ──────────────────────────────────────────────────
 
-  // Fetch jobs and templates in parallel on mount
   const fetchJobs = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -167,6 +183,22 @@ export default function JobsPage() {
 
   useEffect(() => { void fetchJobs(); void fetchTemplates(); }, [fetchJobs, fetchTemplates]);
 
+  // ─── Client-side search: filter cards as user types ─────────────────
+
+  const filteredTemplates = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return templates;
+
+    return templates.filter((t) =>
+      t.title.toLowerCase().includes(q) ||
+      (t.sourceFileName && t.sourceFileName.toLowerCase().includes(q)) ||
+      t.partNumbersCovered.some((pn) => pn.toLowerCase().includes(q))
+    );
+  }, [templates, searchQuery]);
+
+  const hasSearchQuery = searchQuery.trim().length > 0;
+  const noResults = hasSearchQuery && filteredTemplates.length === 0;
+
   // ─── Discard (delete) a job ──────────────────────────────────────────
 
   async function handleDiscardJob() {
@@ -187,15 +219,43 @@ export default function JobsPage() {
     }
   }
 
-  // ─── One-click: start guided inspection from a template card ────────
+  // ─── Pre-start dialog ──────────────────────────────────────────────
 
-  async function startFromTemplate(templateId: string) {
+  function openPreStart(template: LibraryTemplate | null, mode: "guided" | "freeform") {
+    setPreStartTemplate(template);
+    setPreStartMode(mode);
+    setPreStartWO("");
+    setShowPreStart(true);
+  }
+
+  function handlePreStartConfirm() {
+    setShowPreStart(false);
+    const wo = preStartWO.trim() || undefined;
+    if (preStartMode === "guided" && preStartTemplate) {
+      void startFromTemplate(preStartTemplate.id, wo);
+    } else {
+      void startFreeform(wo);
+    }
+  }
+
+  function handleSkipStart() {
+    setShowPreStart(false);
+    if (preStartMode === "guided" && preStartTemplate) {
+      void startFromTemplate(preStartTemplate.id);
+    } else {
+      void startFreeform();
+    }
+  }
+
+  // ─── Start guided inspection from a template ───────────────────────
+
+  async function startFromTemplate(templateId: string, workOrderRef?: string) {
     setStartingId(templateId);
     try {
       const res = await fetch(apiUrl("/api/inspect/sessions"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ templateId }),
+        body: JSON.stringify({ templateId, workOrderRef: workOrderRef || null }),
       });
       if (!res.ok) throw new Error("Failed to create job");
       const result = await res.json();
@@ -206,15 +266,18 @@ export default function JobsPage() {
     }
   }
 
-  // ─── One-click: start freeform capture ──────────────────────────────
+  // ─── Start freeform capture (no documentation) ─────────────────────
 
-  async function startFreeform() {
+  async function startFreeform(workOrderRef?: string) {
     setStartingId("freeform");
     try {
       const res = await fetch(apiUrl("/api/sessions"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description: "Web capture session" }),
+        body: JSON.stringify({
+          description: "Web capture session",
+          workOrderRef: workOrderRef || null,
+        }),
       });
       if (!res.ok) throw new Error("Failed to create session");
       const session = await res.json();
@@ -223,74 +286,6 @@ export default function JobsPage() {
       console.error(err);
       setStartingId(null);
     }
-  }
-
-  // ─── Search by WO#/serial/part number ───────────────────────────────
-
-  async function handleSearch() {
-    if (!searchQuery.trim()) return;
-    setSearching(true);
-    setSearchResult(null);
-    setSearchDone(false);
-    try {
-      const compRes = await fetch(apiUrl(`/api/components?search=${encodeURIComponent(searchQuery.trim())}`));
-      if (!compRes.ok) throw new Error("Search failed");
-      const compData = await compRes.json();
-      const components = compData.data || [];
-      if (components.length === 0) { setSearchDone(true); setSearching(false); return; }
-
-      const comp = components[0];
-      let tmpl = null;
-
-      // Check for matching template
-      const tmplRes = await fetch(apiUrl(`/api/inspect/templates?componentId=${comp.id}&partNumber=${encodeURIComponent(comp.partNumber)}`));
-      if (tmplRes.ok) {
-        const tmplData = await tmplRes.json();
-        const tmpls = tmplData.data || [];
-        if (tmpls.length > 0) {
-          const t = tmpls[0];
-          const itemCount = t.sections?.reduce((sum: number, s: { items: unknown[] }) => sum + (s.items?.length || 0), 0) || 0;
-          tmpl = { id: t.id, title: t.title, itemCount };
-        }
-      }
-
-      setSearchResult({ component: comp, template: tmpl });
-      setSearchDone(true);
-    } catch { setSearchDone(true); }
-    finally { setSearching(false); }
-  }
-
-  async function startFromSearch() {
-    if (!searchResult) return;
-    setStartingId("search");
-    try {
-      if (searchResult.template) {
-        const res = await fetch(apiUrl("/api/inspect/sessions"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            templateId: searchResult.template.id,
-            componentId: searchResult.component.id,
-            workOrderRef: looksLikeWorkOrder(searchQuery.trim()) ? searchQuery.trim() : null,
-          }),
-        });
-        if (!res.ok) throw new Error("Failed");
-        const result = await res.json();
-        router.push(`/jobs/${result.data.sessionId}`);
-      } else {
-        const res = await fetch(apiUrl("/api/sessions"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            description: `Capture for ${searchResult.component.partNumber}`,
-            workOrderRef: looksLikeWorkOrder(searchQuery.trim()) ? searchQuery.trim() : null,
-          }),
-        });
-        if (!res.ok) throw new Error("Failed");
-        const session = await res.json();
-        router.push(`/jobs/${session.id}`);
-      }
-    } catch { setStartingId(null); }
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────
@@ -306,6 +301,12 @@ export default function JobsPage() {
 
   function displayStatus(status: string): JobDisplayStatus {
     return STATUS_GROUP[status] || "In Progress";
+  }
+
+  function extractDocRef(t: LibraryTemplate): string | null {
+    const combined = `${t.title} ${t.sourceFileName || ""}`;
+    const match = combined.match(/\d{2}-\d{2}-\d{2}/);
+    return match ? match[0] : null;
   }
 
   // ─── Render ──────────────────────────────────────────────────────────
@@ -325,268 +326,205 @@ export default function JobsPage() {
         </p>
       </div>
 
-      {/* ── Search bar ─────────────────────────────────────────────── */}
+      {/* ── Search bar (real-time filter) ─────────────────────────── */}
       <div className="mb-6">
-        <div className="flex gap-2">
+        <div className="relative max-w-lg">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <Input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void handleSearch()}
-            placeholder="Look up by WO#, serial, or part number"
-            className="max-w-md"
+            placeholder="Search by part number, WO#, or document name..."
+            className="pl-10"
           />
-          <Button
-            onClick={() => void handleSearch()}
-            disabled={searching || !searchQuery.trim()}
-            variant="outline"
-            className="gap-1.5 shrink-0"
-          >
-            {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-            Search
-          </Button>
         </div>
-
-        {/* Search results (inline) */}
-        {searchDone && (
-          <div className="mt-3 max-w-md">
-            {searchResult ? (
-              <div className="rounded-lg border border-slate-200 p-3 space-y-2">
-                <div className="rounded-md bg-emerald-50 border border-emerald-200 p-2.5">
-                  <p className="text-sm font-semibold text-emerald-800">{searchResult.component.description}</p>
-                  <p className="text-xs text-emerald-600 mt-0.5 font-mono">
-                    P/N: {searchResult.component.partNumber}
-                    {searchResult.component.serialNumber && ` · S/N: ${searchResult.component.serialNumber}`}
-                  </p>
-                </div>
-                {searchResult.template && (
-                  <div className="flex items-center gap-2 text-xs text-blue-600">
-                    <Sparkles className="h-3.5 w-3.5" />
-                    <span>{searchResult.template.title} — {searchResult.template.itemCount} items</span>
-                  </div>
-                )}
-                <Button
-                  onClick={() => void startFromSearch()}
-                  disabled={startingId === "search"}
-                  className="w-full gap-2"
-                  style={{ backgroundColor: "rgb(37, 99, 235)", color: "white" }}
-                  size="sm"
-                >
-                  {startingId === "search" && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {searchResult.template ? "Start Guided Inspection" : "Start Freeform Capture"}
-                </Button>
-              </div>
-            ) : (
-              <p className="text-sm text-slate-400">No component found for &ldquo;{searchQuery}&rdquo;</p>
-            )}
-          </div>
+        {hasSearchQuery && !noResults && (
+          <p className="text-xs text-slate-400 mt-2">
+            Showing {filteredTemplates.length} of {templates.length} documents
+          </p>
         )}
       </div>
 
       {/* ── Active Jobs (resume) ─────────────────────────────────── */}
       {!loading && jobs.filter((j) => displayStatus(j.status) === "In Progress").length > 0 && (
         <div className="mb-6">
-          <h2
-            className="text-sm font-semibold uppercase tracking-wider mb-3"
-            style={{ color: "rgb(140, 140, 140)" }}
-          >
+          <h2 className="text-sm font-semibold uppercase tracking-wider mb-3" style={{ color: "rgb(140, 140, 140)" }}>
             Resume
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {jobs
-              .filter((j) => displayStatus(j.status) === "In Progress")
-              .map((job) => (
-                <div
-                  key={job.id}
-                  className="rounded-lg border-2 border-blue-200 bg-blue-50 p-4 text-left transition-all hover:border-blue-400 hover:shadow-sm cursor-pointer"
-                  onClick={() => router.push(`/jobs/${job.id}`)}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">
-                      In Progress
+            {jobs.filter((j) => displayStatus(j.status) === "In Progress").map((job) => (
+              <div
+                key={job.id}
+                className="rounded-lg border-2 border-blue-200 bg-blue-50 p-4 text-left transition-all hover:border-blue-400 hover:shadow-sm cursor-pointer"
+                onClick={() => router.push(`/jobs/${job.id}`)}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">
+                    In Progress
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-slate-400">
+                      {job.sessionType === "inspection" ? "Documentation" : "Open capture"}
                     </span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-slate-400">
-                        {job.sessionType === "inspection" ? "Guided" : "Freeform"}
-                      </span>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            onClick={(e) => e.stopPropagation()}
-                            className="p-1 rounded hover:bg-blue-100 text-slate-400 hover:text-slate-600 transition-colors"
-                          >
-                            <MoreVertical className="h-3.5 w-3.5" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                          <DropdownMenuItem
-                            onClick={() => setDiscardJobId(job.id)}
-                            className="text-red-600 focus:text-red-600"
-                          >
-                            <Trash2 className="h-3.5 w-3.5 mr-2" />
-                            Discard
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          onClick={(e) => e.stopPropagation()}
+                          className="p-1 rounded hover:bg-blue-100 text-slate-400 hover:text-slate-600 transition-colors"
+                        >
+                          <MoreVertical className="h-3.5 w-3.5" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenuItem onClick={() => setDiscardJobId(job.id)} className="text-red-600 focus:text-red-600">
+                          <Trash2 className="h-3.5 w-3.5 mr-2" />
+                          Discard
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
-                  <p className="text-sm font-semibold text-slate-800 mt-2">
-                    {job.component?.description || job.workOrderRef || "Untitled Job"}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-1 font-mono">
-                    {job.component?.partNumber && `P/N: ${job.component.partNumber}`}
-                    {job.workOrderRef && !job.component?.partNumber && job.workOrderRef}
-                    {!job.component?.partNumber && !job.workOrderRef && `Started ${formatDate(job.startedAt)}`}
-                  </p>
                 </div>
-              ))}
+                <p className="text-sm font-semibold text-slate-800 mt-2">
+                  {job.component?.description || job.workOrderRef || "Untitled Job"}
+                </p>
+                <p className="text-xs text-slate-500 mt-1 font-mono">
+                  {job.component?.partNumber && `P/N: ${job.component.partNumber}`}
+                  {job.workOrderRef && !job.component?.partNumber && job.workOrderRef}
+                  {!job.component?.partNumber && !job.workOrderRef && `Started ${formatDate(job.startedAt)}`}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {/* ── Start New Inspection (template cards) ──────────────────── */}
+      {/* ── Start New Job (template cards, filtered by search) ────── */}
       <div className="mb-8">
-        <h2
-          className="text-sm font-semibold uppercase tracking-wider mb-3"
-          style={{ color: "rgb(140, 140, 140)" }}
-        >
-          Start New Inspection
+        <h2 className="text-sm font-semibold uppercase tracking-wider mb-3" style={{ color: "rgb(140, 140, 140)" }}>
+          Start New Job
         </h2>
+
         {loadingTemplates ? (
           <div className="flex items-center gap-2 py-4 text-slate-400 text-sm">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading manuals...
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading documentation...
           </div>
         ) : templates.length === 0 ? (
           <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center">
             <FileText className="h-8 w-8 mx-auto mb-2 text-slate-300" />
-            <p className="text-sm text-slate-500">No manuals uploaded yet.</p>
-            <p className="text-xs text-slate-400 mt-1">Upload a CMM in the Library tab to get started.</p>
+            <p className="text-sm text-slate-500">No documentation uploaded yet.</p>
+            <p className="text-xs text-slate-400 mt-1">Upload documentation in the Library tab to get started.</p>
+            <div className="flex items-center justify-center gap-3 mt-4">
+              <Button variant="outline" size="sm" className="gap-2" onClick={() => openPreStart(null, "freeform")}>
+                <Camera className="h-4 w-4" /> Start without documentation
+              </Button>
+              <Button size="sm" className="gap-2" onClick={() => setShowUploadModal(true)}>
+                <Upload className="h-4 w-4" /> Upload documentation
+              </Button>
+            </div>
+          </div>
+        ) : noResults ? (
+          <div className="rounded-lg border border-dashed border-slate-200 p-8 text-center">
+            <FileText className="h-8 w-8 mx-auto mb-3 text-slate-300" />
+            <p className="text-sm text-slate-500 mb-1">No matching documentation for &ldquo;{searchQuery}&rdquo;</p>
+            <p className="text-xs text-slate-400 mb-4">You can still start a job, or upload the document you need.</p>
+            <div className="flex items-center justify-center gap-3">
+              <Button variant="outline" size="sm" className="gap-2" onClick={() => openPreStart(null, "freeform")}>
+                <Camera className="h-4 w-4" /> Start without documentation
+              </Button>
+              <Button size="sm" className="gap-2" onClick={() => setShowUploadModal(true)} style={{ backgroundColor: "rgb(37, 99, 235)", color: "white" }}>
+                <Upload className="h-4 w-4" /> Upload documentation
+              </Button>
+            </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {/* CMM template cards */}
-            {templates.map((t) => {
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {filteredTemplates.map((t) => {
               const isReady = t.status === "active" || t.status === "review_ready";
               const statusInfo = TEMPLATE_STATUS[t.status] || { label: t.status, color: "bg-slate-100 text-slate-500" };
               const isStarting = startingId === t.id;
-              const ageLevel = getCmmAgeWarning(t.createdAt);
+              const docRef = extractDocRef(t);
 
               return (
-                <div
-                  key={t.id}
-                  className={`rounded-lg border p-4 flex flex-col justify-between ${
-                    isReady ? "border-slate-200 bg-white" : "border-slate-100 bg-slate-50 opacity-60"
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-2">
-                        <Sparkles className="h-4 w-4 text-blue-500 shrink-0" />
-                        <p className="text-sm font-semibold text-slate-800 leading-tight">{t.title}</p>
-                      </div>
+                <div key={t.id} className={`rounded-lg border overflow-hidden flex flex-col ${isReady ? "border-slate-200 bg-white" : "border-slate-100 bg-slate-50 opacity-60"}`}>
+                  {t.sourceFileUrl ? (
+                    <PdfThumbnail url={t.sourceFileUrl} alt={`Preview of ${t.title}`} className="h-40 border-b border-slate-100" />
+                  ) : (
+                    <div className="h-40 bg-slate-100 border-b border-slate-100 flex items-center justify-center">
+                      <FileText className="h-10 w-10 text-slate-300" />
+                    </div>
+                  )}
+                  <div className="p-3 flex flex-col flex-1">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      {docRef ? (
+                        <span className="text-base font-bold text-slate-800 font-mono">{docRef}</span>
+                      ) : (
+                        <span className="text-sm font-semibold text-slate-800 leading-tight">{t.title}</span>
+                      )}
                       <span className={`shrink-0 inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${statusInfo.color}`}>
                         {statusInfo.label}
                       </span>
                     </div>
-                    <div className="text-xs text-slate-400 space-y-0.5">
-                      {t.partNumbersCovered.length > 0 && (
-                        <p className="font-mono">{t.partNumbersCovered.join(", ")}</p>
-                      )}
-                      {isReady && t.totalItems > 0 && (
-                        <p>{t.totalItems} items &middot; {t._count.sections} sections</p>
-                      )}
-                      {/* CMM age: uploaded date + staleness warning */}
-                      <p className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        Uploaded {new Date(t.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                      </p>
-                    </div>
-                    {/* Age warning badges */}
-                    {ageLevel === "warning" && (
-                      <div className="mt-2 flex items-center gap-1.5 text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1 text-[11px] font-medium">
-                        <AlertTriangle className="h-3 w-3 shrink-0" />
-                        CMM may be stale (30+ days)
+                    {t.partNumbersCovered.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-2">
+                        {t.partNumbersCovered.slice(0, 4).map((pn) => (
+                          <span key={pn} className="text-[11px] font-mono bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">{pn}</span>
+                        ))}
+                        {t.partNumbersCovered.length > 4 && (
+                          <span className="text-[11px] text-slate-400">+{t.partNumbersCovered.length - 4} more</span>
+                        )}
                       </div>
                     )}
-                    {ageLevel === "critical" && (
-                      <div className="mt-2 flex items-center gap-1.5 text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1 text-[11px] font-medium">
-                        <AlertTriangle className="h-3 w-3 shrink-0" />
-                        CMM likely stale (90+ days)
-                      </div>
+                    <p className="text-[11px] text-slate-400 mt-auto">
+                      Uploaded {new Date(t.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    </p>
+                    {isReady && (
+                      <Button onClick={() => openPreStart(t, "guided")} disabled={!!startingId} className="mt-2 w-full gap-2" size="sm" style={{ backgroundColor: "rgb(37, 99, 235)", color: "white" }}>
+                        {isStarting && <Loader2 className="h-4 w-4 animate-spin" />}
+                        Start Job
+                      </Button>
                     )}
                   </div>
-
-                  {isReady && (
-                    <Button
-                      onClick={() => void startFromTemplate(t.id)}
-                      disabled={!!startingId}
-                      className="mt-3 w-full gap-2"
-                      size="sm"
-                      style={{ backgroundColor: "rgb(37, 99, 235)", color: "white" }}
-                    >
-                      {isStarting && <Loader2 className="h-4 w-4 animate-spin" />}
-                      Start
-                    </Button>
-                  )}
                 </div>
               );
             })}
-
-            {/* Freeform capture card */}
-            <div className="rounded-lg border border-dashed border-slate-200 p-4 flex flex-col justify-between bg-white">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Camera className="h-4 w-4 text-slate-400" />
-                  <p className="text-sm font-semibold text-slate-600">Freeform Capture</p>
-                </div>
-                <p className="text-xs text-slate-400">Just start recording — no manual needed</p>
+            <div className="rounded-lg border border-dashed border-slate-200 overflow-hidden flex flex-col bg-white">
+              <div className="h-40 bg-slate-50 border-b border-slate-100 flex items-center justify-center">
+                <Camera className="h-10 w-10 text-slate-300" />
               </div>
-              <Button
-                onClick={() => void startFreeform()}
-                disabled={!!startingId}
-                variant="outline"
-                className="mt-3 w-full gap-2"
-                size="sm"
-              >
-                {startingId === "freeform" && <Loader2 className="h-4 w-4 animate-spin" />}
-                Start
-              </Button>
+              <div className="p-3 flex flex-col flex-1">
+                <p className="text-sm font-semibold text-slate-600 mb-1">Start without documentation</p>
+                <p className="text-[11px] text-slate-400 mb-auto">Record findings freely</p>
+                <Button onClick={() => openPreStart(null, "freeform")} disabled={!!startingId} variant="outline" className="mt-2 w-full gap-2" size="sm">
+                  {startingId === "freeform" && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Start Job
+                </Button>
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* ── Your Jobs (existing job list) ──────────────────────────── */}
+      {/* ── Your Jobs ──────────────────────────────────────────────── */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2
-            className="text-sm font-semibold uppercase tracking-wider"
-            style={{ color: "rgb(140, 140, 140)" }}
-          >
-            Your Jobs
-          </h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "rgb(140, 140, 140)" }}>Your Jobs</h2>
           <Button onClick={() => void fetchJobs()} variant="ghost" size="sm" className="gap-1.5 text-xs text-slate-400">
             <RefreshCw className="h-3 w-3" /> Refresh
           </Button>
         </div>
-
         <Card className="border-0 shadow-sm">
           <CardContent className="pt-6">
             {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
-              </div>
+              <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
             ) : error ? (
               <div className="rounded-2xl border px-6 py-10 text-center" style={{ borderColor: "rgb(253, 230, 138)", backgroundColor: "rgba(255, 251, 235, 0.9)" }}>
                 <AlertTriangle className="h-8 w-8 mx-auto mb-3" style={{ color: "rgb(217, 119, 6)" }} />
                 <p className="text-sm" style={{ color: "rgb(146, 64, 14)" }}>{error}</p>
-                <Button onClick={() => void fetchJobs()} className="gap-2 mt-4" variant="outline" size="sm">
-                  <RefreshCw className="h-4 w-4" /> Retry
-                </Button>
+                <Button onClick={() => void fetchJobs()} className="gap-2 mt-4" variant="outline" size="sm"><RefreshCw className="h-4 w-4" /> Retry</Button>
               </div>
             ) : jobs.length === 0 ? (
               <div className="text-center py-12" style={{ color: "rgb(140, 140, 140)" }}>
                 <ClipboardCheck className="h-10 w-10 mx-auto mb-2 opacity-40" />
-                <p className="text-sm">No jobs yet. Pick a manual above to start.</p>
+                <p className="text-sm">No jobs yet. Start one above.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -605,42 +543,13 @@ export default function JobsPage() {
                     {jobs.map((job) => {
                       const status = displayStatus(job.status);
                       return (
-                        <tr
-                          key={job.id}
-                          className="border-b border-slate-100 cursor-pointer transition-colors hover:bg-slate-50"
-                          onClick={() => router.push(`/jobs/${job.id}`)}
-                        >
-                          <td className="py-3.5 pr-4">
-                            <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_COLORS[status]}`}>
-                              {status}
-                            </span>
-                          </td>
-                          <td className="py-3.5 pr-4">
-                            {job.workOrderRef ? (
-                              <span className="font-mono text-xs font-medium text-slate-700">{job.workOrderRef}</span>
-                            ) : (
-                              <span className="text-slate-300">&mdash;</span>
-                            )}
-                          </td>
-                          <td className="py-3.5 pr-4">
-                            {job.component ? (
-                              <div>
-                                <p className="font-mono text-xs font-medium text-slate-700">{job.component.partNumber}</p>
-                                {job.component.serialNumber && (
-                                  <p className="font-mono text-xs text-slate-400">{job.component.serialNumber}</p>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-slate-300">&mdash;</span>
-                            )}
-                          </td>
+                        <tr key={job.id} className="border-b border-slate-100 cursor-pointer transition-colors hover:bg-slate-50" onClick={() => router.push(`/jobs/${job.id}`)}>
+                          <td className="py-3.5 pr-4"><span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_COLORS[status]}`}>{status}</span></td>
+                          <td className="py-3.5 pr-4">{job.workOrderRef ? <span className="font-mono text-xs font-medium text-slate-700">{job.workOrderRef}</span> : <span className="text-slate-300">&mdash;</span>}</td>
+                          <td className="py-3.5 pr-4">{job.component ? <div><p className="font-mono text-xs font-medium text-slate-700">{job.component.partNumber}</p>{job.component.serialNumber && <p className="font-mono text-xs text-slate-400">{job.component.serialNumber}</p>}</div> : <span className="text-slate-300">&mdash;</span>}</td>
                           <td className="py-3.5 pr-4 text-slate-600">{mechanicName(job.user)}</td>
                           <td className="py-3.5 pr-4 text-slate-500 text-xs">{formatDate(job.startedAt)}</td>
-                          <td className="py-3.5">
-                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500">
-                              {job.sessionType === "inspection" ? "Guided" : "Freeform"}
-                            </span>
-                          </td>
+                          <td className="py-3.5"><span className="inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500">{job.sessionType === "inspection" ? "From docs" : "Open capture"}</span></td>
                         </tr>
                       );
                     })}
@@ -652,33 +561,48 @@ export default function JobsPage() {
         </Card>
       </div>
 
-      {/* ── Discard job confirmation dialog ────────────────────────── */}
+      {/* ── Pre-start dialog ──────────────────────────────────────── */}
+      <Dialog open={showPreStart} onOpenChange={(open) => { if (!open) setShowPreStart(false); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{preStartMode === "guided" && preStartTemplate ? `Start Job — ${preStartTemplate.title}` : "Start Job"}</DialogTitle>
+            <DialogDescription>{preStartMode === "guided" ? "Add an optional work order number before starting." : "Start capturing without documentation."}</DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Label htmlFor="wo-ref">Work Order # <span className="text-slate-400 font-normal">(optional)</span></Label>
+            <Input id="wo-ref" value={preStartWO} onChange={(e) => setPreStartWO(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handlePreStartConfirm()} placeholder="e.g., WO-2024-001234" className="mt-1.5" autoFocus />
+          </div>
+          <DialogFooter>
+            <button type="button" className="text-sm text-slate-400 hover:text-slate-600 mr-auto" onClick={handleSkipStart}>Skip, just start</button>
+            <Button onClick={handlePreStartConfirm} disabled={!!startingId} style={{ backgroundColor: "rgb(37, 99, 235)", color: "white" }}>
+              {startingId && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Start Job
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Discard job confirmation ──────────────────────────────── */}
       <AlertDialog open={!!discardJobId} onOpenChange={(open) => { if (!open) setDiscardJobId(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Discard this job?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete the job and all captured evidence. This cannot be undone.
-            </AlertDialogDescription>
+            <AlertDialogDescription>This will permanently delete the job and all captured evidence. This cannot be undone.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={discarding}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDiscardJob}
-              disabled={discarding}
-              className="bg-red-600 hover:bg-red-700 text-white"
-            >
+            <AlertDialogAction onClick={handleDiscardJob} disabled={discarding} className="bg-red-600 hover:bg-red-700 text-white">
               {discarding && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Discard
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── Upload modal ─────────────────────────────────────────── */}
+      {showUploadModal && (
+        <UploadModal onClose={() => setShowUploadModal(false)} onUploaded={() => { setShowUploadModal(false); void fetchTemplates(); }} />
+      )}
     </div>
   );
-}
-
-// Check if input looks like a work order (contains both letters and numbers)
-function looksLikeWorkOrder(input: string): boolean {
-  return /[a-zA-Z]/.test(input) && /\d/.test(input);
 }
