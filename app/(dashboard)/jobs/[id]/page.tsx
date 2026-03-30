@@ -44,6 +44,7 @@ export default async function JobPage({ params, searchParams }: PageProps) {
           createdAt: true,
           revisionDate: true,
           version: true,
+          sourceFileUrl: true,
           sections: {
             orderBy: { sortOrder: "asc" },
             select: {
@@ -51,6 +52,7 @@ export default async function JobPage({ params, searchParams }: PageProps) {
               title: true,
               figureNumber: true,
               sortOrder: true,
+              pageNumbers: true,
               referenceImageUrls: true,
               itemCount: true,
               configurationApplicability: true,
