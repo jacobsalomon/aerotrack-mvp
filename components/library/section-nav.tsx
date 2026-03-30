@@ -74,10 +74,13 @@ export default function SectionNav({
       </button>
 
       <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
-        Sub-Assemblies
+        {sections.every((s) => s.figureNumber.startsWith("DOC-"))
+          ? "Sections"
+          : "Sub-Assemblies"}
       </p>
       {sections.map((section) => {
         const flagged = flaggedCount(section.items);
+        const isDocSection = section.figureNumber.startsWith("DOC-");
         return (
           <button
             key={section.id}
@@ -92,7 +95,9 @@ export default function SectionNav({
             {statusIcon(section.status, section.items)}
             <div className="min-w-0 flex-1">
               <p className="font-medium truncate text-xs">
-                Fig. {section.figureNumber}
+                {isDocSection
+                  ? `Section ${section.figureNumber.replace("DOC-", "")}`
+                  : `Fig. ${section.figureNumber}`}
               </p>
               <p className="text-[11px] text-slate-400 truncate">
                 {section.title}

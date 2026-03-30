@@ -235,7 +235,7 @@ export async function prewarmOcrForSection(
 ): Promise<number> {
   const section = await prisma.inspectionSection.findUniqueOrThrow({
     where: { id: sectionId },
-    select: { pageNumbers: true, figureNumber: true, pass2Progress: true },
+    select: { pageNumbers: true, figureNumber: true, title: true, pass2Progress: true },
   });
 
   // Load existing progress (may have partial OCR from previous runs)
@@ -255,8 +255,9 @@ export async function prewarmOcrForSection(
 
   if (pagesNeedingOcr.length === 0) return 0;
 
+  const sectionLabel = section.figureNumber.startsWith("DOC-") ? section.title : `Fig. ${section.figureNumber}`;
   console.log(
-    `[OCR Batch] Pre-warming ${pagesNeedingOcr.length} pages for Fig. ${section.figureNumber}`
+    `[OCR Batch] Pre-warming ${pagesNeedingOcr.length} pages for ${sectionLabel}`
   );
 
   // Extract all pages as base64 in parallel
@@ -307,7 +308,7 @@ export async function prewarmOcrForSection(
       data: { pass2Progress: JSON.parse(JSON.stringify(progress)) },
     });
     console.log(
-      `[OCR Batch] Pre-warmed ${ocrCount}/${pagesNeedingOcr.length} pages for Fig. ${section.figureNumber}`
+      `[OCR Batch] Pre-warmed ${ocrCount}/${pagesNeedingOcr.length} pages for ${sectionLabel}`
     );
   }
 
@@ -386,8 +387,18 @@ export async function extractSectionPage(
     // Format OCR text for prompt injection
     const ocrPromptText = formatOcrForPrompt(ocrResult);
 
-    // Build the prompt with section context + OCR text
+    // Build the prompt with section context + OCR text.
+    // For document sections (no labeled diagram figure), use a cleaner context line.
+    const isDocSection = section.figureNumber.startsWith("DOC-");
+    const contextLine = isDocSection
+      ? `CONTEXT: This is "${section.title}" from a technical document for part numbers ${section.template.partNumbersCovered.join(", ") || "not specified"}.`
+      : `CONTEXT: This is Figure ${section.figureNumber} — "${section.title}" from a CMM for part numbers ${section.template.partNumbersCovered.join(", ") || "not specified"}.`;
+
     const prompt = PASS2_EXTRACTION_PROMPT
+      .replace(
+        /^CONTEXT:.*$/m,
+        contextLine
+      )
       .replace("{figureNumber}", section.figureNumber)
       .replace("{sectionTitle}", section.title)
       .replace(
@@ -405,8 +416,9 @@ export async function extractSectionPage(
     const ocrInfo = ocrResult.source !== "none"
       ? ` | OCR: ${ocrResult.source} (${ocrResult.fullText.length} chars, ${ocrResult.tables.length} tables)`
       : " | OCR: none";
+    const sectionLabel = isDocSection ? section.title : `Fig. ${section.figureNumber}`;
     console.log(
-      `[CMM Pass 2] Fig. ${section.figureNumber} page ${progress.nextPageOffset + 1}/${section.pageNumbers.length} ` +
+      `[Pass 2] ${sectionLabel} page ${progress.nextPageOffset + 1}/${section.pageNumbers.length} ` +
         `(PDF page ${pageIdx + 1}): ${pageResult.items.length} items — ${modelInfo}${ocrInfo}`
     );
 
@@ -446,7 +458,7 @@ export async function extractSectionPage(
     if (retryCount < MAX_PAGE_RETRIES) {
       // Save retry count but keep section as extracting — the runner will try this page again
       console.warn(
-        `[CMM Pass 2] Fig. ${section.figureNumber} page ${pageIdx + 1} failed (attempt ${retryCount}/${MAX_PAGE_RETRIES}): ${errorMsg}`
+        `[Pass 2] ${section.figureNumber.startsWith("DOC-") ? section.title : `Fig. ${section.figureNumber}`} page ${pageIdx + 1} failed (attempt ${retryCount}/${MAX_PAGE_RETRIES}): ${errorMsg}`
       );
 
       await prisma.inspectionSection.update({
@@ -462,7 +474,7 @@ export async function extractSectionPage(
 
     // Max retries exhausted — skip this page and move on to the next one
     console.error(
-      `[CMM Pass 2] Fig. ${section.figureNumber} page ${pageIdx + 1} failed after ${MAX_PAGE_RETRIES} attempts, skipping: ${errorMsg}`
+      `[Pass 2] ${section.figureNumber.startsWith("DOC-") ? section.title : `Fig. ${section.figureNumber}`} page ${pageIdx + 1} failed after ${MAX_PAGE_RETRIES} attempts, skipping: ${errorMsg}`
     );
 
     progress.nextPageOffset++;
@@ -589,8 +601,9 @@ export async function finalizeSectionExtraction(
       },
     });
 
+    const finalLabel = section.figureNumber.startsWith("DOC-") ? section.title : `Fig. ${section.figureNumber}`;
     console.log(
-      `[CMM Pass 2] Finalized Fig. ${section.figureNumber}: ${validatedItems.length} items ` +
+      `[Pass 2] Finalized ${finalLabel}: ${validatedItems.length} items ` +
         `(confidence: ${sectionConfidence.toFixed(2)}, ` +
         `consensus: ${bothSucceeded}/${progress.pageResults.length} pages, ` +
         `agreement: ${(avgAgreement * 100).toFixed(0)}%)`
@@ -598,8 +611,9 @@ export async function finalizeSectionExtraction(
 
     return validatedItems.length;
   } catch (error) {
+    const finalLabel = section.figureNumber.startsWith("DOC-") ? section.title : `Fig. ${section.figureNumber}`;
     console.error(
-      `[CMM Pass 2] Failed to finalize Fig. ${section.figureNumber}:`,
+      `[Pass 2] Failed to finalize ${finalLabel}:`,
       error
     );
 

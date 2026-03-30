@@ -479,45 +479,77 @@ async function finalizePass1(templateId: string, progress: Pass1Progress): Promi
     (a, b) => (a.pages[0]?.pageIndex ?? 0) - (b.pages[0]?.pageIndex ?? 0)
   );
 
-  if (sortedGroups.length === 0) {
-    return 0;
-  }
-
+  let sectionsCreated = 0;
   let sortOrder = 0;
-  for (const group of sortedGroups) {
-    // Get resolved links for this figure
-    const pageLinks = resolved.get(group.figureNumber) || [];
 
-    // Build pageNumbers from resolved links (all unique page indices)
-    const pageNumbers = [...new Set(pageLinks.map((l) => l.pageIndex))].sort(
-      (a, b) => a - b
+  if (sortedGroups.length > 0) {
+    // ── Normal path: create sections from labeled diagram figures ──
+    for (const group of sortedGroups) {
+      const pageLinks = resolved.get(group.figureNumber) || [];
+      const pageNumbers = [...new Set(pageLinks.map((l) => l.pageIndex))].sort(
+        (a, b) => a - b
+      );
+
+      const sheetInfo =
+        group.pages.length > 1
+          ? `${group.pages.length} sheets`
+          : undefined;
+
+      await prisma.inspectionSection.create({
+        data: {
+          templateId,
+          organizationId: template.organizationId,
+          title: group.title,
+          figureNumber: group.figureNumber,
+          sheetInfo,
+          pageNumbers,
+          pageLinks: JSON.parse(JSON.stringify(pageLinks)),
+          status: "pending",
+          pageClassification: "diagram",
+          configurationApplicability: group.partNumbers,
+          sortOrder: sortOrder++,
+        },
+      });
+    }
+    sectionsCreated = sortedGroups.length;
+  } else {
+    // ── Fallback: no labeled diagram figures found ──
+    // Create sections from non-ignored pages so Pass 2 can still extract
+    // content (test tables, procedures, data sheets, etc.).
+    const contentPages = classifications.filter(
+      (c) => c.result.pageType !== "ignore"
     );
 
-    const sheetInfo =
-      group.pages.length > 1
-        ? `${group.pages.length} sheets`
-        : undefined;
+    if (contentPages.length > 0) {
+      const groups = groupByTypeConsecutive(contentPages, 10);
 
-    await prisma.inspectionSection.create({
-      data: {
-        templateId,
-        organizationId: template.organizationId,
-        title: group.title,
-        figureNumber: group.figureNumber,
-        sheetInfo,
-        pageNumbers,
-        pageLinks: JSON.parse(JSON.stringify(pageLinks)),
-        status: "pending",
-        pageClassification: "diagram",
-        configurationApplicability: group.partNumbers,
-        sortOrder: sortOrder++,
-      },
-    });
+      for (const group of groups) {
+        const figNum = `DOC-${sortOrder + 1}`;
+        const dominantType = group[0].result.pageType;
+        const pageNums = group.map((p) => p.pageIndex).sort((a, b) => a - b);
+        const title = buildSectionTitle(dominantType, pageNums, group);
+
+        await prisma.inspectionSection.create({
+          data: {
+            templateId,
+            organizationId: template.organizationId,
+            title,
+            figureNumber: figNum,
+            pageNumbers: pageNums,
+            status: "pending",
+            pageClassification: dominantType,
+            sortOrder: sortOrder++,
+          },
+        });
+      }
+      sectionsCreated = groups.length;
+      console.log(
+        `[Pass 1] No diagram figures found — created ${sectionsCreated} document section(s) from ${contentPages.length} page(s)`
+      );
+    }
   }
 
-  // Aggregate document-level metadata from all classified pages.
-  // Use the longest/most specific value found across pages — title pages and
-  // cover sheets often have the best metadata but may be classified as "ignore".
+  // ── Aggregate document-level metadata from all classified pages ──
   const allDocMeta = classifications
     .map((c) => c.result.documentMetadata)
     .filter((m): m is DocumentMetadata => !!m);
@@ -536,27 +568,23 @@ async function finalizePass1(templateId: string, progress: Pass1Progress): Promi
     .map((m) => m.revisionDate)
     .filter((d): d is string => !!d)[0] ?? null;
 
-  // Aggregate part numbers found across all pages (union with user-provided ones)
   const extractedPartNumbers = [
     ...new Set(
       classifications.flatMap((c) => c.result.partNumbers).filter(Boolean)
     ),
   ];
 
-  // Merge AI-extracted metadata into the template — fill gaps, don't overwrite user input
   const metadataUpdate: Record<string, unknown> = {};
 
   if (extractedOem && !template.oem) {
     metadataUpdate.oem = extractedOem;
   }
   if (extractedDocTitle && template.title === template.sourceFileName.replace(/\.pdf$/i, "")) {
-    // User didn't provide a custom title (still using filename) — use AI-extracted one
     metadataUpdate.title = extractedDocTitle;
   }
   if (extractedRevisionDate && !template.revisionDate) {
     metadataUpdate.revisionDate = new Date(extractedRevisionDate);
   }
-  // Merge AI-extracted part numbers with user-provided ones
   if (extractedPartNumbers.length > 0) {
     const merged = [...new Set([...template.partNumbersCovered, ...extractedPartNumbers])];
     if (merged.length > template.partNumbersCovered.length) {
@@ -566,12 +594,12 @@ async function finalizePass1(templateId: string, progress: Pass1Progress): Promi
 
   if (Object.keys(metadataUpdate).length > 0) {
     console.log(
-      `[CMM Pass 1] AI-extracted metadata:`,
+      `[Pass 1] AI-extracted metadata:`,
       JSON.stringify(metadataUpdate, null, 2)
     );
   }
 
-  // Store the full index in extractionMetadata (replace pass1Progress with final data)
+  // ── Always save classification metadata (even if no sections created) ──
   const indexData = {
     completedAt: new Date().toISOString(),
     totalPagesProcessed: progress.pagesToProcess.length,
@@ -601,6 +629,21 @@ async function finalizePass1(templateId: string, progress: Pass1Progress): Promi
     })),
   };
 
+  if (sectionsCreated === 0) {
+    // Every page was "ignore" — truly empty document. Save metadata for diagnostics.
+    await prisma.inspectionTemplate.update({
+      where: { id: templateId },
+      data: {
+        extractionMetadata: JSON.parse(JSON.stringify(indexData)),
+        ...metadataUpdate,
+      },
+    });
+    console.log(
+      `[Pass 1] No extractable content found in ${progress.pagesToProcess.length} pages — all classified as ignore`
+    );
+    return 0;
+  }
+
   await prisma.inspectionTemplate.update({
     where: { id: templateId },
     data: {
@@ -611,8 +654,64 @@ async function finalizePass1(templateId: string, progress: Pass1Progress): Promi
   });
 
   console.log(
-    `[CMM Pass 1] Complete: ${sortedGroups.length} sections created from ${progress.pagesToProcess.length} pages`
+    `[Pass 1] Complete: ${sectionsCreated} sections created from ${progress.pagesToProcess.length} pages`
   );
 
   return "done";
+}
+
+// ── Helpers for figureless document sections ─────────────────────────
+
+/**
+ * Group consecutive pages of the same pageType together, splitting
+ * when the type changes or a group reaches maxPerGroup pages.
+ */
+function groupByTypeConsecutive(
+  pages: { pageIndex: number; result: PageClassification }[],
+  maxPerGroup: number,
+): { pageIndex: number; result: PageClassification }[][] {
+  const groups: { pageIndex: number; result: PageClassification }[][] = [];
+  let current: { pageIndex: number; result: PageClassification }[] = [];
+  let currentType: string | null = null;
+
+  for (const page of pages) {
+    if (page.result.pageType !== currentType || current.length >= maxPerGroup) {
+      if (current.length > 0) groups.push(current);
+      current = [page];
+      currentType = page.result.pageType;
+    } else {
+      current.push(page);
+    }
+  }
+  if (current.length > 0) groups.push(current);
+
+  return groups;
+}
+
+/** Build a human-readable section title from a group of pages. */
+function buildSectionTitle(
+  dominantType: string,
+  pageNums: number[],
+  pages: { pageIndex: number; result: PageClassification }[],
+): string {
+  // Use the sub-assembly title from AI if available
+  const aiTitle = pages
+    .map((p) => p.result.subAssemblyTitle)
+    .filter((t): t is string => !!t)
+    .sort((a, b) => b.length - a.length)[0];
+  if (aiTitle) return aiTitle;
+
+  // Build from page type
+  const typeLabels: Record<string, string> = {
+    data_table: "Data Table",
+    inspection_text: "Inspection Text",
+    parts_list: "Parts List",
+    diagram: "Diagram",
+  };
+  const label = typeLabels[dominantType] || "Document";
+  const pageDisplay =
+    pageNums.length === 1
+      ? `Page ${pageNums[0] + 1}`
+      : `Pages ${pageNums[0] + 1}–${pageNums[pageNums.length - 1] + 1}`;
+  return `${label} (${pageDisplay})`;
 }

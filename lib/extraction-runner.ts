@@ -338,7 +338,10 @@ async function reviveStaleSections(templateId: string) {
     where: {
       templateId,
       status: "extracting",
-      extractionLeaseExpiresAt: { lt: staleBefore },
+      OR: [
+        { extractionLeaseExpiresAt: { lt: staleBefore } },
+        { extractionLeaseExpiresAt: null },
+      ],
     },
     select: { id: true, figureNumber: true, pageNumbers: true, pass2Progress: true },
   });

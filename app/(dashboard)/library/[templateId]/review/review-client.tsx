@@ -307,7 +307,9 @@ export default function ReviewClient({
           ) : activeSection ? (
             <div className="h-full flex flex-col">
               <div className="text-xs text-slate-400 mb-2">
-                Fig. {activeSection.figureNumber} — Page{" "}
+                {activeSection.figureNumber.startsWith("DOC-")
+                  ? `${activeSection.title} — Page `
+                  : `Fig. ${activeSection.figureNumber} — Page `}
                 {activePdfPage + 1} of {template.totalPages}
                 {activeSection.pageNumbers.length > 1 && (
                   <span className="ml-2">
