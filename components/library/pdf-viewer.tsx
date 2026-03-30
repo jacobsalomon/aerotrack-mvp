@@ -43,11 +43,15 @@ export default function PdfViewer({ fileUrl, pageIndex }: PdfViewerProps) {
       const page = await pdf.getPage(pageIndex + 1); // pdf.js uses 1-based
 
       const canvas = canvasRef.current;
-      if (!canvas) return;
+      const container = containerRef.current;
+      if (!canvas || !container) return;
 
-      // Render at 2x for retina clarity
+      // Fit page width to container instead of using a fixed scale
       const dpr = window.devicePixelRatio || 1;
-      const viewport = page.getViewport({ scale: 1.5 * dpr });
+      const defaultViewport = page.getViewport({ scale: 1 });
+      const containerWidth = container.clientWidth;
+      const fitScale = containerWidth / defaultViewport.width;
+      const viewport = page.getViewport({ scale: fitScale * dpr });
 
       canvas.width = viewport.width;
       canvas.height = viewport.height;

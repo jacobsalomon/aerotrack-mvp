@@ -388,7 +388,7 @@ export default function InspectWorkspace({ session, component }: Props) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-zinc-950">
+    <div className="min-h-screen flex flex-col bg-zinc-950 -mx-4 -mb-8 -mt-20 sm:-mx-6 lg:-mx-8 lg:-mt-8">
       <NetworkBanner />
 
       <ProgressBar
