@@ -18,8 +18,10 @@ import {
   WifiOff,
   Mic,
   ShieldCheck,
+  Glasses,
 } from "lucide-react";
 import { apiUrl } from "@/lib/api-url";
+import { QRPairingDialog } from "@/components/qr-pairing-dialog";
 
 interface Props {
   session: {
@@ -58,6 +60,10 @@ export default function JobBriefing({ session, component }: Props) {
 
   // Loading state for the begin button
   const [starting, setStarting] = useState(false);
+
+  // QR pairing dialog
+  const [showPairing, setShowPairing] = useState(false);
+  const [glassesPaired, setGlassesPaired] = useState(false);
 
   // Count totals from template
   const sectionCount = template?.sections.length || 0;
@@ -212,22 +218,50 @@ export default function JobBriefing({ session, component }: Props) {
         <Card className="bg-zinc-900 border-white/10">
           <CardContent className="pt-4 pb-4">
             <p className="text-sm text-white/70 mb-3">Device Status</p>
-            <div className="flex items-center gap-4">
-              {/* Glasses status — always shows "Not Connected" until iOS app integrates */}
-              <div className="flex items-center gap-2">
-                <WifiOff className="h-4 w-4 text-white/40" />
-                <span className="text-sm text-white/40">
-                  Glasses: Not Connected
-                </span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                {glassesPaired ? (
+                  <div className="flex items-center gap-2">
+                    <Glasses className="h-4 w-4 text-emerald-400" />
+                    <span className="text-sm text-emerald-400">
+                      Glasses: Connected
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <WifiOff className="h-4 w-4 text-white/40" />
+                    <span className="text-sm text-white/40">
+                      Glasses: Not Connected
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <Mic className="h-4 w-4 text-green-400" />
+                  <span className="text-sm text-green-400">Mic: Ready</span>
+                </div>
               </div>
-              {/* Mic status — we'll check once recording starts, show as ready here */}
-              <div className="flex items-center gap-2">
-                <Mic className="h-4 w-4 text-green-400" />
-                <span className="text-sm text-green-400">Mic: Ready</span>
-              </div>
+              {!glassesPaired && (
+                <Button
+                  onClick={() => setShowPairing(true)}
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
+                >
+                  <Glasses className="h-4 w-4" />
+                  Send to Glasses
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
+
+        {/* QR pairing dialog */}
+        <QRPairingDialog
+          sessionId={session.id}
+          open={showPairing}
+          onOpenChange={setShowPairing}
+          onPaired={() => setGlassesPaired(true)}
+        />
 
         {/* Begin Inspection button */}
         <Button
