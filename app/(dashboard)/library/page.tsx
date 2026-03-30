@@ -28,6 +28,7 @@ export default async function LibraryPage() {
         id: t.id,
         title: t.title,
         status: t.status,
+        sourceFileUrl: t.sourceFileUrl,
         partNumbersCovered: t.partNumbersCovered,
         oem: t.oem ?? null,
         revisionDate: t.revisionDate?.toISOString() ?? null,

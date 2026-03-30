@@ -26,21 +26,23 @@ import {
   BookOpen,
   Clock,
   FileUp,
-  Hash,
   Layers,
   Loader2,
   MoreVertical,
   RefreshCw,
   Trash2,
   Upload,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 import UploadModal from "./upload-modal";
+import PdfThumbnail from "@/components/pdf-thumbnail";
 
 interface TemplateInfo {
   id: string;
   title: string;
   status: string;
+  sourceFileUrl: string;
   partNumbersCovered: string[];
   oem: string | null;
   revisionDate: string | null;
@@ -133,6 +135,12 @@ const RETRYABLE_STATUSES = [
 // The basePath for multi-zone fetch URLs
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
 
+// Extract a document reference number like "24-12-09" from title
+function extractDocRef(title: string): string | null {
+  const match = title.match(/\d{2}-\d{2}-\d{2}/);
+  return match ? match[0] : null;
+}
+
 export default function LibraryClient({
   templates: initialTemplates,
 }: {
@@ -171,7 +179,6 @@ export default function LibraryClient({
         const data = await res.json();
         updates[t.id] = data;
 
-        // If status changed to a terminal state, we need to refresh the page data
         if (data.status === "review_ready" || data.status === "extraction_failed") {
           needsRefresh = true;
         }
@@ -182,8 +189,6 @@ export default function LibraryClient({
 
     setProgress((prev) => ({ ...prev, ...updates }));
 
-    // If any template finished, force a server refresh so the page
-    // reflects the final state even if the tab was backgrounded for hours.
     if (needsRefresh) {
       router.refresh();
     }
@@ -192,15 +197,12 @@ export default function LibraryClient({
   useEffect(() => {
     if (processingTemplates.length === 0) return;
 
-    // Poll immediately, then every 10 seconds.
-    // Extraction takes minutes per section — 10s is plenty responsive
-    // and avoids flooding Vercel runtime logs (which cap at 100 entries).
     pollProgress();
     const interval = setInterval(pollProgress, 10_000);
     return () => clearInterval(interval);
   }, [processingTemplates.length, pollProgress]);
 
-  // Retry extraction — calls POST /api/library/{id}/retry
+  // Retry extraction
   async function handleRetry(templateId: string) {
     try {
       const res = await fetch(`${basePath}/api/library/${templateId}/retry`, {
@@ -212,7 +214,6 @@ export default function LibraryClient({
         return;
       }
       toast.success("Extraction restarted");
-      // Update local state so the card shows processing status immediately
       setTemplates((prev) =>
         prev.map((t) =>
           t.id === templateId
@@ -225,7 +226,7 @@ export default function LibraryClient({
     }
   }
 
-  // Delete template — calls DELETE /api/library/{id}
+  // Delete template
   async function handleDelete(templateId: string) {
     try {
       const res = await fetch(`${basePath}/api/library/${templateId}`, {
@@ -237,7 +238,6 @@ export default function LibraryClient({
         return;
       }
       toast.success("Template deleted");
-      // Remove from local state so it disappears immediately
       setTemplates((prev) => prev.filter((t) => t.id !== templateId));
     } catch {
       toast.error("Failed to delete template");
@@ -257,8 +257,8 @@ export default function LibraryClient({
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Library</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Upload CMM pages for the specific procedures you need — a full
-            manual or just the sections for a particular flow. AI extracts
+            Upload documentation for the specific procedures you need — a full
+            manual or just the sections for a particular job. AI extracts
             torque specs, tool requirements, and inspection checks automatically.
           </p>
         </div>
@@ -274,10 +274,10 @@ export default function LibraryClient({
           <CardContent className="py-12 text-center">
             <BookOpen className="h-12 w-12 text-slate-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-slate-700 mb-1">
-              No procedures uploaded yet
+              No documentation uploaded yet
             </h3>
             <p className="text-sm text-slate-500 mb-4">
-              Upload CMM pages for the procedures you need — a full manual or
+              Upload documentation for the procedures you need — a full manual or
               just the specific sections for a job.
             </p>
             <Button
@@ -290,7 +290,7 @@ export default function LibraryClient({
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {activeTemplates.map((template) => {
             const isClickable =
               template.status === "review_ready" ||
@@ -301,6 +301,7 @@ export default function LibraryClient({
               "extracting_details",
             ].includes(template.status);
             const tp = progress[template.id];
+            const docRef = extractDocRef(template.title);
 
             // Should we show the three-dot menu?
             const showRetry = RETRYABLE_STATUSES.includes(template.status);
@@ -308,161 +309,178 @@ export default function LibraryClient({
             const showDelete = template.status !== "active";
             const showMenu = showRetry || showDelete || showUpdate;
 
-            const cardContent = (
-              <Card
-                className={
+            const cardInner = (
+              <div
+                className={`rounded-lg border overflow-hidden flex flex-col ${
                   isClickable
-                    ? "border-slate-200 hover:border-slate-300 transition-colors cursor-pointer"
-                    : "border-slate-200"
-                }
+                    ? "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm transition-all cursor-pointer"
+                    : isProcessing
+                      ? "border-slate-200 bg-white"
+                      : "border-slate-100 bg-slate-50 opacity-70"
+                }`}
               >
-                <CardContent className="py-5 px-5">
-                  <div className="flex items-start gap-4">
-                    {/* Icon */}
-                    <div className="shrink-0 mt-0.5 w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center">
-                      <BookOpen className="h-5 w-5 text-indigo-600" />
+                {/* PDF thumbnail */}
+                <div className="relative">
+                  {template.sourceFileUrl ? (
+                    <PdfThumbnail
+                      url={template.sourceFileUrl}
+                      alt={`Preview of ${template.title}`}
+                      className="h-56 border-b border-slate-100"
+                    />
+                  ) : (
+                    <div className="h-56 bg-slate-100 border-b border-slate-100 flex items-center justify-center">
+                      <FileText className="h-10 w-10 text-slate-300" />
                     </div>
+                  )}
 
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-semibold text-slate-900">
-                          {template.title}
-                        </span>
-                        {statusBadge(
-                          template.status,
-                          template.currentSectionIndex,
-                          template.sectionCount,
-                          tp
-                        )}
-                      </div>
-
-                      {/* OEM */}
-                      {template.oem && (
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          {template.oem}
-                        </p>
-                      )}
-
-                      {/* Live progress detail when processing */}
-                      {isProcessing && tp?.currentSection && (
-                        <p className="text-xs text-blue-600 mt-1">
-                          Processing {tp.currentSection.figureNumber.startsWith("DOC-")
-                            ? tp.currentSection.title
-                            : `Fig. ${tp.currentSection.figureNumber} — ${tp.currentSection.title}`}
-                          {tp.totalItems > 0 && (
-                            <span className="text-slate-400 ml-2">
-                              ({tp.totalItems} items found so far)
-                            </span>
+                  {/* Three-dot menu overlaid on thumbnail */}
+                  {showMenu && (
+                    <div
+                      className="absolute top-2 right-2"
+                      onClick={(e) => e.preventDefault()}
+                    >
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-1.5 rounded-md bg-white/80 backdrop-blur-sm hover:bg-white text-slate-500 hover:text-slate-700 transition-colors shadow-sm"
+                            aria-label="Template actions"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {showUpdate && (
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                setUpdatePrefill({
+                                  title: template.title,
+                                  partNumbers: template.partNumbersCovered.join(", "),
+                                  oem: template.oem || "",
+                                });
+                                setShowUpload(true);
+                              }}
+                            >
+                              <Upload className="h-4 w-4" />
+                              Update
+                            </DropdownMenuItem>
                           )}
-                        </p>
-                      )}
-
-                      {/* Part numbers */}
-                      {template.partNumbersCovered.length > 0 && (
-                        <div className="flex items-center gap-1 mt-1.5 flex-wrap">
-                          <Hash className="h-3 w-3 text-slate-400 shrink-0" />
-                          {template.partNumbersCovered.map((pn) => (
-                            <span
-                              key={pn}
-                              className="text-xs font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded"
+                          {showRetry && (
+                            <DropdownMenuItem
+                              onSelect={() => handleRetry(template.id)}
                             >
-                              {pn}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Meta row */}
-                      <div className="flex items-center gap-4 mt-2 text-xs text-slate-400">
-                        <span className="flex items-center gap-1">
-                          <Layers className="h-3 w-3" />
-                          {(tp?.totalSections ?? template.sectionCount) || 0} sections
-                        </span>
-                        <span>{template.totalPages} pages</span>
-                        {template.revisionDate && (
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            Rev.{" "}
-                            {new Date(template.revisionDate).toLocaleDateString()}
-                          </span>
-                        )}
-                        <span>
-                          Uploaded{" "}
-                          {new Date(template.createdAt).toLocaleDateString()}
-                        </span>
-                        <span>by {template.createdBy}</span>
-                      </div>
+                              <RefreshCw className="h-4 w-4" />
+                              Retry Extraction
+                            </DropdownMenuItem>
+                          )}
+                          {showDelete && (
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onSelect={() => setDeleteTarget(template)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Delete
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
+                  )}
+                </div>
 
-                    {/* Three-dot dropdown menu */}
-                    {showMenu && (
-                      <div
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              className="shrink-0 p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
-                              aria-label="Template actions"
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {showUpdate && (
-                              <DropdownMenuItem
-                                onSelect={() => {
-                                  setUpdatePrefill({
-                                    title: template.title,
-                                    partNumbers: template.partNumbersCovered.join(", "),
-                                    oem: template.oem || "",
-                                  });
-                                  setShowUpload(true);
-                                }}
-                              >
-                                <Upload className="h-4 w-4" />
-                                Update
-                              </DropdownMenuItem>
-                            )}
-                            {showRetry && (
-                              <DropdownMenuItem
-                                onSelect={() => handleRetry(template.id)}
-                              >
-                                <RefreshCw className="h-4 w-4" />
-                                Retry Extraction
-                              </DropdownMenuItem>
-                            )}
-                            {showDelete && (
-                              <DropdownMenuItem
-                                variant="destructive"
-                                onSelect={() => setDeleteTarget(template)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                                Delete
-                              </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
+                {/* Card content — fixed height so all cards match */}
+                <div className="p-4 flex flex-col h-56">
+                  {/* Doc ref + status */}
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    {docRef ? (
+                      <span className="text-lg font-bold text-slate-800 font-mono">{docRef}</span>
+                    ) : (
+                      <span className="text-sm font-semibold text-slate-800 leading-tight line-clamp-1">{template.title}</span>
+                    )}
+                    {statusBadge(
+                      template.status,
+                      template.currentSectionIndex,
+                      template.sectionCount,
+                      tp
                     )}
                   </div>
-                </CardContent>
-              </Card>
+
+                  {/* Title below doc ref (if ref exists) */}
+                  {docRef && (
+                    <p className="text-sm text-slate-600 leading-tight mb-1 line-clamp-1">{template.title}</p>
+                  )}
+
+                  {/* OEM */}
+                  {template.oem && (
+                    <p className="text-xs text-slate-400 mb-1 line-clamp-1">{template.oem}</p>
+                  )}
+
+                  {/* Live progress detail when processing */}
+                  {isProcessing && tp?.currentSection && (
+                    <p className="text-xs text-blue-600 mb-1 line-clamp-1">
+                      Processing {tp.currentSection.figureNumber.startsWith("DOC-")
+                        ? tp.currentSection.title
+                        : `Fig. ${tp.currentSection.figureNumber} — ${tp.currentSection.title}`}
+                      {tp.totalItems > 0 && (
+                        <span className="text-slate-400 ml-1">
+                          ({tp.totalItems} items)
+                        </span>
+                      )}
+                    </p>
+                  )}
+
+                  {/* Part numbers — capped to 2 rows max via overflow-hidden */}
+                  {template.partNumbersCovered.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-1.5 max-h-[3.5rem] overflow-hidden">
+                      {template.partNumbersCovered.slice(0, 6).map((pn) => (
+                        <span
+                          key={pn}
+                          className="text-xs font-mono bg-slate-100 text-slate-500 px-2 py-0.5 rounded"
+                        >
+                          {pn}
+                        </span>
+                      ))}
+                      {template.partNumbersCovered.length > 6 && (
+                        <span className="text-xs text-slate-400">
+                          +{template.partNumbersCovered.length - 6} more
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Metadata — pinned to bottom */}
+                  <div className="mt-auto">
+                    <div className="flex items-center gap-3 text-xs text-slate-400">
+                      <span className="flex items-center gap-1">
+                        <Layers className="h-3 w-3" />
+                        {(tp?.totalSections ?? template.sectionCount) || 0} sections
+                      </span>
+                      <span>{template.totalPages} pages</span>
+                      {template.revisionDate && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          Rev. {new Date(template.revisionDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Uploaded {new Date(template.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      {template.createdBy && ` by ${template.createdBy}`}
+                    </p>
+                  </div>
+                </div>
+              </div>
             );
 
             if (isClickable) {
               return (
-                <Link
-                  key={template.id}
-                  href={`/library/${template.id}/review`}
-                >
-                  {cardContent}
+                <Link key={template.id} href={`/library/${template.id}/review`}>
+                  {cardInner}
                 </Link>
               );
             }
 
-            return <div key={template.id}>{cardContent}</div>;
+            return <div key={template.id}>{cardInner}</div>;
           })}
         </div>
       )}
@@ -500,8 +518,6 @@ export default function LibraryClient({
           onClose={() => { setShowUpload(false); setUpdatePrefill(null); }}
           prefill={updatePrefill || undefined}
           onUploaded={(t) => {
-            // Add the new template to the top of the list immediately
-            // so the user sees it with a "processing" badge right away.
             setTemplates((prev) => {
               if (prev.some((existing) => existing.id === t.id)) return prev;
               return [
@@ -509,6 +525,7 @@ export default function LibraryClient({
                   id: t.id,
                   title: t.title,
                   status: t.status,
+                  sourceFileUrl: "",
                   partNumbersCovered: [],
                   oem: null,
                   revisionDate: null,
