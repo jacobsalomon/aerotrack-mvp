@@ -90,8 +90,8 @@ export async function GET(request: Request) {
 }
 
 // Start a new capture session from the web dashboard (no glasses required).
-// Looks up (or auto-creates) a User profile for the logged-in user,
-// then creates a CaptureSession directly.
+// Uses the authenticated user's ID directly (same ID that mobile auth resolves)
+// so that sessions created here are visible to the iOS Glass app.
 export async function POST(request: Request) {
   const authResult = await requireAuth(request);
   if (authResult.error) return authResult.error;
@@ -101,54 +101,10 @@ export async function POST(request: Request) {
     const { description, targetFormType, orgDocumentId, workOrderRef, forGlasses } = body;
     const user = authResult.user;
 
-    // Look up user profile by the logged-in user's email
-    let userProfile = user.email
-      ? await prisma.user.findUnique({
-          where: { email: user.email },
-          select: { id: true, organizationId: true },
-        })
-      : null;
-
-    // Auto-create a user profile if one doesn't exist yet
-    if (!userProfile) {
-      // Use the first organization as the default (production has one org)
-      const org = await prisma.organization.findFirst({
-        select: { id: true },
-        orderBy: { createdAt: "asc" },
-      });
-
-      if (!org) {
-        return NextResponse.json(
-          { error: "No organization found. Please contact support." },
-          { status: 500 }
-        );
-      }
-
-      // Split the user's display name into first/last
-      const nameParts = (user.name || "").trim().split(/\s+/);
-      const firstName = nameParts[0] || "User";
-      const lastName = nameParts.slice(1).join(" ") || user.email?.split("@")[0] || "Unknown";
-
-      // Generate a badge number from the user ID
-      const badgeNumber = `WEB-${user.id.slice(-6).toUpperCase()}`;
-
-      userProfile = await prisma.user.create({
-        data: {
-          firstName,
-          lastName,
-          email: user.email || `${user.id}@aerovision.local`,
-          badgeNumber,
-          organizationId: org.id,
-          role: "TECHNICIAN",
-          status: "ACTIVE",
-        },
-        select: { id: true, organizationId: true },
-      });
-    }
-
-    if (!userProfile.organizationId) {
+    // Require org membership — matches the check in mobile auth
+    if (!user.organizationId) {
       return NextResponse.json(
-        { error: "User has no organization. Please contact support." },
+        { error: "No organization assigned. Please join one at the dashboard first." },
         { status: 400 }
       );
     }
@@ -161,7 +117,7 @@ export async function POST(request: Request) {
     if (forGlasses) {
       await prisma.captureSession.updateMany({
         where: {
-          userId: userProfile.id,
+          userId: user.id,
           status: "active",
         },
         data: { status: "paused" },
@@ -170,8 +126,8 @@ export async function POST(request: Request) {
 
     const session = await prisma.captureSession.create({
       data: {
-        userId: userProfile.id,
-        organizationId: userProfile.organizationId,
+        userId: user.id,
+        organizationId: user.organizationId,
         description: description || "Web capture session",
         targetFormType: orgDocumentId ? null : (targetFormType || null),
         orgDocumentId: orgDocumentId || null,
@@ -182,8 +138,8 @@ export async function POST(request: Request) {
 
     await prisma.auditLogEntry.create({
       data: {
-        organizationId: userProfile.organizationId,
-        userId: userProfile.id,
+        organizationId: user.organizationId,
+        userId: user.id,
         action: "session_started",
         entityType: "CaptureSession",
         entityId: session.id,
