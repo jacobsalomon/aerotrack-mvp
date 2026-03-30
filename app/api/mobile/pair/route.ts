@@ -54,10 +54,10 @@ export async function POST(request: Request) {
 
     // Check expiry
     if (session.pairingCodeExpiresAt && session.pairingCodeExpiresAt < new Date()) {
-      // Clear the expired code
+      // Clear the expired code (keep expiresAt for audit)
       await prisma.captureSession.update({
         where: { id: session.id },
-        data: { pairingCode: null, pairingCodeExpiresAt: null },
+        data: { pairingCode: null },
       });
       return NextResponse.json(
         { success: false, error: "Pairing code expired. Ask the supervisor to generate a new one." },
@@ -79,14 +79,20 @@ export async function POST(request: Request) {
       );
     }
 
-    // Claim the job: clear the code (single-use) so it can't be reused
-    await prisma.captureSession.update({
-      where: { id: session.id },
-      data: {
-        pairingCode: null,
-        pairingCodeExpiresAt: null,
-      },
+    // Claim the job: clear the code (single-use) so it can't be reused.
+    // Use optimistic locking — only the first claim succeeds.
+    // Keep pairingCodeExpiresAt so the web can detect the claim (code null + expiry set = claimed).
+    const claimed = await prisma.captureSession.updateMany({
+      where: { id: session.id, pairingCode: normalizedCode },
+      data: { pairingCode: null },
     });
+
+    if (claimed.count === 0) {
+      return NextResponse.json(
+        { success: false, error: "Code already claimed by another device." },
+        { status: 409 }
+      );
+    }
 
     // Return job details in the same shape as the active-job endpoint
     return NextResponse.json({

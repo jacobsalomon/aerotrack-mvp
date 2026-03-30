@@ -1,6 +1,6 @@
 "use client";
 
-// QR Pairing Dialog — shows a QR code and text code for pairing a job to the iOS Glass app.
+// QR Pairing Dialog — connects the mechanic's glasses to this job.
 // The mechanic either scans the QR with their iPhone camera (auto-opens the app via URL scheme)
 // or manually types the 6-character code in the app.
 // Polls every 3 seconds to detect when the code is claimed (code becomes null).
@@ -42,6 +42,7 @@ export function QRPairingDialog({
   // Generate a new pairing code
   const generateCode = useCallback(async () => {
     setLoading(true);
+    setCode(null); // Hide expired QR immediately during refresh
     setError(null);
     try {
       const res = await fetch(apiUrl(`/api/sessions/${sessionId}/pairing-code`), {
@@ -65,11 +66,12 @@ export function QRPairingDialog({
 
     pollRef.current = setInterval(async () => {
       try {
-        const res = await fetch(apiUrl(`/api/sessions/${sessionId}`));
+        const res = await fetch(apiUrl(`/api/sessions/${sessionId}/pairing-code`), {
+          method: "GET",
+        });
         if (!res.ok) return;
         const data = await res.json();
-        // If pairingCode is null, the iOS app claimed it
-        if (!data.pairingCode) {
+        if (data.data?.claimed) {
           setPaired(true);
           onPaired?.();
         }
@@ -91,7 +93,6 @@ export function QRPairingDialog({
       const remaining = Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
       setSecondsLeft(remaining);
       if (remaining <= 0) {
-        // Auto-regenerate when expired
         void generateCode();
       }
     };
@@ -109,7 +110,6 @@ export function QRPairingDialog({
       void generateCode();
     }
     if (!open) {
-      // Reset state when dialog closes
       setCode(null);
       setPaired(false);
       setError(null);
@@ -138,7 +138,7 @@ export function QRPairingDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Glasses className="h-5 w-5" />
-            Send to Glasses
+            Connect Glasses
           </DialogTitle>
         </DialogHeader>
 
@@ -147,8 +147,8 @@ export function QRPairingDialog({
           {paired && (
             <div className="flex flex-col items-center gap-3 py-6">
               <CheckCircle2 className="h-12 w-12 text-emerald-500" />
-              <p className="text-lg font-semibold text-emerald-700">Connected!</p>
-              <p className="text-sm text-slate-500">The Glass app has picked up this job.</p>
+              <p className="text-lg font-semibold text-emerald-700">Glasses Connected!</p>
+              <p className="text-sm text-slate-500">Your glasses are paired to this job.</p>
             </div>
           )}
 
@@ -190,7 +190,7 @@ export function QRPairingDialog({
               {/* Divider */}
               <div className="flex items-center gap-3 w-full px-4">
                 <div className="flex-1 border-t border-slate-200" />
-                <span className="text-xs text-slate-400">or enter manually</span>
+                <span className="text-xs text-slate-400">or enter code in Glass app</span>
                 <div className="flex-1 border-t border-slate-200" />
               </div>
 

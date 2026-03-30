@@ -248,7 +248,7 @@ export default function JobBriefing({ session, component }: Props) {
                   className="gap-2 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
                 >
                   <Glasses className="h-4 w-4" />
-                  Send to Glasses
+                  Connect Glasses
                 </Button>
               )}
             </div>
