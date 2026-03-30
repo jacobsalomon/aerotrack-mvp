@@ -1,8 +1,7 @@
-// POST /api/sessions/[id]/pairing-code — Generate a pairing code for the iOS Glass app
+// Pairing code management for the iOS Glass app.
 //
-// Called by the web dashboard when a supervisor clicks "Send to Glasses".
-// Returns a 6-character alphanumeric code (also shown as a QR deep link).
-// Code expires after 5 minutes and is single-use (cleared when claimed).
+// POST: Generate a 6-character pairing code (shown as QR + text on web).
+// GET:  Lightweight poll — checks if the code was claimed by the iOS app.
 
 import { prisma } from "@/lib/db";
 import { requireAuth } from "@/lib/rbac";
@@ -17,11 +16,12 @@ const CODE_LENGTH = 6;
 const EXPIRY_MINUTES = 5;
 
 function generateCode(): string {
-  const bytes = crypto.randomBytes(CODE_LENGTH);
-  return Array.from(bytes)
-    .map((b) => CODE_CHARS[b % CODE_CHARS.length])
-    .join("");
+  return Array.from({ length: CODE_LENGTH }, () =>
+    CODE_CHARS[crypto.randomInt(CODE_CHARS.length)]
+  ).join("");
 }
+
+// ─── POST: Generate pairing code ────────────────────────────────────────
 
 export async function POST(request: Request, { params }: RouteContext) {
   const authResult = await requireAuth(request);
@@ -30,10 +30,9 @@ export async function POST(request: Request, { params }: RouteContext) {
   const { id: sessionId } = await params;
 
   try {
-    // Verify the session exists and belongs to the user's organization
     const session = await prisma.captureSession.findUnique({
       where: { id: sessionId },
-      select: { id: true, organizationId: true, status: true },
+      select: { id: true, organizationId: true },
     });
 
     if (!session) {
@@ -44,42 +43,76 @@ export async function POST(request: Request, { params }: RouteContext) {
       return NextResponse.json({ success: false, error: "Not authorized" }, { status: 403 });
     }
 
-    // Generate a unique code (retry if collision, extremely unlikely with 6-char space)
-    let code = generateCode();
-    let attempts = 0;
-    while (attempts < 5) {
+    // Generate a unique code — retry on collision (extremely rare with 30^6 = 729M combinations)
+    let code: string | null = null;
+    for (let i = 0; i < 5; i++) {
+      const candidate = generateCode();
       const existing = await prisma.captureSession.findUnique({
-        where: { pairingCode: code },
+        where: { pairingCode: candidate },
         select: { id: true },
       });
-      if (!existing) break;
-      code = generateCode();
-      attempts++;
+      if (!existing) {
+        code = candidate;
+        break;
+      }
+    }
+
+    if (!code) {
+      return NextResponse.json(
+        { success: false, error: "Could not generate unique code. Try again." },
+        { status: 503 }
+      );
     }
 
     const expiresAt = new Date(Date.now() + EXPIRY_MINUTES * 60 * 1000);
 
-    // Store the code on the session (replaces any previous code)
     await prisma.captureSession.update({
       where: { id: sessionId },
-      data: {
-        pairingCode: code,
-        pairingCodeExpiresAt: expiresAt,
-      },
+      data: { pairingCode: code, pairingCodeExpiresAt: expiresAt },
     });
 
     return NextResponse.json({
       success: true,
-      data: {
-        code,
-        expiresAt: expiresAt.toISOString(),
-        sessionId,
-      },
+      data: { code, expiresAt: expiresAt.toISOString(), sessionId },
     });
   } catch (error) {
     console.error("[pairing-code POST]", error);
     return NextResponse.json(
       { success: false, error: "Failed to generate pairing code" },
+      { status: 500 }
+    );
+  }
+}
+
+// ─── GET: Check if code was claimed (lightweight poll) ──────────────────
+
+export async function GET(request: Request, { params }: RouteContext) {
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.error;
+
+  const { id: sessionId } = await params;
+
+  try {
+    const session = await prisma.captureSession.findUnique({
+      where: { id: sessionId },
+      select: { pairingCode: true, pairingCodeExpiresAt: true },
+    });
+
+    if (!session) {
+      return NextResponse.json({ success: false, error: "Session not found" }, { status: 404 });
+    }
+
+    // Code is null = it was claimed (or never generated)
+    const claimed = !session.pairingCode && !!session.pairingCodeExpiresAt;
+
+    return NextResponse.json({
+      success: true,
+      data: { claimed },
+    });
+  } catch (error) {
+    console.error("[pairing-code GET]", error);
+    return NextResponse.json(
+      { success: false, error: "Failed to check pairing status" },
       { status: 500 }
     );
   }
