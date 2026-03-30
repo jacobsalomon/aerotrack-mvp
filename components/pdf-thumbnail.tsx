@@ -54,7 +54,9 @@ export default function PdfThumbnail({ url, alt = "Document preview", className 
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
 
-        await page.render({ canvasContext: ctx, viewport: scaledViewport }).promise;
+        // pdfjs-dist v5 requires `canvas` in RenderParameters
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await page.render({ canvasContext: ctx, viewport: scaledViewport, canvas } as any).promise;
         if (!cancelled) setLoaded(true);
       } catch (err) {
         console.error("PDF thumbnail error:", err);

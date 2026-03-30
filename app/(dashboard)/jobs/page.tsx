@@ -46,7 +46,6 @@ import {
   MoreVertical,
   Trash2,
 } from "lucide-react";
-import { getCmmAgeWarning } from "@/lib/inspect/cmm-config";
 import PdfThumbnail from "@/components/pdf-thumbnail";
 import UploadModal from "../library/upload-modal";
 
