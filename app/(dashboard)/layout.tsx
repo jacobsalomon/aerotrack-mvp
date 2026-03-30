@@ -1,4 +1,4 @@
-import { Sidebar } from "@/components/layout/sidebar";
+import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { ExecutiveDemoOverlay } from "@/components/demo/executive-demo-overlay";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
@@ -24,12 +24,9 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'rgb(250, 250, 250)' }}>
-      <Sidebar orgName={orgName} />
-      <main className="min-h-screen px-4 pb-8 pt-20 sm:px-6 lg:ml-72 lg:px-8 lg:pt-8">
-        {children}
-        <ExecutiveDemoOverlay />
-      </main>
-    </div>
+    <DashboardShell orgName={orgName}>
+      {children}
+      <ExecutiveDemoOverlay />
+    </DashboardShell>
   );
 }

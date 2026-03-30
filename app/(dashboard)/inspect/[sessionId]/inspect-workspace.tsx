@@ -15,6 +15,7 @@ import NextItemButton from "@/components/inspect/next-item-button";
 import ItemSearch from "@/components/inspect/item-search";
 import InspectionRecorder from "@/components/inspect/inspection-recorder";
 import MeasurementToast, { type MeasurementSuggestion } from "@/components/inspect/measurement-toast";
+import PdfViewer from "@/components/library/pdf-viewer";
 
 // Types matching what the server component passes down
 interface InspectionItem {
@@ -44,6 +45,7 @@ interface InspectionSection {
   title: string;
   figureNumber: string;
   sortOrder: number;
+  pageNumbers: number[];
   referenceImageUrls: string[];
   itemCount: number;
   configurationApplicability: string[];
@@ -69,6 +71,7 @@ interface SessionData {
     createdAt: string;
     revisionDate: string | null;
     version: number;
+    sourceFileUrl: string | null;
     sections: InspectionSection[];
   } | null;
 }
@@ -308,6 +311,16 @@ export default function InspectWorkspace({ session, component }: Props) {
 
   const [targetItemId, setTargetItemId] = useState<string | null>(null);
 
+  // PDF page state — which page of the source document to show
+  const sourceFileUrl = template?.sourceFileUrl || null;
+  const activeSectionPages = activeSection?.pageNumbers || [];
+  const [pdfPageOffset, setPdfPageOffset] = useState(0);
+
+  // Reset to first page when switching sections
+  useEffect(() => {
+    setPdfPageOffset(0);
+  }, [activeSectionId]);
+
   // ── Navigate to review ──
   function handleReview() {
     router.push(`/jobs/${session.id}/review`);
@@ -411,21 +424,55 @@ export default function InspectWorkspace({ session, component }: Props) {
         configVariant={session.configurationVariant}
       />
 
-      {/* Item list for active section */}
-      <div className="flex-1 overflow-y-auto">
-        <ItemList
-          items={activeItems}
-          progressMap={progressMap}
-          photoMap={photoMap}
-          sessionId={session.id}
-          isReadOnly={isReadOnly}
-          isOffline={!isOnline}
-          onItemCompleted={handleItemCompleted}
-          onPhotoUploaded={handlePhotoUploaded}
-          referenceImageUrls={activeSection?.referenceImageUrls || []}
-          targetItemId={targetItemId}
-          onTargetItemHandled={() => setTargetItemId(null)}
-        />
+      {/* Split view: source document on left, items on right (large screens) */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Source document viewer — visible on large screens when a PDF is available */}
+        {sourceFileUrl && (
+          <div className="hidden lg:flex lg:w-1/2 flex-col border-r border-white/10">
+            <PdfViewer
+              fileUrl={sourceFileUrl}
+              pageIndex={activeSectionPages.length > 0 ? activeSectionPages[pdfPageOffset] : 0}
+            />
+            {activeSectionPages.length > 1 && (
+              <div className="flex items-center justify-center gap-3 py-2 bg-zinc-900 border-t border-white/10 text-sm text-white/60">
+                <button
+                  onClick={() => setPdfPageOffset((o) => Math.max(0, o - 1))}
+                  disabled={pdfPageOffset === 0}
+                  className="px-2 py-1 rounded hover:text-white disabled:opacity-30"
+                >
+                  ← Prev
+                </button>
+                <span>
+                  Page {pdfPageOffset + 1} of {activeSectionPages.length}
+                </span>
+                <button
+                  onClick={() => setPdfPageOffset((o) => Math.min(activeSectionPages.length - 1, o + 1))}
+                  disabled={pdfPageOffset === activeSectionPages.length - 1}
+                  className="px-2 py-1 rounded hover:text-white disabled:opacity-30"
+                >
+                  Next →
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Item list */}
+        <div className={`overflow-y-auto ${sourceFileUrl ? "w-full lg:w-1/2" : "w-full"}`}>
+          <ItemList
+            items={activeItems}
+            progressMap={progressMap}
+            photoMap={photoMap}
+            sessionId={session.id}
+            isReadOnly={isReadOnly}
+            isOffline={!isOnline}
+            onItemCompleted={handleItemCompleted}
+            onPhotoUploaded={handlePhotoUploaded}
+            referenceImageUrls={activeSection?.referenceImageUrls || []}
+            targetItemId={targetItemId}
+            onTargetItemHandled={() => setTargetItemId(null)}
+          />
+        </div>
       </div>
 
       {!isReadOnly && (
