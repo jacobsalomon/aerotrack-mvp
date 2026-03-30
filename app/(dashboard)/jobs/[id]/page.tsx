@@ -34,6 +34,8 @@ export default async function JobPage({ params, searchParams }: PageProps) {
       inspectionTemplateId: true,
       inspectionTemplateVersion: true,
       cmmRevisionAcknowledgedAt: true,
+      pairingCode: true,
+      pairingCodeExpiresAt: true,
       user: {
         select: { id: true, name: true, firstName: true, lastName: true },
       },

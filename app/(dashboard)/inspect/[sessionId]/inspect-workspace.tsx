@@ -64,6 +64,8 @@ interface SessionData {
   startedAt: string;
   inspectionTemplateId: string | null;
   inspectionTemplateVersion: number | null;
+  pairingCode: string | null;
+  pairingCodeExpiresAt: string | null;
   user: { id: string; name: string | null; firstName: string | null; lastName: string | null };
   inspectionTemplate: {
     id: string;
@@ -144,6 +146,9 @@ export default function InspectWorkspace({ session, component }: Props) {
 
   // Measurement suggestions from audio extraction (for toast UI)
   const [suggestions, setSuggestions] = useState<MeasurementSuggestion[]>([]);
+
+  // Items that were auto-accepted — flash green briefly then clear
+  const [autoAcceptedItemIds, setAutoAcceptedItemIds] = useState<Set<string>>(new Set());
 
   // Photo evidence count from polling (ref tracks latest for stale-closure comparison)
   const [photoCount, setPhotoCount] = useState(0);
@@ -311,15 +316,17 @@ export default function InspectWorkspace({ session, component }: Props) {
 
   const [targetItemId, setTargetItemId] = useState<string | null>(null);
 
-  // PDF page state — which page of the source document to show
+  // PDF state — source document URL and which page to scroll to
   const sourceFileUrl = template?.sourceFileUrl || null;
   const activeSectionPages = activeSection?.pageNumbers || [];
-  const [pdfPageOffset, setPdfPageOffset] = useState(0);
+  const [scrollToPage, setScrollToPage] = useState<number | undefined>(undefined);
 
-  // Reset to first page when switching sections
+  // Scroll to first page of the active section when section changes
   useEffect(() => {
-    setPdfPageOffset(0);
-  }, [activeSectionId]);
+    if (activeSectionPages.length > 0) {
+      setScrollToPage(activeSectionPages[0]);
+    }
+  }, [activeSectionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Navigate to review ──
   function handleReview() {
@@ -367,10 +374,35 @@ export default function InspectWorkspace({ session, component }: Props) {
     []
   );
 
-  // Called when InspectionRecorder gets a transcript with measurements
-  // The audio pipeline already extracts and stores measurements server-side,
-  // so we just need to detect new unassigned ones via polling and show toasts.
-  // This is a placeholder for future real-time transcript processing.
+  // Auto-accept threshold: 90%+ confidence measurements skip the toast
+  const AUTO_ACCEPT_CONFIDENCE = 0.9;
+
+  // Add a suggestion — auto-accepts if confidence is high enough, otherwise shows toast
+  const addSuggestion = useCallback(
+    (suggestion: MeasurementSuggestion) => {
+      if (suggestion.match && suggestion.match.confidence >= AUTO_ACCEPT_CONFIDENCE) {
+        // High confidence — accept automatically and flash the item row green
+        handleAcceptSuggestion(suggestion);
+        setAutoAcceptedItemIds((prev) => {
+          const next = new Set(prev);
+          next.add(suggestion.match!.itemId);
+          return next;
+        });
+        // Clear the flash after 2 seconds
+        setTimeout(() => {
+          setAutoAcceptedItemIds((prev) => {
+            const next = new Set(prev);
+            next.delete(suggestion.match!.itemId);
+            return next;
+          });
+        }, 2000);
+      } else {
+        // Below threshold — show toast for manual review
+        setSuggestions((prev) => [...prev, suggestion]);
+      }
+    },
+    [handleAcceptSuggestion]
+  );
 
   function handleNavigateToItem(sectionId: string, itemId: string) {
     if (sectionId !== activeSectionId) {
@@ -401,6 +433,7 @@ export default function InspectWorkspace({ session, component }: Props) {
         componentInfo={component}
         isReadOnly={isReadOnly}
         unassignedCount={unassignedCount}
+        glassesPaired={!session.pairingCode && !!session.pairingCodeExpiresAt}
         photoCount={photoCount}
         onReview={handleReview}
         recorderSlot={
@@ -426,34 +459,14 @@ export default function InspectWorkspace({ session, component }: Props) {
 
       {/* Split view: source document on left, items on right (large screens) */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Source document viewer — visible on large screens when a PDF is available */}
+        {/* Source document viewer — scrollable PDF, visible on large screens */}
         {sourceFileUrl && (
           <div className="hidden lg:flex lg:w-1/2 flex-col border-r border-white/10">
             <PdfViewer
               fileUrl={sourceFileUrl}
-              pageIndex={activeSectionPages.length > 0 ? activeSectionPages[pdfPageOffset] : 0}
+              mode="scroll"
+              scrollToPage={scrollToPage}
             />
-            {activeSectionPages.length > 1 && (
-              <div className="flex items-center justify-center gap-3 py-2 bg-zinc-900 border-t border-white/10 text-sm text-white/60">
-                <button
-                  onClick={() => setPdfPageOffset((o) => Math.max(0, o - 1))}
-                  disabled={pdfPageOffset === 0}
-                  className="px-2 py-1 rounded hover:text-white disabled:opacity-30"
-                >
-                  ← Prev
-                </button>
-                <span>
-                  Page {pdfPageOffset + 1} of {activeSectionPages.length}
-                </span>
-                <button
-                  onClick={() => setPdfPageOffset((o) => Math.min(activeSectionPages.length - 1, o + 1))}
-                  disabled={pdfPageOffset === activeSectionPages.length - 1}
-                  className="px-2 py-1 rounded hover:text-white disabled:opacity-30"
-                >
-                  Next →
-                </button>
-              </div>
-            )}
           </div>
         )}
 
@@ -471,6 +484,7 @@ export default function InspectWorkspace({ session, component }: Props) {
             referenceImageUrls={activeSection?.referenceImageUrls || []}
             targetItemId={targetItemId}
             onTargetItemHandled={() => setTargetItemId(null)}
+            autoAcceptedItemIds={autoAcceptedItemIds}
           />
         </div>
       </div>
