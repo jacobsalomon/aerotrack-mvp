@@ -451,6 +451,10 @@ model CaptureSession {
   // Layer 3: Post-session reconciliation results (matched/unmatched/conflicts summary)
   reconciliationSummary       Json?
 
+  // QR code pairing — links a web-created job to the iOS Glass app
+  pairingCode                 String?   @unique             // 6-char alphanumeric code shown on web, typed/scanned on iOS
+  pairingCodeExpiresAt        DateTime?                     // Code is single-use and expires after 5 minutes
+
   // Relationships
   evidence        CaptureEvidence[]
   documents       CaptureDocument[]
