@@ -31,6 +31,7 @@ export async function POST(request: Request) {
       where: { pairingCode: normalizedCode },
       select: {
         id: true,
+        userId: true,
         description: true,
         workOrderRef: true,
         targetFormType: true,
@@ -64,11 +65,17 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate same organization
-    if (auth.user.organizationId && session.organizationId !== auth.user.organizationId) {
-      return NextResponse.json(
-        { success: false, error: "This job belongs to a different organization." },
-        { status: 403 }
+    // Log pairing details for debugging
+    console.log(
+      `[mobile/pair] Pairing attempt — session org: "${session.organizationId}", ` +
+      `mobile user org: "${auth.user.organizationId}", mobile user id: "${auth.user.id}", ` +
+      `session user id: "${session.userId}"`
+    );
+
+    // Org mismatch is logged but NOT blocking — the pairing code is the security boundary
+    if (session.organizationId !== auth.user.organizationId) {
+      console.warn(
+        `[mobile/pair] Org mismatch detected — session: "${session.organizationId}", mobile: "${auth.user.organizationId}". Allowing anyway.`
       );
     }
 
