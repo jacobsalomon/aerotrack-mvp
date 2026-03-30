@@ -347,7 +347,9 @@ export default function LibraryClient({
                       {/* Live progress detail when processing */}
                       {isProcessing && tp?.currentSection && (
                         <p className="text-xs text-blue-600 mt-1">
-                          Processing Fig. {tp.currentSection.figureNumber} — {tp.currentSection.title}
+                          Processing {tp.currentSection.figureNumber.startsWith("DOC-")
+                            ? tp.currentSection.title
+                            : `Fig. ${tp.currentSection.figureNumber} — ${tp.currentSection.title}`}
                           {tp.totalItems > 0 && (
                             <span className="text-slate-400 ml-2">
                               ({tp.totalItems} items found so far)
