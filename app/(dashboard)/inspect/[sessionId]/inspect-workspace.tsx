@@ -15,7 +15,9 @@ import NextItemButton from "@/components/inspect/next-item-button";
 import ItemSearch from "@/components/inspect/item-search";
 import InspectionRecorder from "@/components/inspect/inspection-recorder";
 import MeasurementToast, { type MeasurementSuggestion } from "@/components/inspect/measurement-toast";
+import { GlassesPanel } from "@/components/inspect/glasses-panel";
 import PdfViewer from "@/components/library/pdf-viewer";
+import { QRPairingDialog } from "@/components/qr-pairing-dialog";
 
 // Types matching what the server component passes down
 interface InspectionItem {
@@ -143,6 +145,12 @@ export default function InspectWorkspace({ session, component }: Props) {
 
   // Unassigned measurement count
   const [unassignedCount, setUnassignedCount] = useState(0);
+
+  // QR pairing dialog
+  const [showPairing, setShowPairing] = useState(false);
+  const [glassesPaired, setGlassesPaired] = useState(
+    !session.pairingCode && !!session.pairingCodeExpiresAt
+  );
 
   // Measurement suggestions from audio extraction (for toast UI)
   const [suggestions, setSuggestions] = useState<MeasurementSuggestion[]>([]);
@@ -433,7 +441,8 @@ export default function InspectWorkspace({ session, component }: Props) {
         componentInfo={component}
         isReadOnly={isReadOnly}
         unassignedCount={unassignedCount}
-        glassesPaired={!session.pairingCode && !!session.pairingCodeExpiresAt}
+        glassesPaired={glassesPaired}
+        onPairGlasses={() => setShowPairing(true)}
         photoCount={photoCount}
         onReview={handleReview}
         recorderSlot={
@@ -447,6 +456,13 @@ export default function InspectWorkspace({ session, component }: Props) {
           />
         }
       />
+
+      {/* Smart glasses connection + capture controls */}
+      {!isReadOnly && (
+        <div className="px-4 pt-2">
+          <GlassesPanel jobId={session.id} userId={session.user.id} />
+        </div>
+      )}
 
       {/* Section tabs */}
       <SectionTabs
@@ -508,6 +524,14 @@ export default function InspectWorkspace({ session, component }: Props) {
           onDismiss={handleDismissSuggestion}
         />
       )}
+
+      {/* QR pairing dialog */}
+      <QRPairingDialog
+        sessionId={session.id}
+        open={showPairing}
+        onOpenChange={setShowPairing}
+        onPaired={() => setGlassesPaired(true)}
+      />
     </div>
   );
 }

@@ -29,6 +29,7 @@ interface Props {
   isReadOnly: boolean;
   unassignedCount: number;
   glassesPaired: boolean;
+  onPairGlasses?: () => void;
   onReview: () => void;
   searchSlot?: ReactNode;
   recorderSlot?: ReactNode;
@@ -46,6 +47,7 @@ export default function ProgressBar({
   isReadOnly,
   unassignedCount,
   glassesPaired,
+  onPairGlasses,
   onReview,
   searchSlot,
   recorderSlot,
@@ -165,10 +167,22 @@ export default function ProgressBar({
         {/* Right side: recorder, glasses, search, review */}
         <div className="flex items-center gap-2 flex-shrink-0">
           {recorderSlot}
-          <span className="flex items-center gap-1" title={glassesPaired ? "Glasses connected" : "Glasses not connected"}>
-            <Glasses className={`h-4 w-4 ${glassesPaired ? "text-green-400" : "text-white/30"}`} />
-            <span className={`h-1.5 w-1.5 rounded-full ${glassesPaired ? "bg-green-400" : "bg-white/30"}`} />
-          </span>
+          {glassesPaired ? (
+            <span className="flex items-center gap-1" title="Glasses connected">
+              <Glasses className="h-4 w-4 text-green-400" />
+              <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+            </span>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onPairGlasses}
+              className="gap-1.5 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 h-7 text-xs"
+            >
+              <Glasses className="h-3.5 w-3.5" />
+              Send to Glasses
+            </Button>
+          )}
           {searchSlot}
           {isReadOnly && (
             <Badge variant="outline" className="border-yellow-500/50 text-yellow-500 text-xs">
