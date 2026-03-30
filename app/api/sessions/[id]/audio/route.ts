@@ -9,6 +9,7 @@ import { transcribeAudio } from "@/lib/ai/openai";
 import { correctTranscriptSegment } from "@/lib/ai/transcript-correction";
 import { extractMeasurementsFromTranscript, getExtractionContext } from "@/lib/ai/measurement-extraction";
 import { recordMeasurement } from "@/lib/measurement-ledger";
+import { detectPassFail, processVoicePassFail } from "@/lib/audio/voice-pass-fail";
 import { getCallHistory } from "@/lib/ai/provider";
 import { getOrgInstructions } from "@/lib/ai/org-context";
 import { NextResponse } from "next/server";
@@ -141,6 +142,17 @@ export async function POST(request: Request, { params }: RouteParams) {
         console.log(`[Audio] Step 4 done in ${Date.now() - t4}ms: "${correctedText.slice(0, 100)}"`);
       } catch (correctionError) {
         console.error("[Audio] LLM correction failed, using raw transcript:", correctionError);
+      }
+    }
+
+    // Step 4b: Voice-driven pass/fail — detect "item X pass/fail" patterns
+    // Safety: only matches when the technician explicitly says the item number
+    if (correctedText && session.sessionType === "inspection") {
+      const passFails = detectPassFail(correctedText);
+      if (passFails.length > 0) {
+        console.log(`[Audio] Step 4b: ${passFails.length} pass/fail detection(s): ${passFails.map(d => `${d.callout}=${d.result}`).join(", ")}`);
+        const completed = await processVoicePassFail(sessionId, passFails, session.userId);
+        console.log(`[Audio] Step 4b: ${completed} items completed via voice`);
       }
     }
 

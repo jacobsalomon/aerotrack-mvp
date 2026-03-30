@@ -65,6 +65,7 @@ interface Props {
   referenceImageUrls: string[];
   targetItemId?: string | null;
   onTargetItemHandled?: () => void;
+  autoAcceptedItemIds?: Set<string>;
 }
 
 export default function ItemList({
@@ -79,6 +80,7 @@ export default function ItemList({
   referenceImageUrls,
   targetItemId,
   onTargetItemHandled,
+  autoAcceptedItemIds,
 }: Props) {
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -239,7 +241,7 @@ export default function ItemList({
             const groupDone = doneCount >= item.instanceCount;
 
             return (
-              <div key={item.id} ref={(el) => { if (el) itemRefs.current.set(item.id, el); }} className="bg-white/5 rounded-lg border border-white/10">
+              <div key={item.id} ref={(el) => { if (el) itemRefs.current.set(item.id, el); }} className={cn("bg-white/5 rounded-lg border border-white/10 transition-colors duration-500", autoAcceptedItemIds?.has(item.id) && "ring-2 ring-green-400/50 bg-green-400/10")}>
                 {/* Group header */}
                 <button
                   onClick={() => setExpandedId(isExpanded ? null : item.id)}
@@ -386,7 +388,7 @@ export default function ItemList({
           const status = progress?.status || "pending";
 
           return (
-            <div key={item.id} ref={(el) => { if (el) itemRefs.current.set(item.id, el); }} className="bg-white/5 rounded-lg border border-white/10">
+            <div key={item.id} ref={(el) => { if (el) itemRefs.current.set(item.id, el); }} className={cn("bg-white/5 rounded-lg border border-white/10 transition-colors duration-500", autoAcceptedItemIds?.has(item.id) && "ring-2 ring-green-400/50 bg-green-400/10")}>
               {/* Collapsed row — always visible */}
               <button
                 onClick={() => setExpandedId(isExpanded ? null : item.id)}
