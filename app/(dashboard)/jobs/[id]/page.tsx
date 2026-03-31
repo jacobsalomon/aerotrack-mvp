@@ -122,6 +122,7 @@ export default async function JobPage({ params, searchParams }: PageProps) {
       <InspectWorkspace
         session={JSON.parse(JSON.stringify(session))}
         component={component ? JSON.parse(JSON.stringify(component)) : null}
+        justStarted={justStarted}
       />
     );
   }

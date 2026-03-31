@@ -93,6 +93,8 @@ export function QRPairingDialog({
       const remaining = Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
       setSecondsLeft(remaining);
       if (remaining <= 0) {
+        // Stop the countdown so we don't fire multiple POST requests
+        if (countdownRef.current) clearInterval(countdownRef.current);
         void generateCode();
       }
     };

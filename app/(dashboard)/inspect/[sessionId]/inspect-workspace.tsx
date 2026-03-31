@@ -15,9 +15,10 @@ import NextItemButton from "@/components/inspect/next-item-button";
 import ItemSearch from "@/components/inspect/item-search";
 import InspectionRecorder from "@/components/inspect/inspection-recorder";
 import MeasurementToast, { type MeasurementSuggestion } from "@/components/inspect/measurement-toast";
-import { GlassesPanel } from "@/components/inspect/glasses-panel";
 import PdfViewer from "@/components/library/pdf-viewer";
 import { QRPairingDialog } from "@/components/qr-pairing-dialog";
+import GlassesConnectScreen from "@/components/inspect/glasses-connect-screen";
+import { Glasses } from "lucide-react";
 
 // Types matching what the server component passes down
 interface InspectionItem {
@@ -121,9 +122,10 @@ interface SectionProgressData {
 interface Props {
   session: SessionData;
   component: ComponentData | null;
+  justStarted?: boolean;
 }
 
-export default function InspectWorkspace({ session, component }: Props) {
+export default function InspectWorkspace({ session, component, justStarted }: Props) {
   const router = useRouter();
   const isOnline = useOnlineStatus();
   const template = session.inspectionTemplate;
@@ -151,6 +153,22 @@ export default function InspectWorkspace({ session, component }: Props) {
   const [glassesPaired, setGlassesPaired] = useState(
     !session.pairingCode && !!session.pairingCodeExpiresAt
   );
+
+  // Full-screen connect step — shown when inspection just started without glasses
+  const [showConnectScreen, setShowConnectScreen] = useState(
+    !!justStarted && !(!session.pairingCode && !!session.pairingCodeExpiresAt)
+  );
+
+  // Stable callbacks for connect screen — must not change identity
+  // or the auto-transition timer resets on every poll-driven re-render
+  const handleGlassesConnected = useCallback(() => {
+    setGlassesPaired(true);
+    setShowConnectScreen(false);
+  }, []);
+
+  const handleConnectSkip = useCallback(() => {
+    setShowConnectScreen(false);
+  }, []);
 
   // Measurement suggestions from audio extraction (for toast UI)
   const [suggestions, setSuggestions] = useState<MeasurementSuggestion[]>([]);
@@ -242,6 +260,10 @@ export default function InspectWorkspace({ session, component }: Props) {
         setUnassignedCount(fullData.unassignedMeasurements?.length || 0);
         setPhotoCount(fullData.photoCount || 0);
         photoCountRef.current = fullData.photoCount || 0;
+
+        // Sync glasses paired status from server
+        const serverPaired = !fullData.session.pairingCode && !!fullData.session.pairingCodeExpiresAt;
+        setGlassesPaired(serverPaired);
 
         // Fetch photos for this session
         try {
@@ -427,9 +449,38 @@ export default function InspectWorkspace({ session, component }: Props) {
     );
   }
 
+  // Full-screen connect step — shown before workspace when glasses aren't connected
+  if (showConnectScreen) {
+    return (
+      <GlassesConnectScreen
+        sessionId={session.id}
+        onPaired={handleGlassesConnected}
+        onSkip={handleConnectSkip}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-zinc-950 -mx-4 -mb-8 -mt-20 sm:-mx-6 lg:-mx-8 lg:-mt-8">
       <NetworkBanner />
+
+      {/* Persistent banner when glasses not connected */}
+      {!glassesPaired && !isReadOnly && (
+        <button
+          onClick={() => setShowPairing(true)}
+          className="w-full bg-emerald-950/50 border-b border-emerald-500/20 px-4 py-2.5 flex items-center justify-between hover:bg-emerald-950/70 transition-colors cursor-pointer"
+        >
+          <div className="flex items-center gap-2.5">
+            <Glasses className="h-5 w-5 text-emerald-400/70" />
+            <span className="text-sm font-medium text-emerald-300/80">
+              Glasses not connected
+            </span>
+          </div>
+          <span className="text-sm font-semibold text-emerald-400">
+            Tap to Connect
+          </span>
+        </button>
+      )}
 
       <ProgressBar
         summary={summary}
@@ -456,13 +507,6 @@ export default function InspectWorkspace({ session, component }: Props) {
           />
         }
       />
-
-      {/* Smart glasses connection + capture controls */}
-      {!isReadOnly && (
-        <div className="px-4 pt-2">
-          <GlassesPanel jobId={session.id} userId={session.user.id} />
-        </div>
-      )}
 
       {/* Section tabs */}
       <SectionTabs
@@ -530,7 +574,7 @@ export default function InspectWorkspace({ session, component }: Props) {
         sessionId={session.id}
         open={showPairing}
         onOpenChange={setShowPairing}
-        onPaired={() => setGlassesPaired(true)}
+        onPaired={handleGlassesConnected}
       />
     </div>
   );

@@ -51,11 +51,13 @@ import UploadModal from "../library/upload-modal";
 
 // ─── Status mapping (mechanic-friendly labels) ───────────────────────
 
-type JobDisplayStatus = "In Progress" | "Ready to Review" | "Complete" | "Cancelled";
+type JobDisplayStatus = "In Progress" | "Paused" | "Ready to Review" | "Complete" | "Cancelled";
 
 const STATUS_GROUP: Record<string, JobDisplayStatus> = {
+  active: "In Progress",
   capturing: "In Progress",
   inspecting: "In Progress",
+  paused: "Paused",
   processing: "Ready to Review",
   analysis_complete: "Ready to Review",
   documents_generated: "Ready to Review",
@@ -70,7 +72,8 @@ const STATUS_GROUP: Record<string, JobDisplayStatus> = {
 
 const STATUS_COLORS: Record<JobDisplayStatus, string> = {
   "In Progress": "bg-blue-100 text-blue-700",
-  "Ready to Review": "bg-amber-100 text-amber-700",
+  "Paused": "bg-amber-100 text-amber-700",
+  "Ready to Review": "bg-purple-100 text-purple-700",
   "Complete": "bg-emerald-100 text-emerald-700",
   "Cancelled": "bg-slate-100 text-slate-500",
 };
@@ -344,13 +347,13 @@ export default function JobsPage() {
       </div>
 
       {/* ── Active Jobs (resume) ─────────────────────────────────── */}
-      {!loading && jobs.filter((j) => displayStatus(j.status) === "In Progress").length > 0 && (
+      {!loading && jobs.filter((j) => ["In Progress", "Paused"].includes(displayStatus(j.status))).length > 0 && (
         <div className="mb-6">
           <h2 className="text-sm font-semibold uppercase tracking-wider mb-3" style={{ color: "rgb(140, 140, 140)" }}>
             Resume
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {jobs.filter((j) => displayStatus(j.status) === "In Progress").map((job) => (
+            {jobs.filter((j) => ["In Progress", "Paused"].includes(displayStatus(j.status))).map((job) => (
               <div
                 key={job.id}
                 className="rounded-lg border-2 border-blue-200 bg-blue-50 p-4 text-left transition-all hover:border-blue-400 hover:shadow-sm cursor-pointer"

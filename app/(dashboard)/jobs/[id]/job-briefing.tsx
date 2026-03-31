@@ -58,8 +58,9 @@ export default function JobBriefing({ session, component }: Props) {
   const alreadyAcknowledged = !!session.cmmRevisionAcknowledgedAt;
   const [cmmAcknowledged, setCmmAcknowledged] = useState(alreadyAcknowledged);
 
-  // Loading state for the begin button
+  // Loading + error state for the begin button
   const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState(false);
 
   // QR pairing dialog
   const [showPairing, setShowPairing] = useState(false);
@@ -81,6 +82,7 @@ export default function JobBriefing({ session, component }: Props) {
 
   async function handleBeginInspection() {
     setStarting(true);
+    setStartError(false);
     try {
       // Save WO#, CMM acknowledgement, and set status in one PATCH
       const trimmedWo = workOrderRef.trim();
@@ -109,6 +111,7 @@ export default function JobBriefing({ session, component }: Props) {
     } catch (error) {
       console.error("[JobBriefing] Failed to begin inspection:", error);
       setStarting(false);
+      setStartError(true);
     }
   }
 
@@ -262,6 +265,13 @@ export default function JobBriefing({ session, component }: Props) {
           onOpenChange={setShowPairing}
           onPaired={() => setGlassesPaired(true)}
         />
+
+        {/* Error message if begin fails */}
+        {startError && (
+          <p className="text-center text-red-400 text-sm">
+            Couldn&apos;t start. Check your connection and try again.
+          </p>
+        )}
 
         {/* Begin Inspection button */}
         <Button
