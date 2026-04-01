@@ -22,12 +22,21 @@ import {
 } from "lucide-react";
 import { apiUrl } from "@/lib/api-url";
 import { QRPairingDialog } from "@/components/qr-pairing-dialog";
+import { MentraGlassesPanel } from "@/components/inspect/glasses-panel";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface Props {
   session: {
     id: string;
     workOrderRef: string | null;
     cmmRevisionAcknowledgedAt: string | null;
+    pairingCode: string | null;
+    pairingCodeExpiresAt: string | null;
     inspectionTemplate: {
       id: string;
       title: string;
@@ -64,7 +73,10 @@ export default function JobBriefing({ session, component }: Props) {
 
   // QR pairing dialog
   const [showPairing, setShowPairing] = useState(false);
-  const [glassesPaired, setGlassesPaired] = useState(false);
+  const [showMentra, setShowMentra] = useState(false);
+  const [glassesPaired, setGlassesPaired] = useState(
+    !session.pairingCode && !!session.pairingCodeExpiresAt
+  );
 
   // Count totals from template
   const sectionCount = template?.sections.length || 0;
@@ -243,20 +255,42 @@ export default function JobBriefing({ session, component }: Props) {
                   <span className="text-sm text-green-400">Mic: Ready</span>
                 </div>
               </div>
-              {!glassesPaired && (
+              <div className="flex items-center gap-2">
                 <Button
-                  onClick={() => setShowPairing(true)}
+                  onClick={() => setShowMentra(true)}
                   variant="outline"
                   size="sm"
                   className="gap-2 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
                 >
                   <Glasses className="h-4 w-4" />
-                  Connect Glasses
+                  {glassesPaired ? "Manage Mentra" : "Mentra Mini"}
                 </Button>
-              )}
+                {!glassesPaired && (
+                  <Button
+                    onClick={() => setShowPairing(true)}
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 border-white/15 text-white/70 hover:bg-white/5 hover:text-white"
+                  >
+                    Meta / QR
+                  </Button>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
+
+        <Dialog open={showMentra} onOpenChange={setShowMentra}>
+          <DialogContent className="sm:max-w-lg border-white/10 bg-zinc-950 text-white">
+            <DialogHeader>
+              <DialogTitle>Connect Mentra Glasses</DialogTitle>
+            </DialogHeader>
+            <MentraGlassesPanel
+              sessionId={session.id}
+              onPaired={() => setGlassesPaired(true)}
+            />
+          </DialogContent>
+        </Dialog>
 
         {/* QR pairing dialog */}
         <QRPairingDialog

@@ -18,7 +18,14 @@ import MeasurementToast, { type MeasurementSuggestion } from "@/components/inspe
 import PdfViewer from "@/components/library/pdf-viewer";
 import { QRPairingDialog } from "@/components/qr-pairing-dialog";
 import GlassesConnectScreen from "@/components/inspect/glasses-connect-screen";
+import { MentraGlassesPanel } from "@/components/inspect/glasses-panel";
 import { Glasses } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 // Types matching what the server component passes down
 interface InspectionItem {
@@ -150,6 +157,7 @@ export default function InspectWorkspace({ session, component, justStarted }: Pr
 
   // QR pairing dialog
   const [showPairing, setShowPairing] = useState(false);
+  const [showMentraPanel, setShowMentraPanel] = useState(false);
   const [glassesPaired, setGlassesPaired] = useState(
     !session.pairingCode && !!session.pairingCodeExpiresAt
   );
@@ -539,6 +547,10 @@ export default function InspectWorkspace({ session, component, justStarted }: Pr
         sessionId={session.id}
         onPaired={handleGlassesConnected}
         onSkip={handleConnectSkip}
+        onUseMentra={() => {
+          setShowConnectScreen(false);
+          setShowMentraPanel(true);
+        }}
       />
     );
   }
@@ -549,20 +561,28 @@ export default function InspectWorkspace({ session, component, justStarted }: Pr
 
       {/* Persistent banner when glasses not connected */}
       {!glassesPaired && !isReadOnly && (
-        <button
-          onClick={() => setShowPairing(true)}
-          className="w-full bg-emerald-950/50 border-b border-emerald-500/20 px-4 py-2.5 flex items-center justify-between hover:bg-emerald-950/70 transition-colors cursor-pointer"
-        >
+        <div className="w-full bg-emerald-950/50 border-b border-emerald-500/20 px-4 py-2.5 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
             <Glasses className="h-5 w-5 text-emerald-400/70" />
             <span className="text-sm font-medium text-emerald-300/80">
               Glasses not connected
             </span>
           </div>
-          <span className="text-sm font-semibold text-emerald-400">
-            Tap to Connect
-          </span>
-        </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowMentraPanel(true)}
+              className="rounded-md border border-emerald-500/40 px-3 py-1.5 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/10"
+            >
+              Mentra Mini
+            </button>
+            <button
+              onClick={() => setShowPairing(true)}
+              className="rounded-md border border-white/15 px-3 py-1.5 text-sm font-semibold text-white/70 hover:bg-white/5 hover:text-white"
+            >
+              Meta / QR
+            </button>
+          </div>
+        </div>
       )}
 
       <ProgressBar
@@ -590,6 +610,17 @@ export default function InspectWorkspace({ session, component, justStarted }: Pr
           />
         }
       />
+
+      {!isReadOnly && (
+        <div className="border-b border-white/10 bg-zinc-950/70 px-4 py-2 flex justify-end">
+          <button
+            onClick={() => setShowMentraPanel(true)}
+            className="rounded-md border border-emerald-500/35 px-3 py-1.5 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/10"
+          >
+            {glassesPaired ? "Manage Mentra" : "Connect Mentra"}
+          </button>
+        </div>
+      )}
 
       {/* Section tabs */}
       <SectionTabs
@@ -676,6 +707,18 @@ export default function InspectWorkspace({ session, component, justStarted }: Pr
         onOpenChange={setShowPairing}
         onPaired={handleGlassesConnected}
       />
+
+      <Dialog open={showMentraPanel} onOpenChange={setShowMentraPanel}>
+        <DialogContent className="sm:max-w-lg border-white/10 bg-zinc-950 text-white">
+          <DialogHeader>
+            <DialogTitle>Connect Mentra Glasses</DialogTitle>
+          </DialogHeader>
+          <MentraGlassesPanel
+            sessionId={session.id}
+            onPaired={handleGlassesConnected}
+          />
+        </DialogContent>
+      </Dialog>
 
       {/* Mobile diagram modal — full-screen overlay with the CMM PDF */}
       {showDiagram && sourceFileUrl && (

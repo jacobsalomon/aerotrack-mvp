@@ -266,7 +266,6 @@ Use this to verify procedure compliance and identify specific step numbers.
 ${cmmContent}`,
     });
   } else if (expectedSteps) {
-    verificationSource = "expected_steps";
     parts.push({
       text: `EXPECTED MAINTENANCE STEPS (SOP):
 The following steps were defined by the supervisor as the expected procedure for this job.
