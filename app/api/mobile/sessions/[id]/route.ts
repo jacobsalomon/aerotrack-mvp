@@ -9,49 +9,13 @@ import {
   isMobileMutableSessionStatus,
 } from "@/lib/session-status";
 import { decorateSessionWithProgress } from "@/lib/session-progress";
-import { buildVideoChunkOffsets } from "@/lib/video-timestamp-offsets";
+import { addSessionTimestamps } from "@/lib/video-timestamp-offsets";
 import {
   ensureSessionProcessingJob,
   scheduleSessionProcessing,
   scheduleSessionProcessingIfNeeded,
 } from "@/lib/session-processing-jobs";
 import { NextResponse } from "next/server";
-
-const PRIVILEGED_ROLES = new Set(["SUPERVISOR", "ADMIN"]);
-
-// Add session-global timestamps to video annotations so the mobile app
-// can display "4:30 into session" instead of "0:30 into this chunk".
-// Keeps the original `timestamp` for chunk-relative video seeking.
-function addSessionTimestamps<
-  T extends {
-    evidence: Array<{
-      id: string;
-      type: string;
-      durationSeconds: number | null;
-      videoAnnotations: Array<{ timestamp: number; [k: string]: unknown }>;
-      [k: string]: unknown;
-    }>;
-    [k: string]: unknown;
-  },
->(session: T): T {
-  const videoChunks = session.evidence
-    .filter((e) => e.type === "VIDEO")
-    .map((e) => ({ id: e.id, durationSeconds: e.durationSeconds }));
-  const offsets = buildVideoChunkOffsets(videoChunks);
-
-  return {
-    ...session,
-    evidence: session.evidence.map((e) => ({
-      ...e,
-      videoAnnotations: e.videoAnnotations.map((ann) => ({
-        ...ann,
-        sessionTimestamp: offsets.has(e.id)
-          ? (offsets.get(e.id)! + ann.timestamp)
-          : ann.timestamp,
-      })),
-    })),
-  };
-}
 
 // Get full session details including all evidence and generated documents
 export async function GET(

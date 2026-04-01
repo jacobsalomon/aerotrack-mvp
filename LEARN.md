@@ -27,8 +27,8 @@ This repo is the web MVP: a Next.js app that serves as the supervisor dashboard,
 
 This app lives behind `mechanicalvisioncorp.com` alongside two other Next.js projects:
 
-- **Gateway** (`mvc-gateway`) — landing page, rewrites `/aerovision-demo/*` and `/pitch/*` to the other apps
-- **AeroVision MVP** (this repo) — `basePath: /aerovision-demo`
+- **Gateway** (`mvc-gateway`) — landing page, rewrites `/aerovision/*` and `/pitch/*` to the other apps
+- **AeroVision MVP** (this repo) — `basePath: /aerovision`
 - **Seed Deck** (`aerovision-seed-deck`) — `basePath: /pitch`
 
 The `basePath` setup means:
@@ -94,7 +94,7 @@ A deterministic seed component (`demo-hpc7-overhaul`) exists specifically for de
 | `OPENROUTER_API_KEY` | Claude fallback via OpenRouter |
 | `ELEVENLABS_API_KEY` | Scribe v2 (primary audio transcription) |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob storage access |
-| `NEXT_PUBLIC_BASE_PATH` | `/aerovision-demo` (for multi-zone routing) |
+| `NEXT_PUBLIC_BASE_PATH` | `/aerovision` (for multi-zone routing) |
 | `RESEND_API_KEY` | Transactional email |
 
 ## Prisma Notes
@@ -119,5 +119,7 @@ The iOS companion app communicates via endpoints under `/api/mobile/`:
 - `POST /api/mobile/annotate-video` — Video annotation with timestamps
 - `POST /api/mobile/generate` — Generate compliance documents
 - `POST /api/mobile/verify-documents` — Document verification
+- `POST /api/mobile/pair` — QR code job pairing (glasses scan QR → claim job)
+- `POST /api/mobile/active-job` — Get the technician's current active inspection job
 
 Evidence files are uploaded to Vercel Blob via client-side upload, then the callback URL is stored in the database.
