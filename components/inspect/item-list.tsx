@@ -363,11 +363,11 @@ export default function ItemList({
                                   </>
                                 ) : (
                                   <>
-                                    <Button size="sm" className="bg-blue-600 hover:bg-blue-700 h-9 px-3 text-xs" disabled={instSubmitting} onClick={() => { setKeypadItemId(item.id); setKeypadInstanceIndex(idx); setKeypadValue(""); }}>
+                                    <Button size="sm" className="bg-blue-600 hover:bg-blue-700 h-11 px-3 text-sm" disabled={instSubmitting} onClick={() => { setKeypadItemId(item.id); setKeypadInstanceIndex(idx); setKeypadValue(""); }}>
                                       Enter
                                     </Button>
-                                    <Button size="sm" variant="outline" className="h-9 px-2 border-white/20 text-white/50 text-xs" disabled={instSubmitting} onClick={() => handleSkip(item, idx)}>
-                                      <SkipForward className="h-3 w-3" />
+                                    <Button size="sm" variant="outline" className="h-11 px-3 bg-transparent border-white/20 text-white/50 text-sm" disabled={instSubmitting} onClick={() => handleSkip(item, idx)}>
+                                      <SkipForward className="h-3.5 w-3.5 mr-1" /> Skip
                                     </Button>
                                   </>
                                 )}
@@ -397,13 +397,13 @@ export default function ItemList({
                 <InspectionStatusIndicator status={status} size="sm" />
 
                 {item.itemCallout && (
-                  <span className="text-white/40 text-xs font-mono w-10 flex-shrink-0">
+                  <span className="text-white/60 text-sm font-mono w-10 flex-shrink-0">
                     #{item.itemCallout}
                   </span>
                 )}
 
                 <span className={cn(
-                  "flex-1 text-sm truncate",
+                  "flex-1 text-base truncate",
                   status === "done" ? "text-white/50" : "text-white"
                 )}>
                   {item.parameterName}
@@ -456,7 +456,7 @@ export default function ItemList({
                   </div>
                 ) : (
                   <ChevronRight className={cn(
-                    "h-4 w-4 text-white/30 transition-transform flex-shrink-0",
+                    "h-4 w-4 text-white/50 transition-transform flex-shrink-0",
                     isExpanded && "rotate-90"
                   )} />
                 )}
@@ -467,10 +467,10 @@ export default function ItemList({
                 <div className="px-4 pb-4 border-t border-white/5 pt-3 space-y-3">
                   {/* Full specification */}
                   <div className="bg-white/5 rounded-lg p-3">
-                    <p className="text-white/40 text-xs uppercase tracking-wide mb-1">Specification</p>
-                    <p className="text-white font-medium">{item.specification}</p>
+                    <p className="text-white/60 text-sm uppercase tracking-wide mb-1">Specification</p>
+                    <p className="text-white font-medium text-lg">{item.specification}</p>
                     {item.specValueLow != null && item.specValueHigh != null && (
-                      <p className="text-white/60 text-sm mt-1">
+                      <p className="text-white/70 text-base mt-1">
                         Range: {item.specValueLow} – {item.specValueHigh} {item.specUnit}
                         {item.specValueLowMetric != null && (
                           <span className="text-white/40">
@@ -483,7 +483,7 @@ export default function ItemList({
 
                   {/* Tools required */}
                   {item.toolsRequired.length > 0 && (
-                    <p className="text-white/40 text-xs">
+                    <p className="text-white/60 text-sm">
                       Tools: {item.toolsRequired.join(", ")}
                     </p>
                   )}
@@ -506,7 +506,7 @@ export default function ItemList({
 
                   {/* Notes */}
                   {item.notes && (
-                    <p className="text-white/50 text-xs italic">{item.notes}</p>
+                    <p className="text-white/70 text-sm italic">{item.notes}</p>
                   )}
 
                   {/* Photo evidence: upload button + thumbnails */}
@@ -521,7 +521,7 @@ export default function ItemList({
                         />
                       )}
                       {(photoMap.get(item.id)?.length || 0) > 0 && (
-                        <span className="text-white/30 text-xs">
+                        <span className="text-white/60 text-sm">
                           {photoMap.get(item.id)!.length} photo{photoMap.get(item.id)!.length !== 1 ? "s" : ""}
                         </span>
                       )}
@@ -557,11 +557,11 @@ export default function ItemList({
                         onClick={() => { setKeypadItemId(item.id); setKeypadInstanceIndex(0); setKeypadValue(""); }}
                         disabled={submitting === `${item.id}:0`}
                       >
-                        Enter Value
+                        {item.specValueLow != null && item.specValueHigh != null ? "Enter Value" : "Mark Done"}
                       </Button>
                       <Button
                         variant="outline"
-                        className="h-14 border-white/20 text-white/50 hover:text-white"
+                        className="h-14 bg-transparent border-white/20 text-white/50 hover:text-white"
                         onClick={() => handleSkip(item, 0)}
                         disabled={submitting === `${item.id}:0`}
                       >

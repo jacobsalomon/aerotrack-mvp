@@ -170,6 +170,9 @@ export default function InspectWorkspace({ session, component, justStarted }: Pr
     setShowConnectScreen(false);
   }, []);
 
+  // Mobile diagram viewer
+  const [showDiagram, setShowDiagram] = useState(false);
+
   // Measurement suggestions from audio extraction (for toast UI)
   const [suggestions, setSuggestions] = useState<MeasurementSuggestion[]>([]);
 
@@ -517,6 +520,19 @@ export default function InspectWorkspace({ session, component, justStarted }: Pr
         configVariant={session.configurationVariant}
       />
 
+      {/* Mobile "View Diagram" button — shows on small screens when a PDF exists */}
+      {sourceFileUrl && (
+        <div className="lg:hidden border-b border-white/10 px-4 py-2">
+          <button
+            onClick={() => setShowDiagram(true)}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-white/5 border border-white/15 text-white/70 hover:bg-white/10 hover:text-white transition-colors text-sm font-medium"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            View CMM Diagram
+          </button>
+        </div>
+      )}
+
       {/* Split view: source document on left, items on right (large screens) */}
       <div className="flex-1 flex overflow-hidden">
         {/* Source document viewer — scrollable PDF, visible on large screens */}
@@ -530,8 +546,8 @@ export default function InspectWorkspace({ session, component, justStarted }: Pr
           </div>
         )}
 
-        {/* Item list */}
-        <div className={`overflow-y-auto ${sourceFileUrl ? "w-full lg:w-1/2" : "w-full"}`}>
+        {/* Item list — pb-24 prevents floating "Next" button from covering items */}
+        <div className={`overflow-y-auto pb-24 ${sourceFileUrl ? "w-full lg:w-1/2" : "w-full"}`}>
           <ItemList
             items={activeItems}
             progressMap={progressMap}
@@ -576,6 +592,28 @@ export default function InspectWorkspace({ session, component, justStarted }: Pr
         onOpenChange={setShowPairing}
         onPaired={handleGlassesConnected}
       />
+
+      {/* Mobile diagram modal — full-screen overlay with the CMM PDF */}
+      {showDiagram && sourceFileUrl && (
+        <div className="fixed inset-0 z-50 bg-zinc-950 flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+            <span className="text-white font-medium">CMM Diagram</span>
+            <button
+              onClick={() => setShowDiagram(false)}
+              className="text-white/60 hover:text-white text-sm font-medium px-3 py-1.5 rounded-lg bg-white/10"
+            >
+              Close
+            </button>
+          </div>
+          <div className="flex-1 overflow-auto">
+            <PdfViewer
+              fileUrl={sourceFileUrl}
+              mode="scroll"
+              scrollToPage={scrollToPage}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -78,7 +78,7 @@ export default function NextItemButton({
     <Button
       onClick={() => onNavigate(next.sectionId, next.item.id)}
       disabled={disabled}
-      className="fixed bottom-6 right-6 z-30 h-14 px-5 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/30 text-base font-medium"
+      className="fixed bottom-6 right-6 z-30 h-16 px-6 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/30 text-lg font-medium"
     >
       <ChevronDown className="h-5 w-5 mr-1" />
       {label}
