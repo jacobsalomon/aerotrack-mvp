@@ -7,12 +7,13 @@
 import { useState, useEffect, useRef } from "react";
 import { apiUrl } from "@/lib/api-url";
 import { Button } from "@/components/ui/button";
-import { Camera, Check, ChevronDown, ChevronRight, Image as ImageIcon, SkipForward } from "lucide-react";
+import { Camera, Check, ChevronDown, ChevronRight, Image as ImageIcon, SkipForward, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import InspectionStatusIndicator from "./inspection-status-indicator";
 import NumericKeypad from "./numeric-keypad";
 import PhotoUpload from "./photo-upload";
 import PhotoThumbnails from "./photo-thumbnails";
+import PhotoLightbox from "./photo-lightbox";
 import type { PhotoEvidence } from "./photo-types";
 
 interface InspectionItem {
@@ -57,11 +58,15 @@ interface Props {
   items: InspectionItem[];
   progressMap: Map<string, ProgressRecord>;
   photoMap: Map<string, PhotoEvidence[]>;
+  transcriptMap?: Map<string, string[]>;
+  highlightMap?: Map<string, string[]>;
   sessionId: string;
   isReadOnly: boolean;
   isOffline?: boolean;
   onItemCompleted: (itemId: string, status: string, result: string | null, measurement: ProgressRecord["measurement"], instanceIndex?: number) => void;
   onPhotoUploaded: (photo: PhotoEvidence) => void;
+  onPhotoReassigned?: (evidenceId: string, newItemId: string) => void;
+  onExpandedItemChange?: (itemId: string | null) => void;
   referenceImageUrls: string[];
   targetItemId?: string | null;
   onTargetItemHandled?: () => void;
@@ -72,33 +77,59 @@ export default function ItemList({
   items,
   progressMap,
   photoMap,
+  transcriptMap,
+  highlightMap,
   sessionId,
   isReadOnly,
   isOffline,
   onItemCompleted,
   onPhotoUploaded,
+  onPhotoReassigned,
+  onExpandedItemChange,
   referenceImageUrls,
   targetItemId,
   onTargetItemHandled,
   autoAcceptedItemIds,
 }: Props) {
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Multiple items can be expanded simultaneously
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [diagramOpen, setDiagramOpen] = useState(false);
+
+  // Toggle expansion — items stay expanded until manually collapsed
+  function toggleExpanded(itemId: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+        onExpandedItemChange?.(null);
+      } else {
+        next.add(itemId);
+        onExpandedItemChange?.(itemId);
+      }
+      return next;
+    });
+  }
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [keypadItemId, setKeypadItemId] = useState<string | null>(null);
   const [keypadValue, setKeypadValue] = useState("");
 
   useEffect(() => {
     if (!targetItemId) return;
-    setExpandedId(targetItemId);
+    // Expand the target item without collapsing others
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      next.add(targetItemId);
+      return next;
+    });
+    onExpandedItemChange?.(targetItemId);
     const timer = setTimeout(() => {
       const el = itemRefs.current.get(targetItemId);
       if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
       onTargetItemHandled?.();
     }, 100);
     return () => clearTimeout(timer);
-  }, [targetItemId, onTargetItemHandled]);
+  }, [targetItemId, onTargetItemHandled, onExpandedItemChange]);
 
   // Track which instance the keypad is for
   const [keypadInstanceIndex, setKeypadInstanceIndex] = useState(0);
@@ -202,6 +233,148 @@ export default function ItemList({
     return count;
   }
 
+  // Unmatched evidence section state
+  const [unmatchedExpanded, setUnmatchedExpanded] = useState(false);
+  const [assigningId, setAssigningId] = useState<string | null>(null); // evidenceId being assigned
+
+  // Collect unmatched evidence
+  const unmatchedPhotos = photoMap.get("general") || [];
+  const unmatchedTranscripts = transcriptMap?.get("__unmatched__") || [];
+  const unmatchedTotal = unmatchedPhotos.length + unmatchedTranscripts.length;
+
+  function renderUnmatchedSection() {
+    if (unmatchedTotal === 0) return null;
+
+    return (
+      <div className="mt-4 bg-amber-500/5 rounded-lg border border-amber-500/20">
+        <button
+          onClick={() => setUnmatchedExpanded(!unmatchedExpanded)}
+          className="w-full flex items-center gap-3 px-4 py-3 text-left"
+        >
+          <AlertCircle className="h-4 w-4 text-amber-400 flex-shrink-0" />
+          <span className="flex-1 text-sm font-medium text-amber-300">
+            Unmatched ({unmatchedTotal})
+          </span>
+          {unmatchedExpanded
+            ? <ChevronDown className="h-4 w-4 text-amber-400/50" />
+            : <ChevronRight className="h-4 w-4 text-amber-400/50" />
+          }
+        </button>
+
+        {unmatchedExpanded && (
+          <div className="px-4 pb-4 border-t border-amber-500/10 pt-3 space-y-3">
+            {/* Unmatched photos */}
+            {unmatchedPhotos.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-white/40 text-xs uppercase tracking-wide">Photos</p>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {unmatchedPhotos.map((photo) => (
+                    <div key={photo.id} className="flex-shrink-0 space-y-1">
+                      <button
+                        onClick={() => setLightboxUrl(photo.fileUrl)}
+                        className="w-24 h-24 rounded-lg overflow-hidden border border-white/10 hover:border-white/30 transition-colors"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={photo.fileUrl} alt="Unmatched photo" className="w-full h-full object-cover" />
+                      </button>
+                      {assigningId === photo.id ? (
+                        <select
+                          autoFocus
+                          className="w-24 text-xs bg-zinc-800 border border-white/20 rounded px-1 py-0.5 text-white"
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              onPhotoReassigned?.(photo.id, e.target.value);
+                              setAssigningId(null);
+                            }
+                          }}
+                          onBlur={() => setAssigningId(null)}
+                        >
+                          <option value="">Select item...</option>
+                          {items.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.itemCallout ? `#${item.itemCallout} ` : ""}{item.parameterName}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <button
+                          onClick={() => setAssigningId(photo.id)}
+                          className="w-24 text-xs text-amber-400 hover:text-amber-300 bg-amber-400/10 rounded px-1.5 py-0.5 transition-colors"
+                        >
+                          Assign to...
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Unmatched transcripts */}
+            {unmatchedTranscripts.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-white/40 text-xs uppercase tracking-wide">You said:</p>
+                <div className="max-h-32 overflow-y-auto space-y-1">
+                  {unmatchedTranscripts.map((text, i) => (
+                    <p key={i} className="text-white/60 text-sm bg-white/[0.03] rounded px-2.5 py-1.5 border-l-2 border-amber-400/30">
+                      {text}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Lightbox state for unmatched photos (shares with photo thumbnails lightbox)
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+
+  // Highlight measurement excerpts within transcript text
+  function highlightText(text: string, excerpts: string[]) {
+    if (excerpts.length === 0) return text;
+
+    // Build a case-insensitive regex matching any excerpt
+    const escaped = excerpts.map((e) => e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const pattern = new RegExp(`(${escaped.join("|")})`, "gi");
+    const parts = text.split(pattern);
+
+    return parts.map((part, i) => {
+      const isMatch = excerpts.some((e) => e.toLowerCase() === part.toLowerCase());
+      if (isMatch) {
+        return (
+          <span key={i} className="bg-blue-400/20 text-blue-300 px-1 rounded font-medium">
+            {part}
+          </span>
+        );
+      }
+      return part;
+    });
+  }
+
+  // Render transcript chunks for an item — "You said:" blocks with measurement highlights
+  function renderTranscripts(itemId: string) {
+    const chunks = transcriptMap?.get(itemId);
+    if (!chunks || chunks.length === 0) return null;
+
+    const excerpts = highlightMap?.get(itemId) || [];
+
+    return (
+      <div className="space-y-1.5">
+        <p className="text-white/40 text-xs uppercase tracking-wide">You said:</p>
+        <div className="max-h-32 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-white/10">
+          {chunks.map((text, i) => (
+            <p key={i} className="text-white/60 text-sm leading-relaxed bg-white/[0.03] rounded px-2.5 py-1.5 border-l-2 border-blue-400/30">
+              {highlightText(text, excerpts)}
+            </p>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="px-4 py-3">
       {/* Reference diagram panel (collapsible) */}
@@ -232,7 +405,7 @@ export default function ItemList({
       <div className="space-y-1">
         {items.map((item) => {
           const isMulti = item.instanceCount > 1;
-          const isExpanded = expandedId === item.id;
+          const isExpanded = expandedIds.has(item.id);
           const isPassFail = isPassFailType(item.itemType);
 
           // ─── Multi-instance item: expandable group ─────────────────
@@ -244,7 +417,7 @@ export default function ItemList({
               <div key={item.id} ref={(el) => { if (el) itemRefs.current.set(item.id, el); }} className={cn("bg-white/5 rounded-lg border border-white/10 transition-colors duration-500", autoAcceptedItemIds?.has(item.id) && "ring-2 ring-green-400/50 bg-green-400/10")}>
                 {/* Group header */}
                 <button
-                  onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                  onClick={() => toggleExpanded(item.id)}
                   className="w-full flex items-center gap-3 px-4 py-3 min-h-[60px] text-left"
                 >
                   <InspectionStatusIndicator status={groupDone ? "done" : doneCount > 0 ? "in_progress" : "pending"} size="sm" />
@@ -318,8 +491,11 @@ export default function ItemList({
                             </span>
                           )}
                         </div>
-                        <PhotoThumbnails photos={photoMap.get(item.id) || []} />
+                        <PhotoThumbnails photos={photoMap.get(item.id) || []} size="md" />
                       </div>
+
+                      {/* Transcript chunks — what the system heard */}
+                      {renderTranscripts(item.id)}
                     </div>
 
                     {/* Instance sub-rows */}
@@ -391,7 +567,7 @@ export default function ItemList({
             <div key={item.id} ref={(el) => { if (el) itemRefs.current.set(item.id, el); }} className={cn("bg-white/5 rounded-lg border border-white/10 transition-colors duration-500", autoAcceptedItemIds?.has(item.id) && "ring-2 ring-green-400/50 bg-green-400/10")}>
               {/* Collapsed row — always visible */}
               <button
-                onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                onClick={() => toggleExpanded(item.id)}
                 className="w-full flex items-center gap-3 px-4 py-3 min-h-[60px] text-left"
               >
                 <InspectionStatusIndicator status={status} size="sm" />
@@ -526,8 +702,11 @@ export default function ItemList({
                         </span>
                       )}
                     </div>
-                    <PhotoThumbnails photos={photoMap.get(item.id) || []} />
+                    <PhotoThumbnails photos={photoMap.get(item.id) || []} size="md" />
                   </div>
+
+                  {/* Transcript chunks — what the system heard */}
+                  {renderTranscripts(item.id)}
 
                   {/* Captured value display */}
                   {progress?.measurement && (
@@ -578,6 +757,9 @@ export default function ItemList({
         {items.length === 0 && (
           <p className="text-white/30 text-center py-8">No items in this section</p>
         )}
+
+        {/* Unmatched evidence section */}
+        {renderUnmatchedSection()}
       </div>
 
       {/* Numeric keypad overlay */}
@@ -598,6 +780,11 @@ export default function ItemList({
 
       {/* Spacer when keypad is open to prevent content being hidden behind it */}
       {keypadItemId && <div className="h-[400px]" />}
+
+      {/* Lightbox for unmatched photos */}
+      {lightboxUrl && (
+        <PhotoLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
+      )}
     </div>
   );
 }
