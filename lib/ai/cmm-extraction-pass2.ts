@@ -517,8 +517,10 @@ export async function finalizeSectionExtraction(
   }
 
   try {
-    // Merge all page results and remove cross-page duplicates
-    const allItems = progress.pageResults.flatMap((r) => r.items);
+    // Merge all page results, tagging each item with its source page, then remove cross-page duplicates
+    const allItems = progress.pageResults.flatMap((r) =>
+      r.items.map((item) => ({ ...item, sourcePageNumber: r.pageIndex }))
+    );
     const dedupedItems = deduplicateItems(allItems);
 
     // Run structural validation on deduped items
@@ -550,6 +552,7 @@ export async function finalizeSectionExtraction(
           specialAssemblyRef: item.specialAssemblyRef || null,
           configurationApplicability: item.configurationApplicability || [],
           notes: item.notes || null,
+          sourcePageNumber: item.sourcePageNumber ?? null,
           sortOrder: sortOrder++,
           confidence: adjustedConfidence,
           reviewReason: reviewReason || null,

@@ -978,6 +978,9 @@ model InspectionItem {
   sequenceGroup               String?                     // For Layer 3 ordering (nullable, future use)
   notes                       String?                     // Cautions, warnings, special instructions
 
+  // Source location in the PDF (0-based page index)
+  sourcePageNumber            Int?                        // Which PDF page this item was extracted from (null for items extracted before this field existed)
+
   // Metadata
   sortOrder                   Int                         // Display order within the section
   confidence                  Float     @default(0)       // 0-1 confidence score

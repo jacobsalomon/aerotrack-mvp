@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -171,6 +171,44 @@ export default function ReviewClient({
     ? (viewingPageIdx ?? 0)
     : (viewingPageIdx ?? activeSection?.pageNumbers[0] ?? 0);
 
+  // Click an item → scroll PDF to that item's source page
+  // Reset to null first so clicking the same page twice still triggers a scroll
+  const handleItemClick = useCallback((item: InspectionItemData) => {
+    if (item.sourcePageNumber != null) {
+      setViewingPageIdx(null);
+      requestAnimationFrame(() => setViewingPageIdx(item.sourcePageNumber));
+    }
+  }, []);
+
+  // Resizable divider between PDF and items panel
+  const [rightPanelWidth, setRightPanelWidth] = useState(384); // matches w-96
+  const dragStartXRef = useRef(0);
+  const dragStartWidthRef = useRef(0);
+
+  const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragStartXRef.current = e.clientX;
+    dragStartWidthRef.current = rightPanelWidth;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      // Dragging left = clientX decreases = panel gets wider
+      const delta = dragStartXRef.current - e.clientX;
+      setRightPanelWidth(Math.min(700, Math.max(280, dragStartWidthRef.current + delta)));
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, [rightPanelWidth]);
+
   return (
     <div className="h-[calc(100vh-2rem)] flex flex-col">
       {/* Header */}
@@ -307,8 +345,19 @@ export default function ReviewClient({
           )}
         </div>
 
+        {/* Draggable divider */}
+        <div
+          onMouseDown={handleDividerMouseDown}
+          className="w-1.5 shrink-0 cursor-col-resize flex items-center justify-center group"
+        >
+          <div className="w-0.5 h-8 rounded-full bg-slate-200" />
+        </div>
+
         {/* Right: Extracted items */}
-        <div className="w-96 shrink-0 overflow-y-auto pl-3 border-l border-slate-100">
+        <div
+          className="shrink-0 overflow-y-auto pl-3"
+          style={{ width: rightPanelWidth }}
+        >
           {isFullDocMode ? (
             <div className="flex flex-col items-center justify-center h-full text-center px-6">
               <FileText className="h-8 w-8 text-slate-300 mb-3" />
@@ -355,6 +404,7 @@ export default function ReviewClient({
                 templateId={template.id}
                 sectionId={activeSection.id}
                 onItemsChanged={refreshData}
+                onItemClick={handleItemClick}
               />
             </div>
           ) : (
