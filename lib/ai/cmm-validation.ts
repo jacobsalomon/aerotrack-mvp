@@ -57,6 +57,7 @@ export interface ExtractedItem {
   reviewReason?: string | null; // Set during extraction — explains why confidence is low
   instanceCount?: number | null; // How many instances of this item (e.g., 15 springs)
   instanceLabels?: string[]; // Optional labels for each instance (e.g., ["Spring 1", "Spring 2"])
+  sourcePageNumber?: number; // 0-based PDF page this item was extracted from
 }
 
 export interface ValidationResult {

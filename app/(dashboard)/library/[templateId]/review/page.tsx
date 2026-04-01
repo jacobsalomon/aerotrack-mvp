@@ -74,6 +74,7 @@ export default async function ReviewPage({
             specialAssemblyRef: item.specialAssemblyRef,
             configurationApplicability: item.configurationApplicability,
             notes: item.notes,
+            sourcePageNumber: item.sourcePageNumber,
             confidence: item.confidence,
             reviewReason: item.reviewReason,
             sortOrder: item.sortOrder,

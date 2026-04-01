@@ -37,6 +37,7 @@ export interface InspectionItemData {
   notes: string | null;
   confidence: number;
   reviewReason: string | null;
+  sourcePageNumber: number | null;
   sortOrder: number;
   correctedAt: string | null;
   humanCorrection: { action: "approved" | "corrected" } | null;
@@ -69,6 +70,7 @@ interface ItemListProps {
   templateId: string;
   sectionId: string;
   onItemsChanged: () => void;
+  onItemClick?: (item: InspectionItemData) => void;
 }
 
 export default function ItemList({
@@ -76,6 +78,7 @@ export default function ItemList({
   templateId,
   sectionId,
   onItemsChanged,
+  onItemClick,
 }: ItemListProps) {
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -220,12 +223,21 @@ export default function ItemList({
                     ) : (
                       <div
                         className={`px-3 py-2.5 group ${
+                          onItemClick && item.sourcePageNumber != null ? "cursor-pointer hover:bg-slate-50" : ""
+                        } ${
                           (item.reviewReason || item.confidence < 0.7)
                             ? "border-l-2 border-l-amber-400 bg-amber-50/30"
                             : ""
                         }`}
+                        onClick={() => onItemClick?.(item)}
                       >
                         <div className="flex items-start gap-2">
+                          {/* Page badge — shows which PDF page this item came from */}
+                          {item.sourcePageNumber != null && (
+                            <span className="shrink-0 text-[10px] font-mono bg-indigo-100 text-indigo-600 rounded px-1.5 py-0.5 mt-0.5" title={`From PDF page ${item.sourcePageNumber + 1}`}>
+                              p.{item.sourcePageNumber + 1}
+                            </span>
+                          )}
                           {/* Callout number */}
                           {item.itemCallout && (
                             <span className="shrink-0 text-[10px] font-mono bg-slate-200 text-slate-600 rounded px-1.5 py-0.5 mt-0.5">
