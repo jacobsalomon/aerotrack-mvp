@@ -48,3 +48,38 @@ export function toSessionTimestamp(
   if (offset === undefined) return chunkRelativeSeconds;
   return offset + chunkRelativeSeconds;
 }
+
+/**
+ * Add `sessionTimestamp` (session-global) to each video annotation
+ * while preserving the original `timestamp` (chunk-relative) for video seeking.
+ */
+export function addSessionTimestamps<
+  T extends {
+    evidence: Array<{
+      id: string;
+      type: string;
+      durationSeconds: number | null;
+      videoAnnotations: Array<{ timestamp: number; [k: string]: unknown }>;
+      [k: string]: unknown;
+    }>;
+    [k: string]: unknown;
+  },
+>(session: T): T {
+  const videoChunks = session.evidence
+    .filter((e) => e.type === "VIDEO")
+    .map((e) => ({ id: e.id, durationSeconds: e.durationSeconds }));
+  const offsets = buildVideoChunkOffsets(videoChunks);
+
+  return {
+    ...session,
+    evidence: session.evidence.map((e) => ({
+      ...e,
+      videoAnnotations: e.videoAnnotations.map((ann) => ({
+        ...ann,
+        sessionTimestamp: offsets.has(e.id)
+          ? (offsets.get(e.id)! + ann.timestamp)
+          : ann.timestamp,
+      })),
+    })),
+  };
+}

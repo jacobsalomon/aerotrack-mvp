@@ -253,13 +253,10 @@ export async function POST(request: Request) {
     const cmmContent = await loadCmmContent(session);
     const modalityErrors: ModalityError[] = [];
 
-    // Pre-compute chunk offsets — needed during map-reduce so timestamps are session-global
     const chunkOffsets = buildVideoChunkOffsets(
       videoEvidence.map((e) => ({ id: e.id, durationSeconds: e.durationSeconds }))
     );
 
-    // Map-reduce: analyze ALL video chunks with Flash in parallel,
-    // then merge results with Pro (text-only). Replaces the old single-chunk approach.
     const videoTask = (async () => {
       if (videoEvidence.length === 0) {
         return { skipped: true as const };
@@ -320,20 +317,14 @@ export async function POST(request: Request) {
         return {
           skipped: false as const,
           latencyMs: Date.now() - taskStart,
-          // Spread the merged DeepAnalysisResult (already session-global timestamps)
           ...mrResult.result,
           verificationSource: mrResult.verificationSource,
           modelUsed: mrResult.mergeModel,
-          fallbackUsed: mrResult.mergeFallbackUsed,
-          // Multi-chunk tracking
           chunkModels: mrResult.chunkModels,
-          mergeModel: mrResult.mergeModel,
-          mergeFallbackUsed: mrResult.mergeFallbackUsed,
           chunksSucceeded: mrResult.chunksSucceeded,
           chunksFailed: mrResult.chunksFailed,
         };
       } finally {
-        // Clean up ALL uploaded files
         for (const name of uploadedFileNames) {
           deleteGeminiFile(name).catch(() => {});
         }
@@ -521,7 +512,6 @@ export async function POST(request: Request) {
 
     const fallbackAnalysis = cachedSessionAnalysis;
 
-    // Timestamps are already session-global from the map-reduce pipeline
     const actionLog =
       videoResult && !("skipped" in videoResult && videoResult.skipped)
         ? videoResult.actionLog
@@ -562,7 +552,6 @@ export async function POST(request: Request) {
         ? fallbackAnalysis.procedureSteps
         : [];
 
-    // Anomaly timestamps are already session-global from the map-reduce pipeline
     const anomalies = [
       ...((videoResult && !("skipped" in videoResult && videoResult.skipped)
         ? videoResult.anomalies
@@ -604,8 +593,7 @@ export async function POST(request: Request) {
         videoResult && !("skipped" in videoResult && videoResult.skipped)
           ? {
               chunkModels: videoResult.chunkModels ?? [],
-              mergeModel: videoResult.mergeModel ?? videoResult.modelUsed,
-              mergeFallbackUsed: videoResult.mergeFallbackUsed ?? false,
+              mergeModel: videoResult.modelUsed,
               chunksSucceeded: videoResult.chunksSucceeded ?? 1,
               chunksFailed: videoResult.chunksFailed ?? 0,
               verificationSource: videoResult.verificationSource,

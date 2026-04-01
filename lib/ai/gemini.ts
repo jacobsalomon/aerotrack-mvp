@@ -62,6 +62,17 @@ export interface DeepAnalysisResult {
   confidence: number;
 }
 
+type VerificationSource = "cmm" | "expected_steps" | "ai_inferred";
+
+function resolveVerificationSource(
+  cmmContent?: string,
+  expectedSteps?: string
+): VerificationSource {
+  if (cmmContent) return "cmm";
+  if (expectedSteps) return "expected_steps";
+  return "ai_inferred";
+}
+
 // ──────────────────────────────────────────────────────
 // Upload a file to Gemini File API
 // Required before you can analyze video — Gemini needs the file hosted on their side
@@ -244,11 +255,9 @@ export async function analyzeSessionVideo(
     { fileData: { mimeType, fileUri } },
   ];
 
-  // Determine which verification source to use
-  let verificationSource: "cmm" | "expected_steps" | "ai_inferred" = "ai_inferred";
+  const verificationSource = resolveVerificationSource(cmmContent, expectedSteps);
 
   if (cmmContent) {
-    verificationSource = "cmm";
     parts.push({
       text: `COMPONENT MAINTENANCE MANUAL (CMM) REFERENCE:
 The following is the relevant maintenance manual for the component being worked on.
@@ -395,15 +404,13 @@ async function analyzeVideoChunkWithFlash(
     { fileData: { mimeType, fileUri } },
   ];
 
-  let verificationSource: "cmm" | "expected_steps" | "ai_inferred" = "ai_inferred";
+  const verificationSource = resolveVerificationSource(cmmContent, expectedSteps);
 
   if (cmmContent) {
-    verificationSource = "cmm";
     parts.push({
       text: `COMPONENT MAINTENANCE MANUAL (CMM) REFERENCE:\n${cmmContent}`,
     });
   } else if (expectedSteps) {
-    verificationSource = "expected_steps";
     parts.push({
       text: `EXPECTED MAINTENANCE STEPS (SOP):\n${expectedSteps}`,
     });
@@ -482,12 +489,10 @@ async function mergeChunkAnalyses(
     verificationSource: "cmm" | "expected_steps" | "ai_inferred";
   }
 > {
-  let verificationSource: "cmm" | "expected_steps" | "ai_inferred" = "ai_inferred";
-  if (cmmContent) verificationSource = "cmm";
-  else if (expectedSteps) verificationSource = "expected_steps";
+  const verificationSource = resolveVerificationSource(cmmContent, expectedSteps);
 
   const chunksJson = chunkResults
-    .map((c) => `--- CHUNK ${c.chunkIndex + 1} ---\n${JSON.stringify(c.result, null, 2)}`)
+    .map((c) => `--- CHUNK ${c.chunkIndex + 1} ---\n${JSON.stringify(c.result)}`)
     .join("\n\n");
 
   const promptText = `You are a senior aerospace maintenance analyst. You have analysis results from ${chunkResults.length} consecutive video segments of a single maintenance session. Each was analyzed independently. Timestamps are already adjusted to session-global time.
@@ -715,7 +720,7 @@ export async function analyzeVideoChunksMapReduce(
     const only = succeeded[0];
     return {
       result: only.result,
-      verificationSource: cmmContent ? "cmm" : expectedSteps ? "expected_steps" : "ai_inferred",
+      verificationSource: resolveVerificationSource(cmmContent, expectedSteps),
       chunkModels,
       mergeModel: only.modelUsed,
       mergeFallbackUsed: false,
