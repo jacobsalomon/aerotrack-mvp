@@ -35,6 +35,7 @@ import {
   ChevronDown,
   ChevronRight,
   AlertTriangle,
+  AlertCircle,
   Clock,
   Loader2,
   X,
@@ -298,6 +299,34 @@ export default function SessionDetailPage() {
   const [editingValue, setEditingValue] = useState("");
   const [savingField, setSavingField] = useState(false);
   const [editedFields, setEditedFields] = useState<Record<string, Set<string>>>({});
+
+  // Initialize edited-field badges from persisted _editHistory in contentJson
+  // This ensures "Edited" badges survive page reloads
+  useEffect(() => {
+    if (!session) return;
+    const fromHistory: Record<string, Set<string>> = {};
+    for (const doc of session.documents) {
+      const content = safeParseJson(doc.contentJson) as Record<string, unknown> | null;
+      if (!content) continue;
+      const history = content._editHistory;
+      if (!Array.isArray(history)) continue;
+      for (const entry of history) {
+        if (entry && typeof entry === "object" && typeof (entry as Record<string, unknown>).field === "string") {
+          if (!fromHistory[doc.id]) fromHistory[doc.id] = new Set();
+          fromHistory[doc.id].add((entry as Record<string, unknown>).field as string);
+        }
+      }
+    }
+    if (Object.keys(fromHistory).length > 0) {
+      setEditedFields((prev) => {
+        const merged = { ...prev };
+        for (const [docId, fields] of Object.entries(fromHistory)) {
+          merged[docId] = new Set([...(merged[docId] || []), ...fields]);
+        }
+        return merged;
+      });
+    }
+  }, [session]);
 
   // ─── Data fetching ──────────────────────────────────────────────────
 
@@ -806,6 +835,103 @@ export default function SessionDetailPage() {
           )}
         </div>
       )}
+
+      {/* ═══ DISCREPANCY & ISSUE BANNERS ═══ */}
+      {(() => {
+        // Extract needs_review discrepancies and critical issues from all documents' verificationJson
+        const allDiscrepancies: { field: string; description: string; status: string; docType: string }[] = [];
+        const allCriticalIssues: { field: string; issue: string; severity: string; docType: string }[] = [];
+
+        for (const doc of session.documents) {
+          const vJson = safeParseJson(doc.verificationJson) as Record<string, unknown> | null;
+          if (!vJson) continue;
+
+          // Extract discrepancies that need review
+          const discrepancies = Array.isArray(vJson.discrepancies) ? vJson.discrepancies : [];
+          for (const d of discrepancies) {
+            if (d && typeof d === "object" && (d as Record<string, unknown>).status === "needs_review") {
+              allDiscrepancies.push({
+                field: String((d as Record<string, unknown>).field || "Unknown field"),
+                description: String((d as Record<string, unknown>).description || ""),
+                status: "needs_review",
+                docType: doc.documentType,
+              });
+            }
+          }
+
+          // Extract critical issues from documentReviews
+          const reviews = Array.isArray(vJson.documentReviews) ? vJson.documentReviews : [];
+          for (const r of reviews) {
+            if (!r || typeof r !== "object") continue;
+            const issues = Array.isArray((r as Record<string, unknown>).issues) ? (r as Record<string, unknown>).issues as Array<Record<string, unknown>> : [];
+            for (const issue of issues) {
+              if (issue.severity === "critical") {
+                allCriticalIssues.push({
+                  field: String(issue.field || "Unknown"),
+                  issue: String(issue.issue || ""),
+                  severity: "critical",
+                  docType: String((r as Record<string, unknown>).documentType || doc.documentType),
+                });
+              }
+            }
+          }
+        }
+
+        const totalIssues = allDiscrepancies.length + allCriticalIssues.length;
+        if (totalIssues === 0) return null;
+
+        return (
+          <div className="mb-6 space-y-3">
+            {/* Critical issues — red banner */}
+            {allCriticalIssues.length > 0 && (
+              <div
+                className="rounded-xl border px-5 py-4"
+                style={{ borderColor: "rgb(254, 202, 202)", backgroundColor: "rgb(254, 242, 242)" }}
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertCircle className="h-5 w-5 shrink-0" style={{ color: "rgb(220, 38, 38)" }} />
+                  <p className="text-sm font-semibold" style={{ color: "rgb(153, 27, 27)" }}>
+                    {allCriticalIssues.length} critical issue{allCriticalIssues.length !== 1 ? "s" : ""} found
+                  </p>
+                </div>
+                <div className="space-y-1.5 ml-7">
+                  {allCriticalIssues.map((ci, idx) => (
+                    <div key={idx} className="text-xs" style={{ color: "rgb(153, 27, 27)" }}>
+                      <span className="font-medium">{humanizeFieldLabel(ci.field)}</span>
+                      {ci.issue && <span> — {ci.issue}</span>}
+                      <span className="ml-1.5 opacity-60">({DOC_TYPE_LABELS[ci.docType] || ci.docType})</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Discrepancies — amber banner */}
+            {allDiscrepancies.length > 0 && (
+              <div
+                className="rounded-xl border px-5 py-4"
+                style={{ borderColor: "rgb(253, 230, 138)", backgroundColor: "rgb(255, 251, 235)" }}
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle className="h-5 w-5 shrink-0" style={{ color: "rgb(217, 119, 6)" }} />
+                  <p className="text-sm font-semibold" style={{ color: "rgb(146, 64, 14)" }}>
+                    {allDiscrepancies.length} discrepanc{allDiscrepancies.length !== 1 ? "ies" : "y"} need{allDiscrepancies.length === 1 ? "s" : ""} your attention
+                  </p>
+                </div>
+                <div className="space-y-1.5 ml-7">
+                  {allDiscrepancies.map((d, idx) => (
+                    <div key={idx} className="text-xs" style={{ color: "rgb(146, 64, 14)" }}>
+                      <span className="font-medium">{humanizeFieldLabel(d.field)}</span>
+                      {d.description && <span> — {d.description}</span>}
+                      <span className="ml-1.5 opacity-60">({DOC_TYPE_LABELS[d.docType] || d.docType})</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ═══ GENERATED DOCUMENTS (primary content) ═══ */}
       <Card className="border-0 shadow-sm mb-6">
@@ -1394,9 +1520,27 @@ export default function SessionDetailPage() {
                     {/* Smart transcript with highlighted entities */}
                     {fullTranscript && (
                       <div className="mt-3 rounded-lg p-4" style={{ backgroundColor: "rgb(248, 248, 248)" }}>
-                        <p className="text-xs font-semibold mb-2" style={{ color: "rgb(80, 80, 80)" }}>
-                          Transcript
-                        </p>
+                        <div className="flex items-center gap-2 mb-2">
+                          <p className="text-xs font-semibold" style={{ color: "rgb(80, 80, 80)" }}>
+                            Transcript
+                          </p>
+                          {/* Show whether transcript has been AI-corrected or is raw */}
+                          {audioChunks.some((a) => a.aiExtraction) ? (
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
+                              style={{ backgroundColor: "rgb(220, 252, 231)", color: "rgb(21, 128, 61)" }}
+                            >
+                              <CheckCircle2 className="h-3 w-3" /> AI-corrected
+                            </span>
+                          ) : (
+                            <span
+                              className="text-[10px] italic"
+                              style={{ color: "rgb(160, 160, 160)" }}
+                            >
+                              Raw transcript
+                            </span>
+                          )}
+                        </div>
                         <div className="text-sm whitespace-pre-wrap leading-relaxed max-h-64 overflow-y-auto" style={{ color: "rgb(60, 60, 60)" }}>
                           {highlightTranscript(fullTranscript)}
                         </div>

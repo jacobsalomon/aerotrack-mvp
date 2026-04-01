@@ -19,6 +19,7 @@ export default async function JobReviewPage({ params }: PageProps) {
       hasNoEvidence={data.hasNoEvidence}
       photoItemIds={data.photoItemIds}
       photos={data.photos}
+      reconciliationSummary={data.reconciliationSummary}
     />
   );
 }

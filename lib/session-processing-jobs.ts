@@ -322,9 +322,22 @@ async function processSessionProcessingJob(jobId: string) {
               transcriptChunks: analysisResult.transcriptionStitch.chunkCount,
               videoConfidence: analysisResult.videoAnalysis.confidence ?? null,
               processingTimeMs: analysisResult.processingTimeMs,
+              warnings: analysisResult.warnings,
             },
             legacyStatus: "analysis_complete",
           });
+
+          // Store analysis warnings on the session's reconciliationSummary
+          if (analysisResult.warnings.length > 0) {
+            await prisma.captureSession.update({
+              where: { id: job.session.id },
+              data: {
+                reconciliationSummary: {
+                  analysisWarnings: analysisResult.warnings,
+                },
+              },
+            });
+          }
         } else if (nextStage === "drafting") {
           const draftingResult = await runSessionDraftingStage(job.session.id);
           if (!draftingResult.success) {
@@ -340,9 +353,28 @@ async function processSessionProcessingJob(jobId: string) {
               documentCount: draftingResult.documentCount,
               documentTypes: draftingResult.documentTypes,
               estimatedCost: draftingResult.estimatedCost,
+              warnings: draftingResult.warnings,
             },
             legacyStatus: "documents_generated",
           });
+
+          // Append drafting warnings to the session's reconciliationSummary
+          if (draftingResult.warnings.length > 0) {
+            const existing = await prisma.captureSession.findUnique({
+              where: { id: job.session.id },
+              select: { reconciliationSummary: true },
+            });
+            const prev = (existing?.reconciliationSummary as Record<string, unknown>) ?? {};
+            await prisma.captureSession.update({
+              where: { id: job.session.id },
+              data: {
+                reconciliationSummary: {
+                  ...prev,
+                  draftingWarnings: draftingResult.warnings,
+                },
+              },
+            });
+          }
         } else if (nextStage === "verifying") {
           const verificationResult = await verifyDocuments(
             job.session.id,
@@ -382,6 +414,32 @@ async function processSessionProcessingJob(jobId: string) {
           });
         }
       } catch (error) {
+        // Check the current attempt count for this stage to decide whether to retry
+        const stageRecord = job.stages.find((s) => s.stage === nextStage);
+        const attemptCount = stageRecord?.attemptCount ?? 1;
+        const MAX_ATTEMPTS = 3;
+
+        if (attemptCount < MAX_ATTEMPTS) {
+          // Exponential backoff: 4^attempt * 1000ms (4s, 16s, 64s)
+          const delayMs = Math.pow(4, attemptCount) * 1000;
+          console.log(
+            `[Pipeline] Retrying stage "${nextStage}" (attempt ${attemptCount}/${MAX_ATTEMPTS}, delay ${delayMs}ms): ${error instanceof Error ? error.message : "unknown error"}`
+          );
+
+          // Wait with exponential backoff
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+
+          // Refresh the job lease so it doesn't expire during the retry
+          await refreshJobLease(jobId, runnerToken);
+
+          // Continue the while loop to re-enter markStageInProgress (which increments attemptCount)
+          continue;
+        }
+
+        // All retry attempts exhausted — mark as failed
+        console.log(
+          `[Pipeline] Stage "${nextStage}" failed after ${attemptCount} attempts: ${error instanceof Error ? error.message : "unknown error"}`
+        );
         await markStageFailed({
           jobId,
           sessionId: job.session.id,

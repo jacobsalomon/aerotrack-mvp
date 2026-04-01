@@ -125,13 +125,29 @@ export async function PATCH(
 
     const reviewState = parseDocumentReviewState(doc.reviewNotes);
 
-    // Track old values for audit log
+    // Track old values for audit log and edit history
     const changes: Record<string, { old: unknown; new: string }> = {};
     if (fields) {
       for (const [key, newVal] of Object.entries(fields)) {
         changes[key] = { old: getValueAtPath(existingContent, key) ?? null, new: newVal };
         setValueAtPath(existingContent, key, newVal);
       }
+
+      // Persist edit history in contentJson._editHistory so the UI can show "Edited" badges
+      const editHistory: Array<Record<string, unknown>> =
+        Array.isArray(existingContent._editHistory)
+          ? (existingContent._editHistory as Array<Record<string, unknown>>)
+          : [];
+      for (const [field, diff] of Object.entries(changes)) {
+        editHistory.push({
+          field,
+          oldValue: diff.old ?? null,
+          newValue: diff.new,
+          editedAt: new Date().toISOString(),
+          editedBy: authResult.user.id,
+        });
+      }
+      existingContent._editHistory = editHistory;
     }
 
     if (fieldDisposition) {

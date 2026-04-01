@@ -247,10 +247,12 @@ export async function runSessionDraftingStage(
       documentCount: existingDocs.length,
       documentTypes: existingDocs.map((doc) => doc.documentType),
       estimatedCost: 0,
+      warnings: [],
     };
   }
 
   let estimatedCost = 0;
+  const warnings: string[] = [];
 
   try {
     const updatedSession = await prisma.captureSession.findUnique({
@@ -266,9 +268,20 @@ export async function runSessionDraftingStage(
 
     if (!updatedSession) throw new Error("Session disappeared during drafting");
 
-    const photoExtractions = updatedSession.evidence
-      .filter((e) => e.type === "PHOTO" && e.aiExtraction)
+    // Track photos that lack AI extraction (OCR failed or was skipped)
+    const allPhotos = updatedSession.evidence.filter((e) => e.type === "PHOTO");
+    const photosWithExtraction = allPhotos.filter((e) => e.aiExtraction);
+    const photosMissingExtraction = allPhotos.length - photosWithExtraction.length;
+
+    const photoExtractions = photosWithExtraction
       .map((e) => e.aiExtraction as Record<string, unknown>);
+
+    // Warn if some photos had no OCR extraction
+    if (photosMissingExtraction > 0) {
+      warnings.push(
+        `${photosMissingExtraction} of ${allPhotos.length} photo(s) had no OCR extraction. Data from those photos may be missing from generated documents.`
+      );
+    }
 
     let videoAnalysis: Record<string, unknown> | null = null;
     if (updatedSession.analysis) {
@@ -337,6 +350,9 @@ export async function runSessionDraftingStage(
         console.log(`[Pipeline] Extracted ${extraction.fields.length} fields from ${extraction.pageCount} page(s)`);
       } catch (err) {
         console.error("[Pipeline] Org document extraction failed (non-fatal):", err);
+        warnings.push(
+          `Org document field extraction failed: ${err instanceof Error ? err.message : "unknown error"}. The internal form may not be populated.`
+        );
       }
     }
 
@@ -368,11 +384,18 @@ export async function runSessionDraftingStage(
     const savedTypes: string[] = [];
     for (const doc of generated.documents || []) {
       try {
+        // Embed the AI model that generated this document into contentJson
+        // so reviewers can see which model produced the draft (Fix 2)
+        const contentWithModel = {
+          ...(doc.contentJson as Record<string, unknown>),
+          _modelUsed: generated.modelUsed,
+        };
+
         await prisma.captureDocument.create({
           data: {
             sessionId,
             documentType: doc.documentType,
-            contentJson: doc.contentJson as unknown as Prisma.InputJsonValue,
+            contentJson: contentWithModel as unknown as Prisma.InputJsonValue,
             status: "draft",
             confidence: clampConfidence(doc.confidence),
             lowConfidenceFields: (doc.lowConfidenceFields || []) as unknown as Prisma.InputJsonValue,
@@ -389,6 +412,7 @@ export async function runSessionDraftingStage(
       documentCount: savedTypes.length,
       documentTypes: savedTypes,
       estimatedCost,
+      warnings,
     };
   } catch (error) {
     return {
@@ -397,6 +421,7 @@ export async function runSessionDraftingStage(
       documentCount: 0,
       documentTypes: [],
       estimatedCost,
+      warnings,
     };
   }
 }

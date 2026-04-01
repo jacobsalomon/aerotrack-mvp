@@ -18,6 +18,7 @@ import {
 import { MeasurementFeed } from "@/components/measurement-feed";
 import { FormFieldOverlay } from "@/components/form-field-overlay";
 import { apiUrl } from "@/lib/api-url";
+import NetworkBanner from "@/components/inspect/network-banner";
 import {
   ArrowLeft,
   Clock,
@@ -244,6 +245,7 @@ export function LiveCaptureView({
 
   return (
     <div className="flex flex-col h-[calc(100vh-6rem)]">
+      <NetworkBanner />
       {/* Header bar */}
       <div
         className="flex items-center justify-between px-4 py-3 rounded-lg mb-4"

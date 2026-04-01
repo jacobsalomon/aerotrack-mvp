@@ -98,6 +98,21 @@ interface PhotoData {
   inspectionItem: { parameterName: string } | null;
 }
 
+// Reconciliation conflict surfaced from AI analysis
+interface ReconciliationConflict {
+  measurementId: string;
+  suggestedItemCallout: string;
+  reason: string;
+  resolved: boolean;
+}
+
+interface ReconciliationSummaryData {
+  matched?: number;
+  unmatched?: number;
+  conflicts?: ReconciliationConflict[];
+  newMeasurements?: number;
+}
+
 interface Props {
   session: SessionData;
   component: { id: string; partNumber: string; serialNumber: string; description: string } | null;
@@ -106,9 +121,10 @@ interface Props {
   hasNoEvidence?: boolean;
   photoItemIds?: string[];
   photos?: PhotoData[];
+  reconciliationSummary?: ReconciliationSummaryData | null;
 }
 
-export default function ReviewScreen({ session, component, unassignedCount, isReconciling, hasNoEvidence, photoItemIds = [], photos: initialPhotos = [] }: Props) {
+export default function ReviewScreen({ session, component, unassignedCount, isReconciling, hasNoEvidence, photoItemIds = [], photos: initialPhotos = [], reconciliationSummary }: Props) {
   const router = useRouter();
   const template = session.inspectionTemplate;
   const progress = session.inspectionProgress || [];
@@ -145,7 +161,8 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
 
   useEffect(() => {
     if (!isSessionActive) return;
-    const interval = setInterval(pollForPhotos, 5000);
+    // Poll every 2s during active sessions for faster evidence updates
+    const interval = setInterval(pollForPhotos, 2000);
     return () => clearInterval(interval);
   }, [isSessionActive, pollForPhotos]);
 
@@ -315,6 +332,30 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
           No evidence captured yet. Start a capture from the iOS app.
         </div>
       )}
+
+      {/* Reconciliation conflicts banner — unresolved measurement assignment conflicts */}
+      {(() => {
+        const conflicts = reconciliationSummary?.conflicts?.filter((c) => !c.resolved) || [];
+        if (conflicts.length === 0) return null;
+        return (
+          <div className="flex flex-col gap-2 bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3 mb-4">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
+              <p className="text-amber-400 text-sm font-medium">
+                {conflicts.length} measurement conflict{conflicts.length !== 1 ? "s" : ""} need{conflicts.length === 1 ? "s" : ""} your attention
+              </p>
+            </div>
+            <div className="ml-6 space-y-1">
+              {conflicts.map((c, idx) => (
+                <p key={idx} className="text-white/60 text-xs">
+                  <span className="text-white/80 font-medium">{c.suggestedItemCallout}</span>
+                  {c.reason && <span> — {c.reason}</span>}
+                </p>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Summary Card */}
       <Card className="bg-white/5 border-white/10 mb-6">
