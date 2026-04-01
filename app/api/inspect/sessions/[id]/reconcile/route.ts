@@ -8,6 +8,10 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/rbac";
 import { reconcileInspectionSession } from "@/lib/inspection-matching";
 
+// Reconciliation drains in-flight stages (up to 30s) then does matching.
+// Default Vercel timeout is too short — give it a full minute.
+export const maxDuration = 60;
+
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function POST(request: Request, { params }: RouteContext) {

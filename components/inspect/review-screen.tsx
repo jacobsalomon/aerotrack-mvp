@@ -677,10 +677,12 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
   );
 }
 
-// Triggers reconciliation on mount, then refreshes the page when done
+// Triggers reconciliation on mount, then refreshes the page when done.
+// Shows an error with retry if it fails (so the mechanic isn't stuck with a forever spinner).
 function ReconciliationBanner({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const triggered = useRef(false);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     if (triggered.current) return;
@@ -692,11 +694,22 @@ function ReconciliationBanner({ sessionId }: { sessionId: string }) {
     })
       .then((res) => {
         if (res.ok) router.refresh();
+        else setError(true);
       })
-      .catch(() => {
-        // Non-critical — banner stays visible, user can refresh manually
-      });
+      .catch(() => setError(true));
   }, [sessionId, router]);
+
+  if (error) {
+    return (
+      <div className="flex items-center gap-2 text-amber-400 text-sm bg-amber-500/10 rounded-lg px-4 py-2 mb-4">
+        <AlertTriangle className="h-4 w-4" />
+        Could not finalize analysis.{" "}
+        <button onClick={() => router.refresh()} className="underline hover:text-amber-300">
+          Try again
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-2 text-blue-400 text-sm bg-blue-500/10 rounded-lg px-4 py-2 mb-4">
