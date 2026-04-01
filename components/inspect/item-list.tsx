@@ -102,7 +102,9 @@ export default function ItemList({
       const next = new Set(prev);
       if (next.has(itemId)) {
         next.delete(itemId);
-        onExpandedItemChange?.(null);
+        // Route transcripts to another still-expanded item, not null
+        const remaining = [...next];
+        onExpandedItemChange?.(remaining.length > 0 ? remaining[remaining.length - 1] : null);
       } else {
         next.add(itemId);
         onExpandedItemChange?.(itemId);
@@ -133,6 +135,10 @@ export default function ItemList({
 
   // Track which instance the keypad is for
   const [keypadInstanceIndex, setKeypadInstanceIndex] = useState(0);
+
+  // Skip dialog state (replaces browser prompt() for better UX)
+  const [skipTarget, setSkipTarget] = useState<{ item: InspectionItem; instanceIndex: number } | null>(null);
+  const [skipReason, setSkipReason] = useState("");
 
   // Pass/fail items can be completed with one tap
   const isPassFailType = (type: string) =>
@@ -190,18 +196,25 @@ export default function ItemList({
     }
   }
 
-  // Handle skip
-  async function handleSkip(item: InspectionItem, instanceIndex = 0) {
+  // Open skip dialog (replaces browser prompt)
+  function handleSkip(item: InspectionItem, instanceIndex = 0) {
     if (isReadOnly) return;
-    const reason = prompt("Reason for skipping this item:");
-    if (!reason) return;
+    setSkipTarget({ item, instanceIndex });
+    setSkipReason("");
+  }
+
+  // Confirm skip from the dialog
+  async function confirmSkip() {
+    if (!skipTarget || !skipReason.trim()) return;
+    const { item, instanceIndex } = skipTarget;
 
     setSubmitting(`${item.id}:${instanceIndex}`);
+    setSkipTarget(null);
     try {
       const res = await fetch(apiUrl(`/api/inspect/sessions/${sessionId}/items/${item.id}/skip`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason, instanceIndex }),
+        body: JSON.stringify({ reason: skipReason.trim(), instanceIndex }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -775,6 +788,41 @@ export default function ItemList({
             specLow={keypadItem.specValueLow}
             specHigh={keypadItem.specValueHigh}
           />
+        </>
+      )}
+
+      {/* Skip reason dialog */}
+      {skipTarget && (
+        <>
+          <div className="fixed inset-0 bg-black/60 z-20" onClick={() => setSkipTarget(null)} />
+          <div className="fixed inset-x-4 top-1/3 z-30 max-w-md mx-auto bg-zinc-900 rounded-xl border border-white/10 p-5 space-y-4">
+            <p className="text-white text-lg font-medium">
+              Skip {skipTarget.item.parameterName}?
+            </p>
+            <textarea
+              autoFocus
+              value={skipReason}
+              onChange={(e) => setSkipReason(e.target.value)}
+              placeholder="Why is this item being skipped?"
+              className="w-full h-24 bg-zinc-800 border border-white/15 rounded-lg px-3 py-2 text-white text-base placeholder:text-white/30 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+            />
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1 h-12 bg-transparent border-white/20 text-white/60"
+                onClick={() => setSkipTarget(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 h-12 bg-amber-600 hover:bg-amber-700 text-white"
+                disabled={!skipReason.trim()}
+                onClick={confirmSkip}
+              >
+                Skip Item
+              </Button>
+            </div>
+          </div>
         </>
       )}
 

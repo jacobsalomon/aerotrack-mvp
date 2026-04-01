@@ -127,7 +127,7 @@ export async function GET(request: Request, { params }: RouteContext) {
       return NextResponse.json({ success: false, error: "Session not found" }, { status: 404 });
     }
 
-    // Fetch all photos for this session
+    // Fetch all photos for this session (include item name for display labels)
     const photos = await prisma.captureEvidence.findMany({
       where: { sessionId, type: "PHOTO" },
       select: {
@@ -136,6 +136,7 @@ export async function GET(request: Request, { params }: RouteContext) {
         inspectionItemId: true,
         instanceIndex: true,
         capturedAt: true,
+        inspectionItem: { select: { parameterName: true } },
       },
       orderBy: { capturedAt: "asc" },
     });
@@ -165,13 +166,16 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       return NextResponse.json({ success: false, error: "evidenceId and inspectionItemId required" }, { status: 400 });
     }
 
-    // Verify session ownership
+    // Verify session ownership and not signed off
     const session = await prisma.captureSession.findUnique({
       where: { id: sessionId },
-      select: { id: true, organizationId: true },
+      select: { id: true, organizationId: true, signedOffAt: true },
     });
     if (!session || session.organizationId !== authResult.user.organizationId) {
       return NextResponse.json({ success: false, error: "Session not found" }, { status: 404 });
+    }
+    if (session.signedOffAt) {
+      return NextResponse.json({ success: false, error: "Session is signed off — cannot modify" }, { status: 403 });
     }
 
     // Update the evidence record
