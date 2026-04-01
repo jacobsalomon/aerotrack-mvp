@@ -212,24 +212,47 @@ async function handleMeasurement(
     },
   });
 
-  // If high confidence, also create/update the inspection progress record
+  // If high confidence, also create/update the inspection progress record.
+  // For multi-instance items, find the lowest-index pending instance instead of
+  // always overwriting instance 0 (which would silently lose earlier measurements).
   if (assignedItemId) {
     const inTolerance =
       match && candidates.find((c) => c.id === assignedItemId)
         ? isInTolerance(value, candidates.find((c) => c.id === assignedItemId)!)
         : null;
 
+    // Find the next pending instance for this item
+    const existingProgress = await prisma.inspectionProgress.findMany({
+      where: { captureSessionId: sessionId, inspectionItemId: assignedItemId },
+      select: { instanceIndex: true, status: true },
+      orderBy: { instanceIndex: "asc" },
+    });
+    const doneIndices = new Set(
+      existingProgress.filter((p) => p.status !== "pending").map((p) => p.instanceIndex)
+    );
+    // Use the first pending instance, or 0 if none exist yet
+    let targetInstance = 0;
+    if (existingProgress.length > 0) {
+      for (let i = 0; i < existingProgress.length; i++) {
+        if (!doneIndices.has(existingProgress[i].instanceIndex)) {
+          targetInstance = existingProgress[i].instanceIndex;
+          break;
+        }
+      }
+    }
+
     await prisma.inspectionProgress.upsert({
       where: {
         captureSessionId_inspectionItemId_instanceIndex: {
           captureSessionId: sessionId,
           inspectionItemId: assignedItemId,
-          instanceIndex: 0,
+          instanceIndex: targetInstance,
         },
       },
       create: {
         captureSessionId: sessionId,
         inspectionItemId: assignedItemId,
+        instanceIndex: targetInstance,
         status: "done",
         result: inTolerance === false ? "out_of_spec" : "in_spec",
         measurementId: measurement.id,

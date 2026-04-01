@@ -21,7 +21,7 @@ const SUPPORTED_MIME_TYPES = [
   "audio/mpeg",
 ] as const;
 
-type RecState = "starting" | "recording" | "muted" | "denied" | "unavailable";
+type RecState = "starting" | "recording" | "muted" | "denied" | "unavailable" | "connection_lost";
 
 export interface TranscriptSegment {
   text: string;
@@ -79,6 +79,7 @@ export default function InspectionRecorder({ sessionId, onTranscript, onTranscri
   const isFinalStopRef = useRef(false);
   const mimeTypeRef = useRef("");
   const mountedRef = useRef(true);
+  const consecutiveFailuresRef = useRef(0);
 
   // Upload one audio chunk to the existing audio pipeline
   const uploadChunk = useCallback(
@@ -135,9 +136,18 @@ export default function InspectionRecorder({ sessionId, onTranscript, onTranscri
               onMeasurementHighlights?.(highlights);
             }
           }
+          // Reset failure counter on success
+          if (consecutiveFailuresRef.current > 0) {
+            consecutiveFailuresRef.current = 0;
+            if (mountedRef.current) setState("recording");
+          }
         })
         .catch((err) => {
           console.error("[InspectionRecorder] chunk upload failed:", err);
+          consecutiveFailuresRef.current++;
+          if (consecutiveFailuresRef.current >= 3 && mountedRef.current) {
+            setState("connection_lost");
+          }
         });
     },
     [sessionId, onTranscript, onTranscriptSegments, onMeasurementHighlights]
@@ -298,17 +308,21 @@ export default function InspectionRecorder({ sessionId, onTranscript, onTranscri
     );
   }
 
-  // Recording or muted — show compact REC indicator
+  // Recording, muted, or connection lost — show compact REC indicator
   return (
     <div className="flex items-center gap-2">
-      {/* Pulsing red dot */}
+      {/* Status dot */}
       <span
         className={`h-2 w-2 rounded-full shrink-0 ${
+          state === "connection_lost" ? "bg-red-500" :
           state === "recording" ? "animate-pulse bg-red-500" : "bg-amber-500"
         }`}
       />
-      <span className={`text-xs font-mono ${state === "muted" ? "text-amber-400" : "text-red-400"}`}>
-        {state === "muted" ? "MUTED" : "REC"} {formatTime(elapsed)}
+      <span className={`text-xs font-mono ${
+        state === "connection_lost" ? "text-red-400" :
+        state === "muted" ? "text-amber-400" : "text-red-400"
+      }`}>
+        {state === "connection_lost" ? "NO CONNECTION" : state === "muted" ? "MUTED" : "REC"} {formatTime(elapsed)}
       </span>
       <Button
         variant="ghost"
