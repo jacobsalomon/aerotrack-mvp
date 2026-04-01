@@ -143,10 +143,13 @@ export async function loadReviewData(sessionId: string, notFoundRedirect: string
     photos.filter((p) => p.inspectionItemId).map((p) => p.inspectionItemId!)
   )];
 
-  // Only show "Finalizing AI analysis..." when there's actual evidence to reconcile
-  const hasEvidence = photos.length > 0 || unassignedCount > 0 || session.inspectionProgress.length > 0;
-  const isReconciling = hasEvidence && !session.reconciliationSummary && !session.signedOffAt;
-  const hasNoEvidence = !hasEvidence && !session.signedOffAt;
+  // Only show "Finalizing AI analysis..." when actual work has been done.
+  // Progress records are pre-created at session start (all "pending"), so we
+  // only count items that have been worked on (done, problem, skipped).
+  const hasActualWork = photos.length > 0 || unassignedCount > 0 ||
+    session.inspectionProgress.some((p) => p.status !== "pending");
+  const isReconciling = hasActualWork && !session.reconciliationSummary && !session.signedOffAt;
+  const hasNoEvidence = !hasActualWork && !session.signedOffAt;
 
   // Serialize for client component (strips Prisma types, handles dates)
   return {
