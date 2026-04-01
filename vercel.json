@@ -5,6 +5,10 @@
     {
       "path": "/aerovision/api/library/retry-stuck",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/aerovision/api/process-sessions",
+      "schedule": "* * * * *"
     }
   ]
 }

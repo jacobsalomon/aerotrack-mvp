@@ -26,6 +26,7 @@ export interface AnalysisStageResult {
   transcriptionStitch: { success: boolean; error?: string; chunkCount: number };
   videoAnalysis: { success: boolean; error?: string; confidence?: number };
   processingTimeMs: number;
+  warnings: string[];
 }
 
 export interface DraftingStageResult {
@@ -34,6 +35,7 @@ export interface DraftingStageResult {
   documentCount: number;
   documentTypes: string[];
   estimatedCost: number;
+  warnings: string[];
 }
 
 export async function runSessionAnalysisStage(
@@ -44,6 +46,7 @@ export async function runSessionAnalysisStage(
     transcriptionStitch: { success: false, chunkCount: 0 },
     videoAnalysis: { success: false },
     processingTimeMs: 0,
+    warnings: [],
   };
 
   const session = await prisma.captureSession.findUnique({
@@ -89,6 +92,9 @@ export async function runSessionAnalysisStage(
         );
       } catch (reconcileError) {
         console.error("[Pipeline] Measurement reconciliation failed (non-fatal):", reconcileError);
+        result.warnings.push(
+          `Measurement reconciliation failed: ${reconcileError instanceof Error ? reconcileError.message : "unknown error"}. Some measurements may be missing or mislabeled.`
+        );
       }
 
       result.transcriptionStitch = {
@@ -164,12 +170,20 @@ export async function runSessionAnalysisStage(
         );
 
         const readyChunks: Array<{ evidenceId: string; fileUri: string; mimeType: string; offsetSeconds: number }> = [];
+        const failedChunkCount = uploadResults.filter((r) => r.status === "rejected").length;
         for (const r of uploadResults) {
           if (r.status === "fulfilled") readyChunks.push(r.value);
         }
 
         if (readyChunks.length === 0) {
           throw new Error("All video chunk uploads failed");
+        }
+
+        // Warn when some (but not all) video chunks failed upload
+        if (failedChunkCount > 0) {
+          result.warnings.push(
+            `${failedChunkCount} of ${uploadResults.length} video chunks failed to upload. Analysis proceeded with ${readyChunks.length} chunk(s).`
+          );
         }
 
         const mrResult = await analyzeVideoChunksMapReduce(readyChunks, cmmContent);

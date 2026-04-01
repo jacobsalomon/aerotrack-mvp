@@ -22,6 +22,7 @@ import { parseSpecRange, parseActualValue, checkPassFail } from "@/lib/measureme
 import { useSmartPoll } from "@/lib/use-smart-poll";
 import { PollStatusBadge } from "@/components/poll-status-badge";
 import { LiveSessionPanel } from "@/components/live-session-panel";
+import { MentraGlassesPanel } from "@/components/inspect/glasses-panel";
 import {
   ArrowLeft,
   Camera,
@@ -84,6 +85,7 @@ interface DocumentData {
 
 interface SessionDetail {
   id: string;
+  sessionType?: string;
   status: string;
   description: string | null;
   // shiftSessionId removed — sessions are the single workflow path
@@ -161,6 +163,18 @@ const PROGRESS_STATE_COLORS: Record<string, string> = {
   Verified: "bg-emerald-100 text-emerald-700",
   Packaged: "bg-sky-100 text-sky-700",
 };
+
+const SESSION_TERMINAL_STATUSES = new Set([
+  "capture_complete",
+  "processing",
+  "analysis_complete",
+  "documents_generated",
+  "verified",
+  "submitted",
+  "approved",
+  "rejected",
+  "failed",
+]);
 
 const DOC_TYPE_LABELS: Record<string, string> = {
   "8130-3": "FAA 8130-3 — Airworthiness Approval Tag",
@@ -729,6 +743,16 @@ export default function SessionDetailPage() {
           </div>
         )}
       </div>
+
+      {!SESSION_TERMINAL_STATUSES.has(session.status) && (
+        <div className="mb-6">
+          <MentraGlassesPanel
+            sessionId={sessionId}
+            title="Mentra Glasses"
+            onCaptureStopped={() => void fetchSession()}
+          />
+        </div>
+      )}
 
       {/* ═══ LIVE CAPTURE PANEL ═══ */}
       {session.status === "capturing" && (

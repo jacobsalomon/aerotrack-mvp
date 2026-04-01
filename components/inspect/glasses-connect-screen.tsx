@@ -15,12 +15,14 @@ interface GlassesConnectScreenProps {
   sessionId: string;
   onPaired: () => void;
   onSkip: () => void;
+  onUseMentra?: () => void;
 }
 
 export default function GlassesConnectScreen({
   sessionId,
   onPaired,
   onSkip,
+  onUseMentra,
 }: GlassesConnectScreenProps) {
   const [code, setCode] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<Date | null>(null);
@@ -228,14 +230,23 @@ export default function GlassesConnectScreen({
           </>
         )}
 
-        {/* Skip button — visible but not prominent */}
         {!paired && !loading && (
-          <button
-            onClick={onSkip}
-            className="mt-2 text-base text-white/40 hover:text-white/60 underline underline-offset-4 transition-colors"
-          >
-            Continue without glasses
-          </button>
+          <div className="mt-2 flex flex-col items-center gap-3">
+            {onUseMentra && (
+              <button
+                onClick={onUseMentra}
+                className="text-base text-emerald-300 hover:text-emerald-200 underline underline-offset-4 transition-colors"
+              >
+                Use the Mentra mini app instead
+              </button>
+            )}
+            <button
+              onClick={onSkip}
+              className="text-base text-white/40 hover:text-white/60 underline underline-offset-4 transition-colors"
+            >
+              Continue without glasses
+            </button>
+          </div>
         )}
       </div>
     </div>

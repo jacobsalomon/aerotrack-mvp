@@ -8,6 +8,7 @@ import {
   MOBILE_SESSION_MUTABLE_STATUS_VALUES,
   isMobileMutableSessionStatus,
 } from "@/lib/session-status";
+import { hasRole } from "@/lib/rbac";
 import { decorateSessionWithProgress } from "@/lib/session-progress";
 import { addSessionTimestamps } from "@/lib/video-timestamp-offsets";
 import {
@@ -59,7 +60,7 @@ export async function GET(
   const isSameOrganization =
     session.organizationId === auth.user.organizationId;
   const isOwner = session.userId === auth.user.id;
-  const isPrivileged = PRIVILEGED_ROLES.has(auth.user.role);
+  const isPrivileged = hasRole(auth.user.role, "SUPERVISOR");
 
   if (!isSameOrganization || (!isOwner && !isPrivileged)) {
     return NextResponse.json(
