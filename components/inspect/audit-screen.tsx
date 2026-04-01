@@ -41,7 +41,8 @@ interface AuditSource {
   unit: string;
   confidence: number;
   rawExcerpt: string | null;
-  timestamp: number | null;
+  timestamp: number | null;       // chunk-relative — used for audio/video seeking
+  sessionTimestamp: number | null; // session-relative — used for display labels
   evidence: {
     id: string;
     fileUrl: string;
@@ -459,8 +460,10 @@ function SourceCard({ source }: { source: AuditSource }) {
   const config = typeConfig[source.sourceType] || typeConfig.manual_entry;
 
   // Format the session timestamp (seconds → "MM:SS into session")
-  const timestampLabel = source.timestamp != null
-    ? `${Math.floor(source.timestamp / 60)}:${String(Math.floor(source.timestamp % 60)).padStart(2, "0")} into session`
+  // Use sessionTimestamp for display (session-global), fall back to timestamp (chunk-relative)
+  const displayTs = source.sessionTimestamp ?? source.timestamp;
+  const timestampLabel = displayTs != null
+    ? `${Math.floor(displayTs / 60)}:${String(Math.floor(displayTs % 60)).padStart(2, "0")} into session`
     : null;
 
   return (

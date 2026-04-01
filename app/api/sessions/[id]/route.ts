@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/rbac";
 import { decorateSessionWithProgress } from "@/lib/session-progress";
+import { buildVideoChunkOffsets } from "@/lib/video-timestamp-offsets";
 import {
   ensureSessionProcessingJob,
   scheduleSessionProcessing,
@@ -47,7 +48,7 @@ export async function GET(
               orderBy: { timestamp: "asc" },
             },
           },
-          orderBy: { createdAt: "asc" },
+          orderBy: { capturedAt: "asc" },
         },
         documents: {
           include: {
@@ -92,7 +93,26 @@ export async function GET(
 
     await scheduleSessionProcessingIfNeeded(session);
 
-    return NextResponse.json(decorateSessionWithProgress(session));
+    // Add session-global timestamps to video annotations.
+    // Keeps original `timestamp` for chunk-relative video seeking.
+    const videoChunks = session.evidence
+      .filter((e) => e.type === "VIDEO")
+      .map((e) => ({ id: e.id, durationSeconds: e.durationSeconds }));
+    const sessionChunkOffsets = buildVideoChunkOffsets(videoChunks);
+    const sessionWithTimestamps = {
+      ...session,
+      evidence: session.evidence.map((e) => ({
+        ...e,
+        videoAnnotations: e.videoAnnotations.map((ann) => ({
+          ...ann,
+          sessionTimestamp: sessionChunkOffsets.has(e.id)
+            ? (sessionChunkOffsets.get(e.id)! + ann.timestamp)
+            : ann.timestamp,
+        })),
+      })),
+    };
+
+    return NextResponse.json(decorateSessionWithProgress(sessionWithTimestamps));
   } catch (error) {
     console.error("Get session detail error:", error);
     return buildSessionApiErrorResponse(error, "detail");

@@ -5,8 +5,10 @@ import {
   uploadFileToGemini,
   waitForFileProcessing,
   analyzeSessionVideo,
+  analyzeVideoChunksMapReduce,
   deleteGeminiFile,
 } from "./gemini";
+import { buildVideoChunkOffsets } from "@/lib/video-timestamp-offsets";
 import { generateDocuments } from "./openai";
 import { clampConfidence } from "./utils";
 import { getReferenceDataForPart, formatReferenceDataForPrompt } from "@/lib/reference-data";
@@ -117,26 +119,6 @@ export async function runSessionAnalysisStage(
       });
 
       if (!existingAnalysis) {
-        const video = videoEvidence[0];
-        if (!isAllowedEvidenceUrl(video.fileUrl)) {
-          throw new Error("Video evidence URL host is not allowed");
-        }
-
-        const videoResponse = await fetch(video.fileUrl);
-        if (!videoResponse.ok) {
-          throw new Error(
-            `Could not download video file (status ${videoResponse.status})`
-          );
-        }
-        const fileBuffer = Buffer.from(await videoResponse.arrayBuffer());
-
-        const uploadedFile = await uploadFileToGemini(
-          fileBuffer,
-          video.mimeType,
-          `pipeline-${sessionId}`
-        );
-        const processedFile = await waitForFileProcessing(uploadedFile.name);
-
         let cmmContent: string | undefined;
         if (session.componentId) {
           const component = await prisma.component.findUnique({
@@ -153,31 +135,66 @@ export async function runSessionAnalysisStage(
           }
         }
 
-        const analysis = await analyzeSessionVideo(
-          processedFile.uri,
-          video.mimeType,
-          cmmContent
+        // Upload all video chunks in parallel
+        const chunkOffsets = buildVideoChunkOffsets(
+          videoEvidence.map((e) => ({ id: e.id, durationSeconds: e.durationSeconds }))
         );
+        const uploadedFileNames: string[] = [];
+
+        const uploadResults = await Promise.allSettled(
+          videoEvidence.map(async (ev) => {
+            if (!isAllowedEvidenceUrl(ev.fileUrl)) {
+              throw new Error("Video evidence URL host is not allowed");
+            }
+            const videoResponse = await fetch(ev.fileUrl);
+            if (!videoResponse.ok) {
+              throw new Error(`Could not download video (status ${videoResponse.status})`);
+            }
+            const fileBuffer = Buffer.from(await videoResponse.arrayBuffer());
+            const uploaded = await uploadFileToGemini(fileBuffer, ev.mimeType, `pipeline-${sessionId}-${ev.id}`);
+            uploadedFileNames.push(uploaded.name);
+            const processed = await waitForFileProcessing(uploaded.name);
+            return {
+              evidenceId: ev.id,
+              fileUri: processed.uri,
+              mimeType: ev.mimeType,
+              offsetSeconds: chunkOffsets.get(ev.id) ?? 0,
+            };
+          })
+        );
+
+        const readyChunks: Array<{ evidenceId: string; fileUri: string; mimeType: string; offsetSeconds: number }> = [];
+        for (const r of uploadResults) {
+          if (r.status === "fulfilled") readyChunks.push(r.value);
+        }
+
+        if (readyChunks.length === 0) {
+          throw new Error("All video chunk uploads failed");
+        }
+
+        const mrResult = await analyzeVideoChunksMapReduce(readyChunks, cmmContent);
 
         await prisma.sessionAnalysis.create({
           data: {
             sessionId,
-            actionLog: analysis.actionLog,
-            partsIdentified: analysis.partsIdentified,
-            procedureSteps: analysis.procedureSteps,
-            anomalies: analysis.anomalies,
-            confidence: clampConfidence(analysis.confidence),
-            modelUsed: analysis.modelUsed,
+            actionLog: mrResult.result.actionLog,
+            partsIdentified: mrResult.result.partsIdentified,
+            procedureSteps: mrResult.result.procedureSteps,
+            anomalies: mrResult.result.anomalies,
+            confidence: clampConfidence(mrResult.result.confidence),
+            modelUsed: mrResult.mergeModel,
             costEstimate: null,
             processingTime: Date.now() - stageStart,
           },
         });
 
-        deleteGeminiFile(uploadedFile.name).catch(() => {});
+        for (const name of uploadedFileNames) {
+          deleteGeminiFile(name).catch(() => {});
+        }
 
         result.videoAnalysis = {
           success: true,
-          confidence: analysis.confidence,
+          confidence: mrResult.result.confidence,
         };
       } else {
         result.videoAnalysis = {

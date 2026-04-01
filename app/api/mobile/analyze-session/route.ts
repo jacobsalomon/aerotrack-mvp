@@ -2,18 +2,19 @@
 // Processes video + audio + photos in parallel with model fallback chains.
 // Handles partial modality failures and uses cached fallback only if all modalities fail.
 
-export const maxDuration = 120;
+export const maxDuration = 180;
 
 import { prisma } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
 import { authenticateRequest } from "@/lib/mobile-auth";
 import { clampConfidence } from "@/lib/ai/utils";
 import { isAllowedEvidenceUrl } from "@/lib/evidence-url";
+import { buildVideoChunkOffsets } from "@/lib/video-timestamp-offsets";
 import {
   uploadFileToGemini,
   waitForFileProcessing,
-  analyzeSessionVideo,
   deleteGeminiFile,
+  analyzeVideoChunksMapReduce,
 } from "@/lib/ai/gemini";
 import { transcribeAudio, analyzeImageWithFallback } from "@/lib/ai/openai";
 import { cachedSessionAnalysis } from "@/lib/ai/cached-responses";
@@ -252,42 +253,66 @@ export async function POST(request: Request) {
     const cmmContent = await loadCmmContent(session);
     const modalityErrors: ModalityError[] = [];
 
+    // Pre-compute chunk offsets — needed during map-reduce so timestamps are session-global
+    const chunkOffsets = buildVideoChunkOffsets(
+      videoEvidence.map((e) => ({ id: e.id, durationSeconds: e.durationSeconds }))
+    );
+
+    // Map-reduce: analyze ALL video chunks with Flash in parallel,
+    // then merge results with Pro (text-only). Replaces the old single-chunk approach.
     const videoTask = (async () => {
       if (videoEvidence.length === 0) {
         return { skipped: true as const };
       }
 
-      const targetVideo = [...videoEvidence].sort((a, b) => {
-        const aScore = (a.durationSeconds || 0) * 1000 + (a.fileSize || 0);
-        const bScore = (b.durationSeconds || 0) * 1000 + (b.fileSize || 0);
-        return bScore - aScore;
-      })[0];
-
       const taskStart = Date.now();
-      let uploadedFileName: string | null = null;
+      const uploadedFileNames: string[] = [];
 
       try {
-        if (!isAllowedEvidenceUrl(targetVideo.fileUrl)) {
-          throw new Error("Video URL host is not allowed");
-        }
-
-        const fileResponse = await fetch(targetVideo.fileUrl);
-        if (!fileResponse.ok) {
-          throw new Error(`Could not retrieve video file (status ${fileResponse.status})`);
-        }
-
-        const fileBuffer = Buffer.from(await fileResponse.arrayBuffer());
-        const uploadedFile = await uploadFileToGemini(
-          fileBuffer,
-          targetVideo.mimeType,
-          `session-${sessionId}-full`
+        // Upload all chunks to Gemini in parallel
+        const uploadResults = await Promise.allSettled(
+          videoEvidence.map(async (ev) => {
+            if (!isAllowedEvidenceUrl(ev.fileUrl)) {
+              throw new Error("Video URL host is not allowed");
+            }
+            const fileResponse = await fetch(ev.fileUrl);
+            if (!fileResponse.ok) {
+              throw new Error(`Could not retrieve video (status ${fileResponse.status})`);
+            }
+            const fileBuffer = Buffer.from(await fileResponse.arrayBuffer());
+            const uploaded = await uploadFileToGemini(
+              fileBuffer,
+              ev.mimeType,
+              `session-${sessionId}-chunk-${ev.id}`
+            );
+            uploadedFileNames.push(uploaded.name);
+            const processed = await waitForFileProcessing(uploaded.name);
+            return {
+              evidenceId: ev.id,
+              fileUri: processed.uri,
+              mimeType: ev.mimeType,
+              offsetSeconds: chunkOffsets.get(ev.id) ?? 0,
+            };
+          })
         );
-        uploadedFileName = uploadedFile.name;
 
-        const processedFile = await waitForFileProcessing(uploadedFile.name);
-        const analysis = await analyzeSessionVideo(
-          processedFile.uri,
-          targetVideo.mimeType,
+        const readyChunks: Array<{
+          evidenceId: string;
+          fileUri: string;
+          mimeType: string;
+          offsetSeconds: number;
+        }> = [];
+        for (const r of uploadResults) {
+          if (r.status === "fulfilled") readyChunks.push(r.value);
+        }
+
+        if (readyChunks.length === 0) {
+          throw new Error("All video chunk uploads failed");
+        }
+
+        // Run map-reduce: Flash per chunk → Pro merge
+        const mrResult = await analyzeVideoChunksMapReduce(
+          readyChunks,
           cmmContent,
           session.expectedSteps || undefined
         );
@@ -295,12 +320,22 @@ export async function POST(request: Request) {
         return {
           skipped: false as const,
           latencyMs: Date.now() - taskStart,
-          evidenceId: targetVideo.id,
-          ...analysis,
+          // Spread the merged DeepAnalysisResult (already session-global timestamps)
+          ...mrResult.result,
+          verificationSource: mrResult.verificationSource,
+          modelUsed: mrResult.mergeModel,
+          fallbackUsed: mrResult.mergeFallbackUsed,
+          // Multi-chunk tracking
+          chunkModels: mrResult.chunkModels,
+          mergeModel: mrResult.mergeModel,
+          mergeFallbackUsed: mrResult.mergeFallbackUsed,
+          chunksSucceeded: mrResult.chunksSucceeded,
+          chunksFailed: mrResult.chunksFailed,
         };
       } finally {
-        if (uploadedFileName) {
-          deleteGeminiFile(uploadedFileName).catch(() => {});
+        // Clean up ALL uploaded files
+        for (const name of uploadedFileNames) {
+          deleteGeminiFile(name).catch(() => {});
         }
       }
     })().catch((error) => {
@@ -486,6 +521,7 @@ export async function POST(request: Request) {
 
     const fallbackAnalysis = cachedSessionAnalysis;
 
+    // Timestamps are already session-global from the map-reduce pipeline
     const actionLog =
       videoResult && !("skipped" in videoResult && videoResult.skipped)
         ? videoResult.actionLog
@@ -526,6 +562,7 @@ export async function POST(request: Request) {
         ? fallbackAnalysis.procedureSteps
         : [];
 
+    // Anomaly timestamps are already session-global from the map-reduce pipeline
     const anomalies = [
       ...((videoResult && !("skipped" in videoResult && videoResult.skipped)
         ? videoResult.anomalies
@@ -566,10 +603,11 @@ export async function POST(request: Request) {
       video:
         videoResult && !("skipped" in videoResult && videoResult.skipped)
           ? {
-              evidenceId: videoResult.evidenceId,
-              model: videoResult.modelUsed,
-              fallbackUsed: !!videoResult.fallbackUsed,
-              fallbackReason: videoResult.fallbackReason || null,
+              chunkModels: videoResult.chunkModels ?? [],
+              mergeModel: videoResult.mergeModel ?? videoResult.modelUsed,
+              mergeFallbackUsed: videoResult.mergeFallbackUsed ?? false,
+              chunksSucceeded: videoResult.chunksSucceeded ?? 1,
+              chunksFailed: videoResult.chunksFailed ?? 0,
               verificationSource: videoResult.verificationSource,
               latencyMs: videoResult.latencyMs,
             }
