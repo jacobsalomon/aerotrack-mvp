@@ -456,12 +456,18 @@ function buildPerDocumentVerificationPayload(
 // Run independent AI verification on all generated documents for a session
 export async function verifyDocuments(
   sessionId: string,
-  userId: string
+  userId: string,
+  options?: { evidenceIds?: string[] }
 ): Promise<VerifyDocumentsResult> {
   const session = await prisma.captureSession.findUnique({
     where: { id: sessionId },
     include: {
-      evidence: { orderBy: { capturedAt: "asc" } },
+      evidence: {
+        where: options?.evidenceIds
+          ? { id: { in: options.evidenceIds } }
+          : undefined,
+        orderBy: { capturedAt: "asc" },
+      },
       documents: true,
       analysis: true,
       user: true,

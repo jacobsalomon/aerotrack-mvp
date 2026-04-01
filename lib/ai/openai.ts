@@ -103,7 +103,7 @@ export async function transcribeAudio(
   fileName: string,
   previousTranscript?: string,
   orgInstructions?: string | null
-): Promise<TranscriptionResult> {
+) : Promise<TranscriptionResult & { usedFallback: boolean }> {
   const result = await callWithFallback({
     models: TRANSCRIPTION_MODELS,
     timeoutMs: 25000,
@@ -116,7 +116,10 @@ export async function transcribeAudio(
     },
   });
 
-  return result.data;
+  return {
+    ...result.data,
+    usedFallback: result.fallbackUsed,
+  };
 }
 
 // OpenAI transcription (gpt-4o-transcribe, gpt-4o-mini-transcribe)
@@ -246,8 +249,7 @@ export async function transcribeWithFallback(
   audioFile: File | Blob,
   fileName: string
 ): Promise<TranscriptionResult & { usedFallback: boolean }> {
-  const result = await transcribeAudio(audioFile, fileName);
-  return { ...result, usedFallback: false };
+  return transcribeAudio(audioFile, fileName);
 }
 
 // ──────────────────────────────────────────────────────

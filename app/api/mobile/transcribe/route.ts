@@ -17,6 +17,7 @@ import {
   isAllowedEvidenceUrl,
 } from "@/lib/evidence-url";
 import { NextResponse } from "next/server";
+import { upsertEvidenceAnalysisState } from "@/lib/session-pipeline-state";
 
 const PRIVILEGED_ROLES = new Set(["SUPERVISOR", "ADMIN"]);
 
@@ -31,6 +32,9 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
+
+  let evidenceIdForState: string | null = null;
+  let sessionIdForState: string | null = null;
 
   try {
     let audioFile: File | Blob;
@@ -103,6 +107,7 @@ export async function POST(request: Request) {
         include: {
           session: {
             select: {
+              id: true,
               userId: true,
               organizationId: true,
               description: true,
@@ -130,6 +135,9 @@ export async function POST(request: Request) {
         );
       }
 
+      evidenceIdForState = evidenceId;
+      sessionIdForState = evidence.session.id;
+
       await prisma.captureEvidence.update({
         where: { id: evidenceId },
         data: {
@@ -137,6 +145,18 @@ export async function POST(request: Request) {
           durationSeconds: result.duration,
         },
       });
+
+      if (sessionIdForState) {
+        await upsertEvidenceAnalysisState(sessionIdForState, evidenceId, {
+          status: "completed",
+          updatedAt: new Date().toISOString(),
+          processor: "audio_transcription",
+          empty: result.text.trim().length === 0,
+          metrics: {
+            transcriptLength: result.text.trim().length,
+          },
+        });
+      }
     }
 
     // Audit log
@@ -169,6 +189,15 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
+    if (evidenceIdForState && sessionIdForState) {
+      await upsertEvidenceAnalysisState(sessionIdForState, evidenceIdForState, {
+        status: "failed",
+        updatedAt: new Date().toISOString(),
+        processor: "audio_transcription",
+        error: error instanceof Error ? error.message : "Transcription failed",
+      });
+    }
+
     console.error("Transcribe error:", error);
     return NextResponse.json(
       { success: false, error: "Transcription failed" },
