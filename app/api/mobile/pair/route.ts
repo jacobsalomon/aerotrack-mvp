@@ -80,11 +80,13 @@ export async function POST(request: Request) {
     }
 
     // Claim the job: clear the code (single-use) so it can't be reused.
+    // Also assign the mobile user so GET /api/mobile/active-job finds this
+    // session after app restart (it filters by userId).
     // Use optimistic locking — only the first claim succeeds.
     // Keep pairingCodeExpiresAt so the web can detect the claim (code null + expiry set = claimed).
     const claimed = await prisma.captureSession.updateMany({
       where: { id: session.id, pairingCode: normalizedCode },
-      data: { pairingCode: null },
+      data: { pairingCode: null, userId: auth.user.id },
     });
 
     if (claimed.count === 0) {

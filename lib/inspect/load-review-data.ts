@@ -143,7 +143,10 @@ export async function loadReviewData(sessionId: string, notFoundRedirect: string
     photos.filter((p) => p.inspectionItemId).map((p) => p.inspectionItemId!)
   )];
 
-  const isReconciling = !session.reconciliationSummary && !session.signedOffAt;
+  // Only show "Finalizing AI analysis..." when there's actual evidence to reconcile
+  const hasEvidence = photos.length > 0 || unassignedCount > 0 || session.inspectionProgress.length > 0;
+  const isReconciling = hasEvidence && !session.reconciliationSummary && !session.signedOffAt;
+  const hasNoEvidence = !hasEvidence && !session.signedOffAt;
 
   // Serialize for client component (strips Prisma types, handles dates)
   return {
@@ -151,6 +154,7 @@ export async function loadReviewData(sessionId: string, notFoundRedirect: string
     component: component ? JSON.parse(JSON.stringify(component)) : null,
     unassignedCount,
     isReconciling,
+    hasNoEvidence,
     photoItemIds,
     photos: JSON.parse(JSON.stringify(photos)),
   };

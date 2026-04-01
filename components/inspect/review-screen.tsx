@@ -103,11 +103,12 @@ interface Props {
   component: { id: string; partNumber: string; serialNumber: string; description: string } | null;
   unassignedCount: number;
   isReconciling?: boolean;
+  hasNoEvidence?: boolean;
   photoItemIds?: string[];
   photos?: PhotoData[];
 }
 
-export default function ReviewScreen({ session, component, unassignedCount, isReconciling, photoItemIds = [], photos: initialPhotos = [] }: Props) {
+export default function ReviewScreen({ session, component, unassignedCount, isReconciling, hasNoEvidence, photoItemIds = [], photos: initialPhotos = [] }: Props) {
   const router = useRouter();
   const template = session.inspectionTemplate;
   const progress = session.inspectionProgress || [];
@@ -302,11 +303,16 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
         </Button>
       </div>
 
-      {/* Reconciliation in-progress banner (Fix 6) */}
+      {/* Reconciliation in-progress banner — only when evidence exists but hasn't been reconciled */}
       {isReconciling && (
-        <div className="flex items-center gap-2 text-blue-400 text-sm bg-blue-500/10 rounded-lg px-4 py-2 mb-4">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Finalizing AI analysis...
+        <ReconciliationBanner sessionId={session.id} />
+      )}
+
+      {/* Empty state — session has no evidence yet */}
+      {hasNoEvidence && (
+        <div className="flex items-center gap-2 text-zinc-400 text-sm bg-zinc-500/10 rounded-lg px-4 py-2 mb-4">
+          <Camera className="h-4 w-4" />
+          No evidence captured yet. Start a capture from the iOS app.
         </div>
       )}
 
@@ -667,6 +673,35 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Triggers reconciliation on mount, then refreshes the page when done
+function ReconciliationBanner({ sessionId }: { sessionId: string }) {
+  const router = useRouter();
+  const triggered = useRef(false);
+
+  useEffect(() => {
+    if (triggered.current) return;
+    triggered.current = true;
+
+    fetch(apiUrl(`/api/inspect/sessions/${sessionId}/reconcile`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    })
+      .then((res) => {
+        if (res.ok) router.refresh();
+      })
+      .catch(() => {
+        // Non-critical — banner stays visible, user can refresh manually
+      });
+  }, [sessionId, router]);
+
+  return (
+    <div className="flex items-center gap-2 text-blue-400 text-sm bg-blue-500/10 rounded-lg px-4 py-2 mb-4">
+      <Loader2 className="h-4 w-4 animate-spin" />
+      Finalizing AI analysis...
     </div>
   );
 }

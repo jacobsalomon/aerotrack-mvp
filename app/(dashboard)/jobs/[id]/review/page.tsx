@@ -16,6 +16,7 @@ export default async function JobReviewPage({ params }: PageProps) {
       component={data.component}
       unassignedCount={data.unassignedCount}
       isReconciling={data.isReconciling}
+      hasNoEvidence={data.hasNoEvidence}
       photoItemIds={data.photoItemIds}
       photos={data.photos}
     />
