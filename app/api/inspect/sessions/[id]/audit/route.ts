@@ -154,6 +154,24 @@ export async function GET(request: Request, { params }: RouteContext) {
       },
     });
 
+    // Convert epoch-second timestamps to session-relative seconds.
+    // Audio route stores MeasurementSource.timestamp as epoch seconds
+    // (chunkStartTime/1000 + timestampInChunk). The UI displays "MM:SS into session"
+    // so we subtract the session start time to get session-relative seconds.
+    const sessionStartEpoch = session.startedAt
+      ? new Date(session.startedAt).getTime() / 1000
+      : null;
+
+    function toSessionRelativeTimestamp(timestamp: number | null): number | null {
+      if (timestamp == null) return null;
+      // If timestamp is clearly epoch seconds (> 1 billion), convert to session-relative.
+      // Small values (< 86400 = 24 hours) are already session-relative or chunk-relative.
+      if (sessionStartEpoch && timestamp > 1_000_000_000) {
+        return Math.max(0, timestamp - sessionStartEpoch);
+      }
+      return timestamp;
+    }
+
     // Reshape into the response format the PRD specifies
     const shapedSections = sections.map((section) => ({
       id: section.id,
@@ -204,6 +222,7 @@ export async function GET(request: Request, { params }: RouteContext) {
                   confidence: src.confidence,
                   rawExcerpt: src.rawExcerpt,
                   timestamp: src.timestamp,
+                  sessionTimestamp: toSessionRelativeTimestamp(src.timestamp),
                   evidence: src.captureEvidence
                     ? {
                         id: src.captureEvidence.id,

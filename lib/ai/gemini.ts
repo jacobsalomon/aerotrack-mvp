@@ -368,3 +368,381 @@ export async function deleteGeminiFile(fileName: string): Promise<void> {
     console.warn(`Gemini file cleanup failed for ${fileName} (status ${response.status}) — may need manual cleanup`);
   }
 }
+
+// ──────────────────────────────────────────────────────
+// Map-Reduce Video Analysis
+// Analyzes ALL video chunks instead of just the largest one.
+// Map: Flash analyzes each chunk independently (cheap, parallel)
+// Reduce: Pro merges chunk results into one unified analysis (text-only)
+// ──────────────────────────────────────────────────────
+
+// Map phase — analyze a single chunk with Flash for cost efficiency.
+// Same prompt as analyzeSessionVideo but with chunk context preamble.
+async function analyzeVideoChunkWithFlash(
+  fileUri: string,
+  mimeType: string,
+  chunkLabel: string,
+  cmmContent?: string,
+  expectedSteps?: string
+): Promise<
+  DeepAnalysisResult & {
+    verificationSource: "cmm" | "expected_steps" | "ai_inferred";
+    modelUsed: string;
+    fallbackUsed: boolean;
+  }
+> {
+  const parts: Array<Record<string, unknown>> = [
+    { fileData: { mimeType, fileUri } },
+  ];
+
+  let verificationSource: "cmm" | "expected_steps" | "ai_inferred" = "ai_inferred";
+
+  if (cmmContent) {
+    verificationSource = "cmm";
+    parts.push({
+      text: `COMPONENT MAINTENANCE MANUAL (CMM) REFERENCE:\n${cmmContent}`,
+    });
+  } else if (expectedSteps) {
+    verificationSource = "expected_steps";
+    parts.push({
+      text: `EXPECTED MAINTENANCE STEPS (SOP):\n${expectedSteps}`,
+    });
+  }
+
+  const procedureInstruction = cmmContent
+    ? `3. PROCEDURE STEPS — Map observed actions to CMM references. Mark completed or not.`
+    : expectedSteps
+    ? `3. PROCEDURE STEPS — Verify work against the expected steps. Mark each as completed or not.`
+    : `3. PROCEDURE STEPS — Infer maintenance steps from what you observe.`;
+
+  parts.push({
+    text: `You are a senior aerospace maintenance analyst. You are reviewing ${chunkLabel} of a maintenance session video. Focus on what you can observe in THIS segment — other segments are being analyzed separately and results will be merged.
+
+Provide:
+1. ACTION LOG — Every significant action with timestamps (seconds into this clip)
+2. PARTS IDENTIFIED — Part numbers, serial numbers, components with confidence
+${procedureInstruction}
+4. ANOMALIES — Deviations, safety concerns, damage, missing steps
+5. CONFIDENCE — Your confidence in this segment's analysis (0-1)
+
+Return JSON:
+{
+  "actionLog": [{"timestamp": 0, "action": "string", "details": "string"}],
+  "partsIdentified": [{"partNumber": "string", "serialNumber": "string or null", "description": "string", "confidence": 0.95}],
+  "procedureSteps": [{"stepNumber": 1, "description": "string", "completed": true, "cmmReference": "section 5.2 or null"}],
+  "anomalies": [{"description": "string", "severity": "info|warning|critical", "timestamp": 0}],
+  "confidence": 0.9
+}
+
+Be thorough — this feeds into FAA compliance documents.`,
+  });
+
+  const result = await callWithFallback({
+    models: ANNOTATION_MODELS,
+    timeoutMs: 60000,
+    taskName: `video_map_${chunkLabel}`,
+    execute: async (model) => {
+      const text = await callGemini({
+        model: model.id,
+        contents: [{ parts }],
+        timeoutMs: 60000,
+      });
+      try {
+        return JSON.parse(text) as DeepAnalysisResult;
+      } catch {
+        console.error(`[MapReduce] ${chunkLabel} returned non-JSON:`, text?.slice(0, 200));
+        return {
+          actionLog: [],
+          partsIdentified: [],
+          procedureSteps: [],
+          anomalies: [{ description: "AI returned unparseable response", severity: "warning" as const }],
+          confidence: 0,
+        };
+      }
+    },
+  });
+
+  return {
+    ...result.data,
+    verificationSource,
+    modelUsed: result.modelUsed.id,
+    fallbackUsed: result.fallbackUsed,
+  };
+}
+
+// Reduce phase — merge chunk results with Pro (text-only, no video).
+async function mergeChunkAnalyses(
+  chunkResults: Array<{ chunkIndex: number; result: DeepAnalysisResult }>,
+  cmmContent?: string,
+  expectedSteps?: string
+): Promise<
+  DeepAnalysisResult & {
+    modelUsed: string;
+    fallbackUsed: boolean;
+    verificationSource: "cmm" | "expected_steps" | "ai_inferred";
+  }
+> {
+  let verificationSource: "cmm" | "expected_steps" | "ai_inferred" = "ai_inferred";
+  if (cmmContent) verificationSource = "cmm";
+  else if (expectedSteps) verificationSource = "expected_steps";
+
+  const chunksJson = chunkResults
+    .map((c) => `--- CHUNK ${c.chunkIndex + 1} ---\n${JSON.stringify(c.result, null, 2)}`)
+    .join("\n\n");
+
+  const promptText = `You are a senior aerospace maintenance analyst. You have analysis results from ${chunkResults.length} consecutive video segments of a single maintenance session. Each was analyzed independently. Timestamps are already adjusted to session-global time.
+
+MERGE RULES:
+1. ACTION LOG: Concatenate all entries, sort by timestamp. Remove exact duplicates (same timestamp + same action).
+2. PARTS IDENTIFIED: Deduplicate by partNumber. When the same part appears in multiple chunks, keep highest confidence. Merge serialNumber if one chunk found it and another didn't.
+3. PROCEDURE STEPS: A step may appear in multiple chunks — that's ONE step, not duplicates. Mark completed=true if ANY chunk reports it completed. Keep the most detailed description and cmmReference. Renumber sequentially.
+4. ANOMALIES: Deduplicate semantically similar ones. Keep all unique anomalies with their timestamps.
+5. CONFIDENCE: Weighted average of chunk confidences (weight by actionLog length — more observations = more weight).
+
+${cmmContent ? `CMM REFERENCE:\n${cmmContent}\n` : ""}${expectedSteps ? `EXPECTED STEPS:\n${expectedSteps}\n` : ""}
+CHUNK RESULTS:
+${chunksJson}
+
+Return merged JSON:
+{
+  "actionLog": [{"timestamp": 0, "action": "string", "details": "string"}],
+  "partsIdentified": [{"partNumber": "string", "serialNumber": "string or null", "description": "string", "confidence": 0.95}],
+  "procedureSteps": [{"stepNumber": 1, "description": "string", "completed": true, "cmmReference": "section 5.2 or null"}],
+  "anomalies": [{"description": "string", "severity": "info|warning|critical", "timestamp": 0}],
+  "confidence": 0.9
+}`;
+
+  const result = await callWithFallback({
+    models: VIDEO_MODELS,
+    timeoutMs: 30000,
+    taskName: "video_merge",
+    execute: async (model) => {
+      const text = await callGemini({
+        model: model.id,
+        contents: [{ parts: [{ text: promptText }] }],
+        timeoutMs: 30000,
+      });
+      try {
+        return JSON.parse(text) as DeepAnalysisResult;
+      } catch {
+        console.error("[MapReduce] Merge returned non-JSON:", text?.slice(0, 200));
+        // Fallback: programmatic merge without LLM
+        return programmaticMerge(chunkResults);
+      }
+    },
+  });
+
+  return {
+    ...result.data,
+    modelUsed: result.modelUsed.id,
+    fallbackUsed: result.fallbackUsed,
+    verificationSource,
+  };
+}
+
+// Simple programmatic merge as a last resort if the LLM merge fails
+function programmaticMerge(
+  chunkResults: Array<{ chunkIndex: number; result: DeepAnalysisResult }>
+): DeepAnalysisResult {
+  const actionLog = chunkResults
+    .flatMap((c) => c.result.actionLog)
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  // Dedup parts by partNumber, keep highest confidence
+  const partsMap = new Map<string, DeepAnalysisResult["partsIdentified"][0]>();
+  for (const chunk of chunkResults) {
+    for (const part of chunk.result.partsIdentified) {
+      const existing = partsMap.get(part.partNumber);
+      if (!existing || part.confidence > existing.confidence) {
+        partsMap.set(part.partNumber, {
+          ...part,
+          serialNumber: part.serialNumber || existing?.serialNumber,
+        });
+      }
+    }
+  }
+
+  // Merge procedure steps. When CMM references exist, dedup by cmmReference.
+  // Otherwise each chunk numbers steps independently so we just concatenate
+  // and renumber to avoid losing genuinely different steps.
+  const hasCmmRefs = chunkResults.some((c) =>
+    c.result.procedureSteps.some((s) => s.cmmReference)
+  );
+
+  let mergedSteps: DeepAnalysisResult["procedureSteps"];
+  if (hasCmmRefs) {
+    // CMM mode: dedup by cmmReference (stable identifier across chunks)
+    const stepsMap = new Map<string, DeepAnalysisResult["procedureSteps"][0]>();
+    for (const chunk of chunkResults) {
+      for (const step of chunk.result.procedureSteps) {
+        const key = step.cmmReference || `step-${step.stepNumber}-${chunk.chunkIndex}`;
+        const existing = stepsMap.get(key);
+        if (!existing) {
+          stepsMap.set(key, step);
+        } else {
+          stepsMap.set(key, {
+            ...existing,
+            completed: existing.completed || step.completed,
+            cmmReference: existing.cmmReference || step.cmmReference,
+            description: step.description.length > existing.description.length
+              ? step.description
+              : existing.description,
+          });
+        }
+      }
+    }
+    mergedSteps = Array.from(stepsMap.values()).sort((a, b) => a.stepNumber - b.stepNumber);
+  } else {
+    // No CMM: each chunk inferred steps independently — concatenate and renumber
+    mergedSteps = chunkResults
+      .flatMap((c) => c.result.procedureSteps)
+      .map((step, i) => ({ ...step, stepNumber: i + 1 }));
+  }
+
+  const anomalies = chunkResults.flatMap((c) => c.result.anomalies);
+
+  // Weighted average confidence
+  let totalWeight = 0;
+  let weightedSum = 0;
+  for (const chunk of chunkResults) {
+    const weight = Math.max(1, chunk.result.actionLog.length);
+    weightedSum += chunk.result.confidence * weight;
+    totalWeight += weight;
+  }
+
+  return {
+    actionLog,
+    partsIdentified: Array.from(partsMap.values()),
+    procedureSteps: mergedSteps,
+    anomalies,
+    confidence: totalWeight > 0 ? weightedSum / totalWeight : 0,
+  };
+}
+
+// Orchestrator — runs map phase in parallel, then reduce phase
+export interface MapReduceChunk {
+  evidenceId: string;
+  fileUri: string;
+  mimeType: string;
+  offsetSeconds: number;
+}
+
+export interface MapReduceResult {
+  result: DeepAnalysisResult;
+  verificationSource: "cmm" | "expected_steps" | "ai_inferred";
+  chunkModels: Array<{ evidenceId: string; model: string; fallbackUsed: boolean }>;
+  mergeModel: string;
+  mergeFallbackUsed: boolean;
+  chunksSucceeded: number;
+  chunksFailed: number;
+}
+
+export async function analyzeVideoChunksMapReduce(
+  chunks: MapReduceChunk[],
+  cmmContent?: string,
+  expectedSteps?: string
+): Promise<MapReduceResult> {
+  const totalChunks = chunks.length;
+
+  // ── Map phase: analyze each chunk with Flash in parallel ──
+  console.log(`[MapReduce] Starting map phase: ${totalChunks} chunks`);
+  const mapStart = Date.now();
+
+  const mapResults = await Promise.allSettled(
+    chunks.map(async (chunk, i) => {
+      const label = `chunk ${i + 1}/${totalChunks}`;
+      const analysis = await analyzeVideoChunkWithFlash(
+        chunk.fileUri,
+        chunk.mimeType,
+        label,
+        cmmContent,
+        expectedSteps
+      );
+
+      // Apply timestamp offset so all timestamps are session-global
+      const offsetResult: DeepAnalysisResult = {
+        ...analysis,
+        actionLog: analysis.actionLog.map((entry) => ({
+          ...entry,
+          timestamp: entry.timestamp + chunk.offsetSeconds,
+        })),
+        anomalies: analysis.anomalies.map((a) => ({
+          ...a,
+          timestamp: a.timestamp != null ? a.timestamp + chunk.offsetSeconds : undefined,
+        })),
+      };
+
+      return {
+        chunkIndex: i,
+        evidenceId: chunk.evidenceId,
+        result: offsetResult,
+        modelUsed: analysis.modelUsed,
+        fallbackUsed: analysis.fallbackUsed,
+      };
+    })
+  );
+
+  const succeeded: Array<{
+    chunkIndex: number;
+    evidenceId: string;
+    result: DeepAnalysisResult;
+    modelUsed: string;
+    fallbackUsed: boolean;
+  }> = [];
+  for (const r of mapResults) {
+    if (r.status === "fulfilled") succeeded.push(r.value);
+  }
+
+  const failed = mapResults.filter((r) => r.status === "rejected");
+
+  console.log(
+    `[MapReduce] Map phase done in ${Date.now() - mapStart}ms: ${succeeded.length}/${totalChunks} succeeded`
+  );
+
+  if (succeeded.length === 0) {
+    const reasons = failed.map((r) => (r as PromiseRejectedResult).reason);
+    throw new Error(`All ${totalChunks} video chunks failed: ${reasons.map(String).join("; ")}`);
+  }
+
+  const chunkModels = succeeded.map((s) => ({
+    evidenceId: s.evidenceId,
+    model: s.modelUsed,
+    fallbackUsed: s.fallbackUsed,
+  }));
+
+  // ── Short-circuit for single success — no merge needed ──
+  if (succeeded.length === 1) {
+    const only = succeeded[0];
+    return {
+      result: only.result,
+      verificationSource: cmmContent ? "cmm" : expectedSteps ? "expected_steps" : "ai_inferred",
+      chunkModels,
+      mergeModel: only.modelUsed,
+      mergeFallbackUsed: false,
+      chunksSucceeded: 1,
+      chunksFailed: failed.length,
+    };
+  }
+
+  // ── Reduce phase: merge with Pro (text-only) ──
+  console.log(`[MapReduce] Starting reduce phase: merging ${succeeded.length} chunk results`);
+  const mergeStart = Date.now();
+
+  const merged = await mergeChunkAnalyses(
+    succeeded.map((s) => ({ chunkIndex: s.chunkIndex, result: s.result })),
+    cmmContent,
+    expectedSteps
+  );
+
+  console.log(`[MapReduce] Reduce phase done in ${Date.now() - mergeStart}ms`);
+
+  return {
+    result: merged,
+    verificationSource: merged.verificationSource,
+    chunkModels,
+    mergeModel: merged.modelUsed,
+    mergeFallbackUsed: merged.fallbackUsed,
+    chunksSucceeded: succeeded.length,
+    chunksFailed: failed.length,
+  };
+}
