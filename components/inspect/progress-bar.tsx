@@ -107,7 +107,7 @@ export default function ProgressBar({
           ) : (
             <button
               onClick={() => !isReadOnly && setEditing(true)}
-              className="flex items-center gap-1 text-white/30 text-xs hover:text-white/60 transition-colors flex-shrink-0"
+              className="flex items-center gap-1 text-white/50 text-xs hover:text-white/70 transition-colors flex-shrink-0"
               title={isReadOnly ? "Signed off — cannot edit" : "Click to edit work order"}
             >
               {savedWo || "Add WO#"}
@@ -124,7 +124,7 @@ export default function ProgressBar({
           {/* Completion count (replaces progress bar) */}
           <span className="text-white font-medium text-sm flex-shrink-0">
             {completedCount}/{summary.total}
-            <span className="text-white/40 ml-1">({pct}%)</span>
+            <span className="text-white/60 ml-1">({pct}%)</span>
           </span>
 
           {summary.problem > 0 && (
@@ -145,7 +145,7 @@ export default function ProgressBar({
             </Badge>
           )}
 
-          <span className="text-white/40 text-xs truncate hidden lg:inline">
+          <span className="text-white/60 text-xs truncate hidden lg:inline">
             {templateTitle}
             {templateCreatedAt && (() => {
               const ageLevel = getCmmAgeWarning(templateCreatedAt);
@@ -154,7 +154,7 @@ export default function ProgressBar({
                 <span className={`ml-2 inline-flex items-center gap-1 ${
                   ageLevel === "critical" ? "text-red-400" :
                   ageLevel === "warning" ? "text-amber-400" :
-                  "text-white/30"
+                  "text-white/50"
                 }`}>
                   <Clock className="h-3 w-3" />
                   {dateStr}

@@ -117,15 +117,15 @@ export default function PhotoUpload({ sessionId, inspectionItemId, instanceIndex
       <button
         onClick={() => fileInputRef.current?.click()}
         disabled={disabled || uploading}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs
-          bg-white/10 hover:bg-white/15 text-white/60 hover:text-white/80
+        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-sm
+          bg-white/10 hover:bg-white/15 border border-white/20 text-white/60 hover:text-white/80
           disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         title="Add photo"
       >
         {uploading ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
-          <Camera className="h-3.5 w-3.5" />
+          <Camera className="h-4 w-4" />
         )}
         Photo
       </button>

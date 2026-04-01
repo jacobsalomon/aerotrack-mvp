@@ -82,18 +82,18 @@ export default function SectionTabs({ sections, sectionProgress, activeSectionId
 
               {/* Section info */}
               <div className="text-left min-w-0">
-                <p className={cn("text-sm font-medium truncate", isActive ? "text-white" : "text-white/60")}>
-                  Fig {section.figureNumber}
-                </p>
-                <p className="text-xs text-white/40 truncate max-w-[120px]">
+                <p className={cn("text-sm font-medium truncate max-w-[180px]", isActive ? "text-white" : "text-white/70")}>
                   {section.title}
+                </p>
+                <p className="text-xs text-white/60 truncate max-w-[180px]">
+                  Fig {section.figureNumber}
                 </p>
               </div>
 
               {/* Completion badge */}
               <span className={cn(
                 "text-xs font-mono flex-shrink-0 px-1.5 py-0.5 rounded",
-                isActive ? "bg-white/10 text-white/80" : "text-white/40"
+                isActive ? "bg-white/10 text-white/80" : "text-white/60"
               )}>
                 {done}/{total}
               </span>
