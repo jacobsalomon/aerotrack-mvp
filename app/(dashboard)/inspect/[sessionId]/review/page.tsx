@@ -18,6 +18,7 @@ export default async function ReviewPage({ params }: PageProps) {
       isReconciling={data.isReconciling}
       photoItemIds={data.photoItemIds}
       photos={data.photos}
+      reconciliationSummary={data.reconciliationSummary}
     />
   );
 }

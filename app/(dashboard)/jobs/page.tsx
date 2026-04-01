@@ -8,7 +8,6 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -17,6 +16,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -143,7 +150,11 @@ export default function JobsPage() {
   const [showPreStart, setShowPreStart] = useState(false);
   const [preStartTemplate, setPreStartTemplate] = useState<LibraryTemplate | null>(null);
   const [preStartMode, setPreStartMode] = useState<"guided" | "freeform">("guided");
-  const [preStartWO, setPreStartWO] = useState("");
+
+  // Configuration variant selection (fetched on demand when a template is selected)
+  const [configVariants, setConfigVariants] = useState<string[]>([]);
+  const [selectedVariant, setSelectedVariant] = useState<string>("");
+  const [loadingVariants, setLoadingVariants] = useState(false);
 
   // Upload modal (reused from Library page)
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -223,27 +234,44 @@ export default function JobsPage() {
 
   // ─── Pre-start dialog ──────────────────────────────────────────────
 
-  function openPreStart(template: LibraryTemplate | null, mode: "guided" | "freeform") {
+  async function openPreStart(template: LibraryTemplate | null, mode: "guided" | "freeform") {
     setPreStartTemplate(template);
     setPreStartMode(mode);
-    setPreStartWO("");
+    setConfigVariants([]);
+    setSelectedVariant("");
     setShowPreStart(true);
+
+    // For guided mode, fetch template details to check for configuration variants
+    if (mode === "guided" && template) {
+      setLoadingVariants(true);
+      try {
+        const res = await fetch(apiUrl(`/api/library/${template.id}`));
+        if (res.ok) {
+          const data = await res.json();
+          // Collect unique config variants from all items across all sections
+          const variants = new Set<string>();
+          for (const section of data.template?.sections || []) {
+            for (const item of section.items || []) {
+              for (const v of item.configurationApplicability || []) {
+                variants.add(v);
+              }
+            }
+          }
+          const sorted = [...variants].sort();
+          setConfigVariants(sorted);
+          // If only one variant, auto-select it
+          if (sorted.length === 1) setSelectedVariant(sorted[0]);
+        }
+      } catch { /* silent — variants are optional */ }
+      finally { setLoadingVariants(false); }
+    }
   }
 
   function handlePreStartConfirm() {
     setShowPreStart(false);
-    const wo = preStartWO.trim() || undefined;
+    const variant = selectedVariant || undefined;
     if (preStartMode === "guided" && preStartTemplate) {
-      void startFromTemplate(preStartTemplate.id, wo);
-    } else {
-      void startFreeform(wo);
-    }
-  }
-
-  function handleSkipStart() {
-    setShowPreStart(false);
-    if (preStartMode === "guided" && preStartTemplate) {
-      void startFromTemplate(preStartTemplate.id);
+      void startFromTemplate(preStartTemplate.id, undefined, variant);
     } else {
       void startFreeform();
     }
@@ -251,13 +279,17 @@ export default function JobsPage() {
 
   // ─── Start guided inspection from a template ───────────────────────
 
-  async function startFromTemplate(templateId: string, workOrderRef?: string) {
+  async function startFromTemplate(templateId: string, workOrderRef?: string, configurationVariant?: string) {
     setStartingId(templateId);
     try {
       const res = await fetch(apiUrl("/api/inspect/sessions"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ templateId, workOrderRef: workOrderRef || null }),
+        body: JSON.stringify({
+          templateId,
+          workOrderRef: workOrderRef || null,
+          configurationVariant: configurationVariant || null,
+        }),
       });
       if (!res.ok) throw new Error("Failed to create job");
       const result = await res.json();
@@ -270,7 +302,7 @@ export default function JobsPage() {
 
   // ─── Start freeform capture (no documentation) ─────────────────────
 
-  async function startFreeform(workOrderRef?: string) {
+  async function startFreeform() {
     setStartingId("freeform");
     try {
       const res = await fetch(apiUrl("/api/sessions"), {
@@ -278,7 +310,6 @@ export default function JobsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           description: "Web capture session",
-          workOrderRef: workOrderRef || null,
         }),
       });
       if (!res.ok) throw new Error("Failed to create session");
@@ -567,16 +598,48 @@ export default function JobsPage() {
       <Dialog open={showPreStart} onOpenChange={(open) => { if (!open) setShowPreStart(false); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{preStartMode === "guided" && preStartTemplate ? `Start Job — ${preStartTemplate.title}` : "Start Job"}</DialogTitle>
-            <DialogDescription>{preStartMode === "guided" ? "Add an optional work order number before starting." : "Start capturing without documentation."}</DialogDescription>
+            <DialogTitle>{preStartMode === "guided" && preStartTemplate ? `Start Job` : "Start Job"}</DialogTitle>
+            <DialogDescription>
+              {preStartMode === "guided" && preStartTemplate
+                ? preStartTemplate.title
+                : "Start capturing without documentation."}
+            </DialogDescription>
           </DialogHeader>
-          <div className="py-2">
-            <Label htmlFor="wo-ref">Work Order # <span className="text-slate-400 font-normal">(optional)</span></Label>
-            <Input id="wo-ref" value={preStartWO} onChange={(e) => setPreStartWO(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handlePreStartConfirm()} placeholder="e.g., WO-2024-001234" className="mt-1.5" autoFocus />
-          </div>
+
+          {/* Configuration variant selector — only shown when template has config-specific items */}
+          {preStartMode === "guided" && configVariants.length > 1 && (
+            <div className="py-2">
+              <Label htmlFor="config-variant">Configuration</Label>
+              <p className="text-xs text-slate-400 mt-0.5 mb-1.5">
+                This document has items specific to different configurations. Select which one applies to this job.
+              </p>
+              <Select value={selectedVariant} onValueChange={setSelectedVariant}>
+                <SelectTrigger className="w-full" id="config-variant">
+                  <SelectValue placeholder="Select configuration..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {configVariants.map((v) => (
+                    <SelectItem key={v} value={v}>{v}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Loading indicator while checking for variants */}
+          {preStartMode === "guided" && loadingVariants && (
+            <div className="flex items-center gap-2 py-2 text-xs text-slate-400">
+              <Loader2 className="h-3 w-3 animate-spin" /> Checking configuration options...
+            </div>
+          )}
+
           <DialogFooter>
-            <button type="button" className="text-sm text-slate-400 hover:text-slate-600 mr-auto" onClick={handleSkipStart}>Skip, just start</button>
-            <Button onClick={handlePreStartConfirm} disabled={!!startingId} style={{ backgroundColor: "rgb(37, 99, 235)", color: "white" }}>
+            <Button variant="ghost" onClick={() => setShowPreStart(false)}>Cancel</Button>
+            <Button
+              onClick={handlePreStartConfirm}
+              disabled={!!startingId || (configVariants.length > 1 && !selectedVariant)}
+              style={{ backgroundColor: "rgb(37, 99, 235)", color: "white" }}
+            >
               {startingId && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Start Job
             </Button>

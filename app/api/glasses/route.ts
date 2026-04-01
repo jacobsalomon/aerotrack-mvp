@@ -12,6 +12,7 @@ async function loadAuthorizedSession(sessionId: string, organizationId: string |
     select: {
       id: true,
       organizationId: true,
+      userId: true,
       sessionType: true,
       status: true,
     },
@@ -34,6 +35,12 @@ export async function POST(request: NextRequest) {
     const session = await loadAuthorizedSession(sessionId, auth.user.organizationId);
     if (!session || session.organizationId !== auth.user.organizationId) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+
+    // User-level ownership: regular USERs can only control their own sessions.
+    // Supervisors and admins can control any session in their org.
+    if (auth.user.role === "USER" && session.userId !== auth.user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     if (action !== "start" && action !== "stop") {
@@ -78,6 +85,12 @@ export async function GET(request: NextRequest) {
     const session = await loadAuthorizedSession(sessionId, auth.user.organizationId);
     if (!session || session.organizationId !== auth.user.organizationId) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+
+    // User-level ownership: regular USERs can only view their own sessions.
+    // Supervisors and admins can view any session in their org.
+    if (auth.user.role === "USER" && session.userId !== auth.user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const res = await fetch(

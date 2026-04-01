@@ -487,12 +487,28 @@ export default function InspectWorkspace({ session, component, justStarted }: Pr
   );
 
   const handleReassignSuggestion = useCallback(
-    (_suggestion: MeasurementSuggestion) => {
-      // TODO: show item picker for manual assignment
-      // For now, just dismiss — the measurement is already stored as unassigned
-      setSuggestions((prev) => prev.filter((s) => s.id !== _suggestion.id));
+    async (suggestion: MeasurementSuggestion, targetItemId: string) => {
+      // Reassign this measurement to the chosen target item via the glasses-capture API
+      try {
+        await fetch(apiUrl(`/api/inspect/sessions/${session.id}/glasses-capture`), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "measurement",
+            value: suggestion.value,
+            unit: suggestion.unit,
+            confidence: suggestion.match?.confidence ?? 0,
+            assignToItemId: targetItemId,
+          }),
+        });
+        // Force a full poll to pick up the new progress
+        lastPollRef.current = null;
+      } catch (err) {
+        console.error("[InspectWorkspace] reassign suggestion failed:", err);
+      }
+      setSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
     },
-    []
+    [session.id]
   );
 
   // Auto-accept threshold: 90%+ confidence measurements skip the toast
@@ -694,6 +710,9 @@ export default function InspectWorkspace({ session, component, justStarted }: Pr
       {!isReadOnly && (
         <MeasurementToast
           suggestions={suggestions}
+          reassignableItems={sections.flatMap((s) =>
+            s.items.map((i) => ({ id: i.id, itemCallout: i.itemCallout, parameterName: i.parameterName }))
+          )}
           onAccept={handleAcceptSuggestion}
           onReassign={handleReassignSuggestion}
           onDismiss={handleDismissSuggestion}

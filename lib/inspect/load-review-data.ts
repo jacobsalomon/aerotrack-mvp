@@ -151,6 +151,11 @@ export async function loadReviewData(sessionId: string, notFoundRedirect: string
   const isReconciling = hasActualWork && !session.reconciliationSummary && !session.signedOffAt;
   const hasNoEvidence = !hasActualWork && !session.signedOffAt;
 
+  // Extract reconciliation summary for the review screen (conflicts, match counts)
+  const reconciliationSummary = session.reconciliationSummary
+    ? (session.reconciliationSummary as Record<string, unknown>)
+    : null;
+
   // Serialize for client component (strips Prisma types, handles dates)
   return {
     session: JSON.parse(JSON.stringify(session)),
@@ -160,5 +165,6 @@ export async function loadReviewData(sessionId: string, notFoundRedirect: string
     hasNoEvidence,
     photoItemIds,
     photos: JSON.parse(JSON.stringify(photos)),
+    reconciliationSummary: reconciliationSummary ? JSON.parse(JSON.stringify(reconciliationSummary)) : null,
   };
 }

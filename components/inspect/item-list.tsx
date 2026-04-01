@@ -259,23 +259,23 @@ export default function ItemList({
     if (unmatchedTotal === 0) return null;
 
     return (
-      <div className="mt-4 bg-amber-500/5 rounded-lg border border-amber-500/20">
+      <div className="mt-4 bg-blue-500/5 rounded-lg border border-blue-500/20">
         <button
           onClick={() => setUnmatchedExpanded(!unmatchedExpanded)}
           className="w-full flex items-center gap-3 px-4 py-3 text-left"
         >
-          <AlertCircle className="h-4 w-4 text-amber-400 flex-shrink-0" />
-          <span className="flex-1 text-sm font-medium text-amber-300">
-            Unmatched ({unmatchedTotal})
+          <AlertCircle className="h-4 w-4 text-blue-400 flex-shrink-0" />
+          <span className="flex-1 text-sm font-medium text-blue-300">
+            Unassigned ({unmatchedTotal})
           </span>
           {unmatchedExpanded
-            ? <ChevronDown className="h-4 w-4 text-amber-400/50" />
-            : <ChevronRight className="h-4 w-4 text-amber-400/50" />
+            ? <ChevronDown className="h-4 w-4 text-blue-400/50" />
+            : <ChevronRight className="h-4 w-4 text-blue-400/50" />
           }
         </button>
 
         {unmatchedExpanded && (
-          <div className="px-4 pb-4 border-t border-amber-500/10 pt-3 space-y-3">
+          <div className="px-4 pb-4 border-t border-blue-500/10 pt-3 space-y-3">
             {/* Unmatched photos */}
             {unmatchedPhotos.length > 0 && (
               <div className="space-y-2">
@@ -511,61 +511,124 @@ export default function ItemList({
                       {renderTranscripts(item.id)}
                     </div>
 
-                    {/* Instance sub-rows */}
-                    <div className="px-2 pb-2 space-y-1">
-                      {Array.from({ length: item.instanceCount }, (_, idx) => {
-                        const instProgress = progressMap.get(progressKey(item.id, idx));
-                        const instStatus = instProgress?.status || "pending";
-                        const instSubmitting = submitting === `${item.id}:${idx}`;
+                    {/* Instance sub-rows — compact table for >6, normal rows otherwise */}
+                    {item.instanceCount > 6 ? (
+                      <div className="px-2 pb-2">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-white/40 text-xs uppercase tracking-wide border-b border-white/10">
+                              <th className="text-left py-1.5 px-2 w-10">#</th>
+                              <th className="text-left py-1.5 px-2">Value</th>
+                              <th className="text-left py-1.5 px-2 w-20">Status</th>
+                              <th className="text-right py-1.5 px-2 w-32">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Array.from({ length: item.instanceCount }, (_, idx) => {
+                              const instProgress = progressMap.get(progressKey(item.id, idx));
+                              const instStatus = instProgress?.status || "pending";
+                              const instSubmitting = submitting === `${item.id}:${idx}`;
 
-                        return (
-                          <div key={idx} className="flex items-center gap-3 px-3 py-2 rounded-md bg-white/[0.03]">
-                            <InspectionStatusIndicator status={instStatus} size="sm" />
-                            <span className={cn(
-                              "flex-1 text-sm",
-                              instStatus === "done" ? "text-white/50" : "text-white"
-                            )}>
-                              {instanceLabel(item, idx)}
-                            </span>
+                              return (
+                                <tr key={idx} className="border-b border-white/5 last:border-0">
+                                  <td className="py-1.5 px-2 text-white/50 font-mono">{idx + 1}</td>
+                                  <td className="py-1.5 px-2">
+                                    {instProgress?.measurement ? (
+                                      <span className={cn(
+                                        "font-mono",
+                                        instProgress.measurement.inTolerance === false ? "text-red-400" : "text-green-400"
+                                      )}>
+                                        {instProgress.measurement.value} {instProgress.measurement.unit}
+                                      </span>
+                                    ) : (
+                                      <span className="text-white/30">—</span>
+                                    )}
+                                  </td>
+                                  <td className="py-1.5 px-2">
+                                    <InspectionStatusIndicator status={instStatus} size="sm" />
+                                  </td>
+                                  <td className="py-1.5 px-2 text-right">
+                                    {instStatus === "pending" && !isReadOnly && !isOffline && (
+                                      <div className="flex gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
+                                        {isPassFail ? (
+                                          <>
+                                            <Button size="sm" className="bg-green-600 hover:bg-green-700 h-7 px-2 text-xs" disabled={instSubmitting} onClick={() => handlePassFail(item, "pass", idx)}>
+                                              P
+                                            </Button>
+                                            <Button size="sm" className="bg-red-600 hover:bg-red-700 h-7 px-2 text-xs" disabled={instSubmitting} onClick={() => handlePassFail(item, "fail", idx)}>
+                                              F
+                                            </Button>
+                                          </>
+                                        ) : (
+                                          <Button size="sm" className="bg-blue-600 hover:bg-blue-700 h-7 px-2 text-xs" disabled={instSubmitting} onClick={() => { setKeypadItemId(item.id); setKeypadInstanceIndex(idx); setKeypadValue(""); }}>
+                                            Enter
+                                          </Button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="px-2 pb-2 space-y-1">
+                        {Array.from({ length: item.instanceCount }, (_, idx) => {
+                          const instProgress = progressMap.get(progressKey(item.id, idx));
+                          const instStatus = instProgress?.status || "pending";
+                          const instSubmitting = submitting === `${item.id}:${idx}`;
 
-                            {/* Show captured value */}
-                            {instProgress?.measurement && (
+                          return (
+                            <div key={idx} className="flex items-center gap-3 px-3 py-2 rounded-md bg-white/[0.03]">
+                              <InspectionStatusIndicator status={instStatus} size="sm" />
                               <span className={cn(
-                                "text-sm font-mono flex-shrink-0",
-                                instProgress.measurement.inTolerance === false ? "text-red-400" : "text-green-400"
+                                "flex-1 text-sm",
+                                instStatus === "done" ? "text-white/50" : "text-white"
                               )}>
-                                {instProgress.measurement.value} {instProgress.measurement.unit}
+                                {instanceLabel(item, idx)}
                               </span>
-                            )}
 
-                            {/* Action buttons for pending instances */}
-                            {instStatus === "pending" && !isReadOnly && !isOffline && (
-                              <div className="flex gap-1.5 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                                {isPassFail ? (
-                                  <>
-                                    <Button size="sm" className="bg-green-600 hover:bg-green-700 h-9 px-3 text-xs" disabled={instSubmitting} onClick={() => handlePassFail(item, "pass", idx)}>
-                                      PASS
-                                    </Button>
-                                    <Button size="sm" className="bg-red-600 hover:bg-red-700 h-9 px-3 text-xs" disabled={instSubmitting} onClick={() => handlePassFail(item, "fail", idx)}>
-                                      FAIL
-                                    </Button>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Button size="sm" className="bg-blue-600 hover:bg-blue-700 h-11 px-3 text-sm" disabled={instSubmitting} onClick={() => { setKeypadItemId(item.id); setKeypadInstanceIndex(idx); setKeypadValue(""); }}>
-                                      Enter
-                                    </Button>
-                                    <Button size="sm" variant="outline" className="h-11 px-3 bg-transparent border-white/20 text-white/50 text-sm" disabled={instSubmitting} onClick={() => handleSkip(item, idx)}>
-                                      <SkipForward className="h-3.5 w-3.5 mr-1" /> Skip
-                                    </Button>
-                                  </>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                              {/* Show captured value */}
+                              {instProgress?.measurement && (
+                                <span className={cn(
+                                  "text-sm font-mono flex-shrink-0",
+                                  instProgress.measurement.inTolerance === false ? "text-red-400" : "text-green-400"
+                                )}>
+                                  {instProgress.measurement.value} {instProgress.measurement.unit}
+                                </span>
+                              )}
+
+                              {/* Action buttons for pending instances */}
+                              {instStatus === "pending" && !isReadOnly && !isOffline && (
+                                <div className="flex gap-1.5 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  {isPassFail ? (
+                                    <>
+                                      <Button size="sm" className="bg-green-600 hover:bg-green-700 h-9 px-3 text-xs" disabled={instSubmitting} onClick={() => handlePassFail(item, "pass", idx)}>
+                                        PASS
+                                      </Button>
+                                      <Button size="sm" className="bg-red-600 hover:bg-red-700 h-9 px-3 text-xs" disabled={instSubmitting} onClick={() => handlePassFail(item, "fail", idx)}>
+                                        FAIL
+                                      </Button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Button size="sm" className="bg-blue-600 hover:bg-blue-700 h-11 px-3 text-sm" disabled={instSubmitting} onClick={() => { setKeypadItemId(item.id); setKeypadInstanceIndex(idx); setKeypadValue(""); }}>
+                                        Enter
+                                      </Button>
+                                      <Button size="sm" variant="outline" className="h-11 px-3 bg-transparent border-white/20 text-white/50 text-sm" disabled={instSubmitting} onClick={() => handleSkip(item, idx)}>
+                                        <SkipForward className="h-3.5 w-3.5 mr-1" /> Skip
+                                      </Button>
+                                    </>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -787,6 +850,9 @@ export default function ItemList({
             unit={keypadItem.specUnit}
             specLow={keypadItem.specValueLow}
             specHigh={keypadItem.specValueHigh}
+            unitMetric={keypadItem.specUnitMetric || undefined}
+            specLowMetric={keypadItem.specValueLowMetric ?? undefined}
+            specHighMetric={keypadItem.specValueHighMetric ?? undefined}
           />
         </>
       )}

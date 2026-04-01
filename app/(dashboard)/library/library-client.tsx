@@ -388,6 +388,45 @@ export default function LibraryClient({
                   )}
                 </div>
 
+                {/* Extraction progress bar — shown when template is being processed */}
+                {isProcessing && (() => {
+                  const isIndexing = template.status === "pending_extraction" || template.status === "extracting_index";
+                  const classified = tp?.pagesClassified ?? 0;
+                  const totalToClassify = tp?.pagesToClassify ?? template.totalPages;
+                  const completedSections = tp?.completedSections ?? template.currentSectionIndex;
+                  const totalSections = tp?.totalSections ?? template.sectionCount;
+
+                  // Calculate progress percentage
+                  let percent = 0;
+                  if (isIndexing) {
+                    // Step 1: indexing pages (0-50% of overall bar)
+                    percent = totalToClassify > 0 ? Math.round((classified / totalToClassify) * 50) : 5;
+                  } else {
+                    // Step 2: extracting details (50-100% of overall bar)
+                    percent = totalSections > 0
+                      ? 50 + Math.round((completedSections / totalSections) * 50)
+                      : 55;
+                  }
+
+                  return (
+                    <div className="px-4 pt-3">
+                      <p className="text-xs font-medium text-blue-600 mb-1.5">
+                        {isIndexing
+                          ? `Step 1 of 2: Indexing pages${totalToClassify > 0 ? ` (${classified}/${totalToClassify})` : ""}...`
+                          : `Step 2 of 2: Extracting items${totalSections > 0 ? ` (section ${completedSections} of ${totalSections})` : ""}...`
+                        }
+                      </p>
+                      {/* Thin progress bar */}
+                      <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-blue-500 rounded-full transition-all duration-500 ease-out"
+                          style={{ width: `${Math.max(percent, 3)}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Card content — fixed height so all cards match */}
                 <div className="p-4 flex flex-col h-56">
                   {/* Doc ref + status */}
