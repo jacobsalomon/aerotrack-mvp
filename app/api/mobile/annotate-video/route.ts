@@ -1,7 +1,8 @@
 // POST /api/mobile/annotate-video — Real-time video annotation (Pass 1)
 // Takes a 2-minute video chunk, uploads to Gemini File API, runs Gemini 2.0 Flash
 // Returns timestamped searchable tags (part numbers, actions, tools, text)
-// Called automatically after each video chunk upload during capture
+// Kept as an explicit/manual endpoint; the backend auto-processing path now
+// handles routine post-upload annotation.
 // Protected by API key authentication
 
 // Allow up to 60 seconds for Gemini video annotation
@@ -18,6 +19,7 @@ import {
   deleteGeminiFile,
 } from "@/lib/ai/gemini";
 import { NextResponse } from "next/server";
+import { upsertEvidenceAnalysisState } from "@/lib/session-pipeline-state";
 
 export async function POST(request: Request) {
   const auth = await authenticateRequest(request);
@@ -30,6 +32,9 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
+
+  let evidenceIdForState: string | null = null;
+  let sessionIdForState: string | null = null;
 
   try {
     const body = await request.json();
@@ -69,11 +74,22 @@ export async function POST(request: Request) {
       );
     }
 
+    evidenceIdForState = evidenceId;
+    sessionIdForState = evidence.sessionId;
+
     // Check for existing annotations to prevent duplicates on retry
     const existingAnnotations = await prisma.videoAnnotation.findMany({
       where: { evidenceId },
     });
     if (existingAnnotations.length > 0) {
+      await upsertEvidenceAnalysisState(sessionIdForState, evidenceId, {
+        status: "completed",
+        updatedAt: new Date().toISOString(),
+        processor: "video_annotation",
+        empty: false,
+        metrics: { annotationCount: existingAnnotations.length },
+      });
+
       return NextResponse.json({
         success: true,
         cached: true,
@@ -137,6 +153,14 @@ export async function POST(request: Request) {
       savedAnnotations.push(saved);
     }
 
+    await upsertEvidenceAnalysisState(sessionIdForState, evidenceId, {
+      status: "completed",
+      updatedAt: new Date().toISOString(),
+      processor: "video_annotation",
+      empty: savedAnnotations.length === 0,
+      metrics: { annotationCount: savedAnnotations.length },
+    });
+
     // Step 5: Clean up the file from Gemini (don't leave files hanging around)
     deleteGeminiFile(uploadedFile.name).catch((err) =>
       console.warn("Failed to delete Gemini file:", err)
@@ -168,6 +192,16 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
+    if (evidenceIdForState && sessionIdForState) {
+      await upsertEvidenceAnalysisState(sessionIdForState, evidenceIdForState, {
+        status: "failed",
+        updatedAt: new Date().toISOString(),
+        processor: "video_annotation",
+        error:
+          error instanceof Error ? error.message : "Video annotation failed",
+      });
+    }
+
     console.error("Annotate video error:", error);
     return NextResponse.json(
       {

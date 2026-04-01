@@ -107,4 +107,28 @@ describe("AI fallback metadata", () => {
     expect(result.fallbackUsed).toBe(true);
     expect(result.fallbackReason).toBeUndefined();
   });
+
+  it("preserves live fallback usage for audio transcription", async () => {
+    callWithFallbackMock.mockResolvedValue({
+      data: {
+        text: "torque is 85 in-lbs",
+        duration: 12.4,
+        words: [],
+        language: "en",
+        model: "gpt-4o-mini-transcribe",
+      },
+      modelUsed: { id: "gpt-4o-mini-transcribe" },
+      fallbackLevel: 2,
+      latencyMs: 87,
+      fallbackUsed: true,
+      cachedFallback: false,
+    });
+
+    const { transcribeWithFallback } = await import("@/lib/ai/openai");
+    const audioBlob = new Blob(["fake audio"], { type: "audio/m4a" });
+    const result = await transcribeWithFallback(audioBlob, "audio.m4a");
+
+    expect(result.model).toBe("gpt-4o-mini-transcribe");
+    expect(result.usedFallback).toBe(true);
+  });
 });

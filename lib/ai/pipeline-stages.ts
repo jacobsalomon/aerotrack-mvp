@@ -39,7 +39,8 @@ export interface DraftingStageResult {
 }
 
 export async function runSessionAnalysisStage(
-  sessionId: string
+  sessionId: string,
+  options?: { evidenceIds?: string[] }
 ): Promise<AnalysisStageResult> {
   const stageStart = Date.now();
   const result: AnalysisStageResult = {
@@ -52,7 +53,12 @@ export async function runSessionAnalysisStage(
   const session = await prisma.captureSession.findUnique({
     where: { id: sessionId },
     include: {
-      evidence: { orderBy: { capturedAt: "asc" } },
+      evidence: {
+        where: options?.evidenceIds
+          ? { id: { in: options.evidenceIds } }
+          : undefined,
+        orderBy: { capturedAt: "asc" },
+      },
       user: true,
       organization: true,
     },
@@ -234,7 +240,8 @@ export async function runSessionAnalysisStage(
 }
 
 export async function runSessionDraftingStage(
-  sessionId: string
+  sessionId: string,
+  options?: { evidenceIds?: string[] }
 ): Promise<DraftingStageResult> {
   const existingDocs = await prisma.captureDocument.findMany({
     where: { sessionId },
@@ -258,7 +265,12 @@ export async function runSessionDraftingStage(
     const updatedSession = await prisma.captureSession.findUnique({
       where: { id: sessionId },
       include: {
-        evidence: { orderBy: { capturedAt: "asc" } },
+        evidence: {
+          where: options?.evidenceIds
+            ? { id: { in: options.evidenceIds } }
+            : undefined,
+          orderBy: { capturedAt: "asc" },
+        },
         user: true,
         organization: true,
         analysis: true,

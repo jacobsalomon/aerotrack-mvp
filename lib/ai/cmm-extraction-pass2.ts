@@ -218,6 +218,15 @@ interface Pass2Progress {
 // Max retries per page before giving up on that page and moving on
 const MAX_PAGE_RETRIES = 3;
 
+export type ExtractSectionPageResult = "continue" | "finalize" | "retry_later";
+
+export function getPass2RetryDisposition(
+  retryCount: number,
+  maxRetries = MAX_PAGE_RETRIES
+): "retry_later" | "skip_page" {
+  return retryCount < maxRetries ? "retry_later" : "skip_page";
+}
+
 // ── Batch OCR pre-warming ─────────────────────────────────────────────
 
 /**
@@ -322,12 +331,13 @@ export async function prewarmOcrForSection(
  * Returns:
  * - "continue" if more pages remain in this section
  * - "finalize" if all pages are done and the section needs finalization
+ * - "retry_later" if this page failed and should be retried on a later invocation
  */
 export async function extractSectionPage(
   templateId: string,
   sectionId: string,
   preloadedPdf?: Buffer,
-): Promise<"continue" | "finalize"> {
+): Promise<ExtractSectionPageResult> {
   const section = await prisma.inspectionSection.findUniqueOrThrow({
     where: { id: sectionId },
     include: { template: true },
@@ -455,7 +465,7 @@ export async function extractSectionPage(
 
     const errorMsg = error instanceof Error ? error.message : "Unknown error";
 
-    if (retryCount < MAX_PAGE_RETRIES) {
+    if (getPass2RetryDisposition(retryCount) === "retry_later") {
       // Save retry count but keep section as extracting — the runner will try this page again
       console.warn(
         `[Pass 2] ${section.figureNumber.startsWith("DOC-") ? section.title : `Fig. ${section.figureNumber}`} page ${pageIdx + 1} failed (attempt ${retryCount}/${MAX_PAGE_RETRIES}): ${errorMsg}`
@@ -468,8 +478,8 @@ export async function extractSectionPage(
         },
       });
 
-      // Return "continue" so the runner releases the lease and retries next poll
-      return "continue";
+      // Return "retry_later" so the runner releases the lease and retries on a later poll.
+      return "retry_later";
     }
 
     // Max retries exhausted — skip this page and move on to the next one
@@ -652,8 +662,8 @@ export async function extractSection(
   });
 
   // Process all pages one by one
-  let result: "continue" | "finalize" = "continue";
-  while (result === "continue") {
+  let result: ExtractSectionPageResult = "continue";
+  while (result === "continue" || result === "retry_later") {
     result = await extractSectionPage(templateId, sectionId);
   }
 

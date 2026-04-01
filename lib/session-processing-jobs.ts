@@ -12,6 +12,12 @@ import {
   runSessionDraftingStage,
 } from "@/lib/ai/pipeline-stages";
 import { verifyDocuments } from "@/lib/ai/verify";
+import {
+  assessEvidenceReadiness,
+  clearRefreshAndProcessingSnapshot,
+  getSessionPipelineState,
+  setProcessingSnapshot,
+} from "@/lib/session-pipeline-state";
 
 const JOB_LEASE_MS = 2 * 60 * 1000;
 
@@ -246,7 +252,155 @@ export async function scheduleSessionProcessingIfNeeded(session: {
   }
 }
 
+async function ensureActiveProcessingSnapshot(sessionId: string, summary: unknown) {
+  const pipelineState = getSessionPipelineState(summary);
+  if (
+    pipelineState.activeSnapshot &&
+    pipelineState.activeSnapshot.evidenceIds.length > 0
+  ) {
+    return {
+      ready: true,
+      snapshot: pipelineState.activeSnapshot,
+      pendingEvidenceIds: [] as string[],
+    };
+  }
+
+  const session = await prisma.captureSession.findUnique({
+    where: { id: sessionId },
+    select: {
+      completedAt: true,
+      reconciliationSummary: true,
+      evidence: {
+        orderBy: [{ capturedAt: "asc" }, { createdAt: "asc" }],
+        select: {
+          id: true,
+          type: true,
+          capturedAt: true,
+          createdAt: true,
+          aiExtraction: true,
+          transcription: true,
+          _count: {
+            select: {
+              videoAnnotations: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!session) {
+    throw new Error("Session not found while checking evidence readiness");
+  }
+
+  const readiness = assessEvidenceReadiness({
+    evidence: session.evidence.map((item) => ({
+      id: item.id,
+      type: item.type,
+      capturedAt: item.capturedAt,
+      createdAt: item.createdAt,
+      aiExtraction: item.aiExtraction,
+      transcription: item.transcription,
+      videoAnnotationCount: item._count.videoAnnotations,
+    })),
+    summary: session.reconciliationSummary,
+    completedAt: session.completedAt,
+  });
+
+  if (!readiness.ready) {
+    return readiness;
+  }
+
+  await setProcessingSnapshot(sessionId, readiness.snapshot);
+
+  return {
+    ready: true,
+    snapshot: readiness.snapshot,
+    pendingEvidenceIds: [] as string[],
+  };
+}
+
+async function resetJobForPipelineRefresh(jobId: string, sessionId: string) {
+  await prisma.$transaction(async (tx) => {
+    await tx.sessionAnalysis.deleteMany({
+      where: { sessionId },
+    });
+
+    await tx.captureDocument.deleteMany({
+      where: { sessionId },
+    });
+
+    await tx.sessionPackage.deleteMany({
+      where: { sessionId },
+    });
+
+    await tx.sessionProcessingStage.updateMany({
+      where: {
+        jobId,
+        stage: { in: [...PROCESSING_STAGE_SEQUENCE] },
+      },
+      data: {
+        status: "queued",
+        startedAt: null,
+        completedAt: null,
+        lastError: null,
+        errorMetadata: Prisma.DbNull,
+        latencyMs: null,
+      },
+    });
+
+    await tx.sessionProcessingJob.update({
+      where: { id: jobId },
+      data: {
+        currentStage: "queued",
+        userFacingState: "Captured",
+        startedAt: null,
+        completedAt: null,
+        failedAt: null,
+        lastError: null,
+        lastErrorStage: null,
+        runnerToken: null,
+        leaseExpiresAt: null,
+      },
+    });
+
+    await tx.captureSession.update({
+      where: { id: sessionId },
+      data: {
+        status: "capture_complete",
+      },
+    });
+  });
+
+  await clearRefreshAndProcessingSnapshot(sessionId);
+}
+
+async function prepareTerminalJobForRefresh(jobId: string) {
+  const job = await prisma.sessionProcessingJob.findUnique({
+    where: { id: jobId },
+    select: {
+      id: true,
+      currentStage: true,
+      sessionId: true,
+      session: {
+        select: {
+          reconciliationSummary: true,
+        },
+      },
+    },
+  });
+
+  if (!job) return;
+  if (job.currentStage !== "completed" && job.currentStage !== "failed") return;
+
+  const pipelineState = getSessionPipelineState(job.session.reconciliationSummary);
+  if (!pipelineState.needsRefresh) return;
+
+  await resetJobForPipelineRefresh(jobId, job.sessionId);
+}
+
 async function processSessionProcessingJob(jobId: string) {
+  await prepareTerminalJobForRefresh(jobId);
   const runnerToken = await acquireJobLease(jobId);
   if (!runnerToken) return;
 
@@ -262,6 +416,7 @@ async function processSessionProcessingJob(jobId: string) {
               userId: true,
               organizationId: true,
               completedAt: true,
+              reconciliationSummary: true,
             },
           },
           stages: true,
@@ -271,6 +426,15 @@ async function processSessionProcessingJob(jobId: string) {
       if (!job) return;
       if (job.currentStage === "completed" || job.currentStage === "failed") return;
       if (job.session.status === "cancelled") return;
+
+      const pipelineState = getSessionPipelineState(
+        job.session.reconciliationSummary
+      );
+      if (pipelineState.needsRefresh) {
+        await resetJobForPipelineRefresh(jobId, job.session.id);
+        scheduleSessionProcessing(jobId);
+        return;
+      }
 
       const nextStage = PROCESSING_STAGE_SEQUENCE.find((stage) => {
         const record = job.stages.find((entry) => entry.stage === stage);
@@ -296,12 +460,26 @@ async function processSessionProcessingJob(jobId: string) {
         return;
       }
 
-      await markStageInProgress(jobId, nextStage, job.session.id);
+      const snapshotReadiness = await ensureActiveProcessingSnapshot(
+        job.session.id,
+        job.session.reconciliationSummary
+      );
+      if (!snapshotReadiness.ready) {
+        console.log(
+          `[Pipeline] Waiting on evidence analysis for session ${job.session.id}: ${snapshotReadiness.pendingEvidenceIds.join(", ")}`
+        );
+        return;
+      }
+
+      const evidenceIds = snapshotReadiness.snapshot.evidenceIds;
+      const attemptCount = await markStageInProgress(jobId, nextStage, job.session.id);
       const stageStart = Date.now();
 
       try {
         if (nextStage === "analyzing") {
-          const analysisResult = await runSessionAnalysisStage(job.session.id);
+          const analysisResult = await runSessionAnalysisStage(job.session.id, {
+            evidenceIds,
+          });
           if (
             !analysisResult.transcriptionStitch.success &&
             !analysisResult.videoAnalysis.success
@@ -323,6 +501,7 @@ async function processSessionProcessingJob(jobId: string) {
               videoConfidence: analysisResult.videoAnalysis.confidence ?? null,
               processingTimeMs: analysisResult.processingTimeMs,
               warnings: analysisResult.warnings,
+              evidenceSnapshot: evidenceIds,
             },
             legacyStatus: "analysis_complete",
           });
@@ -339,7 +518,9 @@ async function processSessionProcessingJob(jobId: string) {
             });
           }
         } else if (nextStage === "drafting") {
-          const draftingResult = await runSessionDraftingStage(job.session.id);
+          const draftingResult = await runSessionDraftingStage(job.session.id, {
+            evidenceIds,
+          });
           if (!draftingResult.success) {
             throw new Error(draftingResult.error ?? "Drafting stage failed");
           }
@@ -354,6 +535,7 @@ async function processSessionProcessingJob(jobId: string) {
               documentTypes: draftingResult.documentTypes,
               estimatedCost: draftingResult.estimatedCost,
               warnings: draftingResult.warnings,
+              evidenceSnapshot: evidenceIds,
             },
             legacyStatus: "documents_generated",
           });
@@ -378,7 +560,8 @@ async function processSessionProcessingJob(jobId: string) {
         } else if (nextStage === "verifying") {
           const verificationResult = await verifyDocuments(
             job.session.id,
-            job.session.userId
+            job.session.userId,
+            { evidenceIds }
           );
 
           await markStageCompleted({
@@ -386,11 +569,14 @@ async function processSessionProcessingJob(jobId: string) {
             sessionId: job.session.id,
             stage: nextStage,
             latencyMs: Date.now() - stageStart,
-            metadata: verificationResult,
+            metadata: {
+              ...verificationResult,
+              evidenceSnapshot: evidenceIds,
+            },
             legacyStatus: "verified",
           });
         } else if (nextStage === "packaging") {
-          const packageRecord = await buildSessionPackage(job.session.id);
+          const packageRecord = await buildSessionPackage(job.session.id, evidenceIds);
 
           await markStageCompleted({
             jobId,
@@ -400,6 +586,7 @@ async function processSessionProcessingJob(jobId: string) {
             metadata: {
               packageId: packageRecord.id,
               packageType: packageRecord.packageType,
+              evidenceSnapshot: evidenceIds,
             },
             legacyStatus: "completed",
           });
@@ -414,9 +601,6 @@ async function processSessionProcessingJob(jobId: string) {
           });
         }
       } catch (error) {
-        // Check the current attempt count for this stage to decide whether to retry
-        const stageRecord = job.stages.find((s) => s.stage === nextStage);
-        const attemptCount = stageRecord?.attemptCount ?? 1;
         const MAX_ATTEMPTS = 3;
 
         if (attemptCount < MAX_ATTEMPTS) {
@@ -506,10 +690,10 @@ async function markStageInProgress(
   jobId: string,
   stage: string,
   sessionId: string
-) {
+): Promise<number> {
   const now = new Date();
-  await prisma.$transaction(async (tx) => {
-    await tx.sessionProcessingStage.update({
+  return prisma.$transaction(async (tx) => {
+    const updatedStage = await tx.sessionProcessingStage.update({
       where: { jobId_stage: { jobId, stage } },
       data: {
         status: "in_progress",
@@ -535,6 +719,8 @@ async function markStageInProgress(
       where: { id: sessionId },
       data: { status: stageToLegacyInProgressStatus(stage) },
     });
+
+    return updatedStage.attemptCount;
   });
 }
 
@@ -656,11 +842,12 @@ async function markStageFailed(args: {
   });
 }
 
-async function buildSessionPackage(sessionId: string) {
+async function buildSessionPackage(sessionId: string, evidenceIds?: string[]) {
   const session = await prisma.captureSession.findUnique({
     where: { id: sessionId },
     include: {
       evidence: {
+        where: evidenceIds ? { id: { in: evidenceIds } } : undefined,
         select: {
           id: true,
           type: true,
@@ -692,6 +879,7 @@ async function buildSessionPackage(sessionId: string) {
   const manifest = {
     sessionId,
     packagedAt: new Date().toISOString(),
+    evidenceSnapshot: evidenceIds ?? session.evidence.map((item) => item.id),
     evidenceCount: session.evidence.length,
     documentCount: session.documents.length,
     documents: session.documents.map((doc) => ({

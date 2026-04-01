@@ -199,8 +199,16 @@ export async function processSection(templateId: string): Promise<ExtractionResu
     while (Date.now() - startTime < SOFT_DEADLINE_MS) {
       try {
         const pageResult = await extractSectionPage(templateId, claimedSectionId, pdfBytes);
-        stepsCompleted++;
         rateLimitRetries = 0; // Reset on success
+
+        if (pageResult === "retry_later") {
+          lastStatus = "retry_deferred";
+          detail = `Fig. ${claimedSection.figureNumber}: page retry deferred to a later cron tick`;
+          console.log(`[extract] ${detail}`);
+          break;
+        }
+
+        stepsCompleted++;
 
         if (pageResult === "finalize") {
           // All pages done — finalize this section

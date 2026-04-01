@@ -11,8 +11,19 @@ import { Prisma } from "@/generated/prisma/client";
 import { authenticateRequest } from "@/lib/mobile-auth";
 import { analyzeImageWithFallback } from "@/lib/ai/openai";
 import { NextResponse } from "next/server";
+import { upsertEvidenceAnalysisState } from "@/lib/session-pipeline-state";
 
 const PRIVILEGED_ROLES = new Set(["SUPERVISOR", "ADMIN"]);
+
+function buildCompletedState(extractedFieldCount: number) {
+  return {
+    status: "completed" as const,
+    updatedAt: new Date().toISOString(),
+    processor: "photo_ocr",
+    empty: extractedFieldCount === 0,
+    metrics: { extractedFieldCount },
+  };
+}
 
 export async function POST(request: Request) {
   const auth = await authenticateRequest(request);
@@ -25,6 +36,9 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
+
+  let evidenceIdForState: string | null = null;
+  let sessionIdForState: string | null = null;
 
   try {
     const body = await request.json();
@@ -82,6 +96,8 @@ export async function POST(request: Request) {
       }
 
       authorizedSessionId = evidence.session.id;
+      evidenceIdForState = evidenceId;
+      sessionIdForState = evidence.session.id;
     }
 
     if (sessionId) {
@@ -137,6 +153,24 @@ export async function POST(request: Request) {
         where: { id: evidenceId },
         data: { aiExtraction: extraction as unknown as Prisma.InputJsonValue },
       });
+
+      const extractedFieldCount =
+        [
+          extraction.partNumber,
+          extraction.serialNumber,
+          extraction.description,
+          extraction.manufacturer,
+        ].filter((value) => typeof value === "string" && value.trim().length > 0)
+          .length +
+        extraction.allText.filter((value) => value.trim().length > 0).length;
+
+      if (sessionIdForState) {
+        await upsertEvidenceAnalysisState(
+          sessionIdForState,
+          evidenceId,
+          buildCompletedState(extractedFieldCount)
+        );
+      }
     }
 
     // Try to match a component in our database by part number or serial number
@@ -198,6 +232,19 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
+    if (evidenceIdForState && sessionIdForState) {
+      await upsertEvidenceAnalysisState(
+        sessionIdForState,
+        evidenceIdForState,
+        {
+          status: "failed",
+          updatedAt: new Date().toISOString(),
+          processor: "photo_ocr",
+          error: error instanceof Error ? error.message : "Image analysis failed",
+        }
+      );
+    }
+
     console.error("Analyze image error:", error);
     return NextResponse.json(
       { success: false, error: "Image analysis failed" },
