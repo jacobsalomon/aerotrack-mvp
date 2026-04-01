@@ -10,7 +10,9 @@ import { Mic, MicOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiUrl } from "@/lib/api-url";
 
-const CHUNK_INTERVAL_MS = 30_000;
+// 15-second chunks for faster real-time transcript feedback.
+// Server-side Whisper prompt context handles cross-chunk continuity.
+const CHUNK_INTERVAL_MS = 15_000;
 
 const SUPPORTED_MIME_TYPES = [
   "audio/webm;codecs=opus",
@@ -21,10 +23,29 @@ const SUPPORTED_MIME_TYPES = [
 
 type RecState = "starting" | "recording" | "muted" | "denied" | "unavailable";
 
+export interface TranscriptSegment {
+  text: string;
+  inspectionItemId: string | null;
+  itemCallout: string | null;
+  parameterName: string | null;
+}
+
+export interface MeasurementHighlight {
+  value: number;
+  unit: string;
+  rawExcerpt: string;
+  itemId: string | null;
+  parameterName: string | null;
+}
+
 interface Props {
   sessionId: string;
   /** Called when a chunk is transcribed — parent can use this for measurement extraction */
   onTranscript?: (text: string) => void;
+  /** Called with per-item transcript segments when the AI splits a chunk */
+  onTranscriptSegments?: (segments: TranscriptSegment[]) => void;
+  /** Called with measurement highlights to mark within transcripts */
+  onMeasurementHighlights?: (highlights: MeasurementHighlight[]) => void;
 }
 
 function getSupportedMimeType(): string {
@@ -44,7 +65,7 @@ function formatTime(seconds: number) {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
-export default function InspectionRecorder({ sessionId, onTranscript }: Props) {
+export default function InspectionRecorder({ sessionId, onTranscript, onTranscriptSegments, onMeasurementHighlights }: Props) {
   const [state, setState] = useState<RecState>("starting");
   const [elapsed, setElapsed] = useState(0);
 
@@ -80,15 +101,46 @@ export default function InspectionRecorder({ sessionId, onTranscript }: Props) {
             body: formData,
           });
           const payload = await res.json().catch(() => null);
-          if (payload?.data?.transcription?.text) {
-            onTranscript?.(payload.data.transcription.text);
+          // Emit per-item transcript segments if AI splitting succeeded.
+          // Fall back to the full corrected transcript if segments aren't available.
+          const segments = payload?.data?.transcriptSegments;
+          if (segments && Array.isArray(segments) && segments.length > 0) {
+            onTranscriptSegments?.(segments);
+          } else {
+            const transcriptText =
+              payload?.data?.transcription?.correctedText ||
+              payload?.data?.transcription?.text;
+            if (transcriptText) {
+              onTranscript?.(transcriptText);
+            }
+          }
+          // Emit measurement highlights for transcript text highlighting
+          const measurements = payload?.data?.measurements;
+          if (measurements && Array.isArray(measurements) && measurements.length > 0) {
+            const highlights: MeasurementHighlight[] = [];
+            for (const m of measurements) {
+              const sources = m?.sources;
+              if (!Array.isArray(sources) || sources.length === 0) continue;
+              const excerpt = sources[0]?.rawExcerpt;
+              if (!excerpt) continue;
+              highlights.push({
+                value: m.value,
+                unit: m.unit,
+                rawExcerpt: excerpt,
+                itemId: m.inspectionItemId || null,
+                parameterName: m.parameterName || null,
+              });
+            }
+            if (highlights.length > 0) {
+              onMeasurementHighlights?.(highlights);
+            }
           }
         })
         .catch((err) => {
           console.error("[InspectionRecorder] chunk upload failed:", err);
         });
     },
-    [sessionId, onTranscript]
+    [sessionId, onTranscript, onTranscriptSegments, onMeasurementHighlights]
   );
 
   // Stop current recorder, collect blob, restart on same stream

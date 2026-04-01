@@ -13,7 +13,7 @@ import ProgressBar from "@/components/inspect/progress-bar";
 import NetworkBanner, { useOnlineStatus } from "@/components/inspect/network-banner";
 import NextItemButton from "@/components/inspect/next-item-button";
 import ItemSearch from "@/components/inspect/item-search";
-import InspectionRecorder from "@/components/inspect/inspection-recorder";
+import InspectionRecorder, { type TranscriptSegment, type MeasurementHighlight } from "@/components/inspect/inspection-recorder";
 import MeasurementToast, { type MeasurementSuggestion } from "@/components/inspect/measurement-toast";
 import PdfViewer from "@/components/library/pdf-viewer";
 import { QRPairingDialog } from "@/components/qr-pairing-dialog";
@@ -186,6 +186,60 @@ export default function InspectWorkspace({ session, component, justStarted }: Pr
   // Photo evidence map: inspectionItemId (or "general") → array of photos
   const [photoMap, setPhotoMap] = useState<Map<string, PhotoEvidence[]>>(new Map());
 
+  // Transcript chunks per item: itemId → array of transcript strings (newest first)
+  // "__unmatched__" key holds transcripts captured when no item is expanded
+  const [transcriptMap, setTranscriptMap] = useState<Map<string, string[]>>(new Map());
+  const activeExpandedItemRef = useRef<string | null>(null);
+
+  // Callback for ItemList to report which item is currently expanded
+  const handleExpandedItemChange = useCallback((itemId: string | null) => {
+    activeExpandedItemRef.current = itemId;
+  }, []);
+
+  // Fallback for when AI splitting isn't available — put transcript on expanded item
+  const handleTranscript = useCallback((text: string) => {
+    if (!text.trim()) return;
+    const key = activeExpandedItemRef.current || "__unmatched__";
+    setTranscriptMap((prev) => {
+      const next = new Map(prev);
+      const chunks = next.get(key) || [];
+      next.set(key, [text, ...chunks]); // newest first
+      return next;
+    });
+  }, []);
+
+  // Callback for AI-split transcript segments — each segment goes to the right item
+  const handleTranscriptSegments = useCallback((segments: TranscriptSegment[]) => {
+    setTranscriptMap((prev) => {
+      const next = new Map(prev);
+      for (const seg of segments) {
+        if (!seg.text.trim()) continue;
+        const key = seg.inspectionItemId || "__unmatched__";
+        const chunks = next.get(key) || [];
+        next.set(key, [seg.text, ...chunks]); // newest first
+      }
+      return next;
+    });
+  }, []);
+
+  // Measurement highlights — excerpts to highlight within transcript text
+  // Keyed by item ID (or "__unmatched__"), value is array of rawExcerpt strings
+  const [highlightMap, setHighlightMap] = useState<Map<string, string[]>>(new Map());
+
+  const handleMeasurementHighlights = useCallback((highlights: MeasurementHighlight[]) => {
+    setHighlightMap((prev) => {
+      const next = new Map(prev);
+      for (const h of highlights) {
+        const key = h.itemId || "__unmatched__";
+        const arr = next.get(key) || [];
+        if (!arr.includes(h.rawExcerpt)) {
+          next.set(key, [...arr, h.rawExcerpt]);
+        }
+      }
+      return next;
+    });
+  }, []);
+
   // Get the active section's items filtered by config variant
   const activeSection = sections.find((s) => s.id === activeSectionId);
   const activeItems = activeSection?.items.filter((item) => {
@@ -330,6 +384,32 @@ export default function InspectWorkspace({ session, component, justStarted }: Pr
       lastPollRef.current = null;
     }, 500);
   }
+
+  // Called when a photo is reassigned from the Unmatched section
+  const handlePhotoReassigned = useCallback(async (evidenceId: string, newItemId: string) => {
+    // Optimistic UI update: move the photo from "general" to the target item
+    setPhotoMap((prev) => {
+      const next = new Map(prev);
+      const general = [...(next.get("general") || [])];
+      const photoIdx = general.findIndex((p) => p.id === evidenceId);
+      if (photoIdx === -1) return prev;
+      const [photo] = general.splice(photoIdx, 1);
+      next.set("general", general);
+      const target = [...(next.get(newItemId) || []), { ...photo, inspectionItemId: newItemId }];
+      next.set(newItemId, target);
+      return next;
+    });
+    // Persist to server
+    try {
+      await fetch(apiUrl(`/api/inspect/sessions/${session.id}/photos`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ evidenceId, inspectionItemId: newItemId }),
+      });
+    } catch (err) {
+      console.error("[InspectWorkspace] photo reassign failed:", err);
+    }
+  }, [session.id]);
 
   // Called when a photo is uploaded from ItemList
   function handlePhotoUploaded(photo: PhotoEvidence) {
@@ -500,7 +580,7 @@ export default function InspectWorkspace({ session, component, justStarted }: Pr
         photoCount={photoCount}
         onReview={handleReview}
         recorderSlot={
-          !isReadOnly ? <InspectionRecorder sessionId={session.id} /> : undefined
+          !isReadOnly ? <InspectionRecorder sessionId={session.id} onTranscript={handleTranscript} onTranscriptSegments={handleTranscriptSegments} onMeasurementHighlights={handleMeasurementHighlights} /> : undefined
         }
         searchSlot={
           <ItemSearch
@@ -552,11 +632,15 @@ export default function InspectWorkspace({ session, component, justStarted }: Pr
             items={activeItems}
             progressMap={progressMap}
             photoMap={photoMap}
+            transcriptMap={transcriptMap}
+            highlightMap={highlightMap}
             sessionId={session.id}
             isReadOnly={isReadOnly}
             isOffline={!isOnline}
             onItemCompleted={handleItemCompleted}
             onPhotoUploaded={handlePhotoUploaded}
+            onPhotoReassigned={handlePhotoReassigned}
+            onExpandedItemChange={handleExpandedItemChange}
             referenceImageUrls={activeSection?.referenceImageUrls || []}
             targetItemId={targetItemId}
             onTargetItemHandled={() => setTargetItemId(null)}

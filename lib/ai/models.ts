@@ -144,6 +144,29 @@ export const OCR_MODELS: ModelConfig[] = [
   },
 ];
 
+// ── Transcript Splitting Models (split transcript by inspection item) ──
+// Accuracy is critical — use the best models available
+export const TRANSCRIPT_SPLIT_MODELS: ModelConfig[] = [
+  {
+    id: "claude-sonnet-4-20250514",
+    provider: "anthropic",
+    displayName: "Claude Sonnet 4.6",
+    inputCostPer1M: 3.0,
+    outputCostPer1M: 15.0,
+    contextWindow: 200_000,
+    supportsJsonOutput: true,
+  },
+  {
+    id: "gpt-5.4",
+    provider: "openai",
+    displayName: "GPT-5.4 (fallback split)",
+    inputCostPer1M: 2.50,
+    outputCostPer1M: 10.0,
+    contextWindow: 128_000,
+    supportsJsonOutput: true,
+  },
+];
+
 // ── Document Generation Models ──────────────────────────────────────
 export const GENERATION_MODELS: ModelConfig[] = [
   {

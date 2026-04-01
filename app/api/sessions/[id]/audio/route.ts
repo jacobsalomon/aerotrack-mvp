@@ -10,6 +10,7 @@ import { correctTranscriptSegment } from "@/lib/ai/transcript-correction";
 import { extractMeasurementsFromTranscript, getExtractionContext } from "@/lib/ai/measurement-extraction";
 import { recordMeasurement } from "@/lib/measurement-ledger";
 import { detectPassFail, processVoicePassFail } from "@/lib/audio/voice-pass-fail";
+import { splitTranscriptByItem, type TranscriptSegment } from "@/lib/ai/transcript-splitting";
 import { getCallHistory } from "@/lib/ai/provider";
 import { getOrgInstructions } from "@/lib/ai/org-context";
 import { NextResponse } from "next/server";
@@ -89,12 +90,16 @@ export async function POST(request: Request, { params }: RouteParams) {
     // Step 1b: Look up the previous chunk's corrected transcript for cross-chunk continuity.
     // Passing it as context to the transcription API prevents words/numbers from being
     // split when they fall on a chunk boundary (e.g. "A2450" → "18" + "2450").
+    // Also fetch the tail words for server-side overlap deduplication.
     const previousChunk = await prisma.captureEvidence.findFirst({
       where: { sessionId, type: "AUDIO_CHUNK" },
       orderBy: { capturedAt: "desc" },
-      select: { transcription: true },
+      select: { transcription: true, aiExtraction: true },
     });
     const previousTranscript = previousChunk?.transcription || undefined;
+    // Tail words from the previous chunk — used for dedup after transcription
+    const prevTailWords: string[] =
+      (previousChunk?.aiExtraction as Record<string, unknown>)?.overlapTailWords as string[] ?? [];
 
     // Step 2: Transcribe using a fresh File from the buffer (original stream is consumed)
     console.log(`[Audio] Step 2: Starting transcription (chunk size=${audioBuffer.byteLength} bytes, type=${mimeType}, hasPrevContext=${!!previousTranscript})...`);
@@ -108,7 +113,31 @@ export async function POST(request: Request, { params }: RouteParams) {
       console.error(`[Audio] Step 2 FAILED after ${Date.now() - t2}ms: ${msg}`);
       throw transcriptionError;
     }
-    const transcriptText = transcription.text.trim();
+    let transcriptText = transcription.text.trim();
+
+    // Step 2b: Server-side overlap dedup — if the previous chunk stored tail words,
+    // check if this chunk's transcript starts with those same words (Whisper's prompt
+    // context can cause it to re-emit trailing context). Trim the overlap.
+    if (prevTailWords.length > 0 && transcriptText) {
+      const currentWords = transcriptText.split(/\s+/);
+      // Check for overlap: find the longest prefix of currentWords that matches
+      // a suffix of prevTailWords (case-insensitive, max 8 words)
+      let overlapLen = 0;
+      const maxCheck = Math.min(prevTailWords.length, currentWords.length, 8);
+      for (let len = maxCheck; len >= 2; len--) {
+        const prevSuffix = prevTailWords.slice(-len).map(w => w.toLowerCase());
+        const curPrefix = currentWords.slice(0, len).map(w => w.toLowerCase());
+        if (prevSuffix.every((w, i) => w === curPrefix[i])) {
+          overlapLen = len;
+          break;
+        }
+      }
+      if (overlapLen > 0) {
+        console.log(`[Audio] Step 2b: Dedup — trimming ${overlapLen} overlapping words from start of transcript`);
+        transcriptText = currentWords.slice(overlapLen).join(" ");
+      }
+    }
+
     console.log(
       `[Audio] Step 2 done in ${Date.now() - t2}ms: "${transcriptText.slice(0, 100)}" (model=${transcription.model})`
     );
@@ -134,14 +163,47 @@ export async function POST(request: Request, { params }: RouteParams) {
       const t4 = Date.now();
       try {
         correctedText = await correctTranscriptSegment(transcriptText, orgInstructions);
-        // Update the evidence record with the corrected transcript
+        // Store corrected transcript + tail words for next chunk's overlap dedup.
+        // Tail words = last 8 words of the corrected text.
+        const correctedWords = correctedText.split(/\s+/).filter(Boolean);
+        const overlapTailWords = correctedWords.slice(-8);
         await prisma.captureEvidence.update({
           where: { id: evidence.id },
-          data: { transcription: correctedText },
+          data: {
+            transcription: correctedText,
+            aiExtraction: { overlapTailWords },
+          },
         });
         console.log(`[Audio] Step 4 done in ${Date.now() - t4}ms: "${correctedText.slice(0, 100)}"`);
       } catch (correctionError) {
         console.error("[Audio] LLM correction failed, using raw transcript:", correctionError);
+      }
+    }
+
+    // Step 4c: Split transcript by inspection item — determines which
+    // item(s) the mechanic is talking about in this chunk.
+    let transcriptSegments: TranscriptSegment[] = [];
+    if (correctedText && session.sessionType === "inspection") {
+      console.log("[Audio] Step 4c: Splitting transcript by inspection item...");
+      const t4c = Date.now();
+      try {
+        transcriptSegments = await splitTranscriptByItem(correctedText, sessionId);
+        // Store segments in aiExtraction alongside overlap tail words
+        const existingExtraction = (await prisma.captureEvidence.findUnique({
+          where: { id: evidence.id },
+          select: { aiExtraction: true },
+        }))?.aiExtraction as Record<string, unknown> ?? {};
+        await prisma.captureEvidence.update({
+          where: { id: evidence.id },
+          data: {
+            aiExtraction: { ...existingExtraction, transcriptSegments: JSON.parse(JSON.stringify(transcriptSegments)) },
+          },
+        });
+        console.log(`[Audio] Step 4c done in ${Date.now() - t4c}ms: ${transcriptSegments.length} segment(s)`);
+      } catch (splitError) {
+        console.error("[Audio] Transcript splitting failed:", splitError);
+        // Fallback: whole transcript as one unmatched segment
+        transcriptSegments = [{ text: correctedText, inspectionItemId: null, itemCallout: null, parameterName: null }];
       }
     }
 
@@ -227,6 +289,7 @@ export async function POST(request: Request, { params }: RouteParams) {
           duration: transcription.duration,
           model: transcription.model,
         },
+        transcriptSegments,
         measurementsExtracted: extracted.length,
         measurements: recorded,
       },

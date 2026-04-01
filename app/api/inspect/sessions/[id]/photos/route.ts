@@ -146,3 +146,43 @@ export async function GET(request: Request, { params }: RouteContext) {
     return NextResponse.json({ success: false, error: "Failed to load photos" }, { status: 500 });
   }
 }
+
+// PATCH — reassign a photo to a different inspection item
+export async function PATCH(request: Request, { params }: RouteContext) {
+  const authResult = await requireAuth(request);
+  if (authResult.error) return authResult.error;
+
+  try {
+    if (!authResult.user.organizationId) {
+      return NextResponse.json({ success: false, error: "No organization assigned" }, { status: 403 });
+    }
+
+    const { id: sessionId } = await params;
+    const body = await request.json();
+    const { evidenceId, inspectionItemId } = body as { evidenceId: string; inspectionItemId: string };
+
+    if (!evidenceId || !inspectionItemId) {
+      return NextResponse.json({ success: false, error: "evidenceId and inspectionItemId required" }, { status: 400 });
+    }
+
+    // Verify session ownership
+    const session = await prisma.captureSession.findUnique({
+      where: { id: sessionId },
+      select: { id: true, organizationId: true },
+    });
+    if (!session || session.organizationId !== authResult.user.organizationId) {
+      return NextResponse.json({ success: false, error: "Session not found" }, { status: 404 });
+    }
+
+    // Update the evidence record
+    await prisma.captureEvidence.update({
+      where: { id: evidenceId, sessionId },
+      data: { inspectionItemId },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("[inspect/sessions/[id]/photos PATCH]", error);
+    return NextResponse.json({ success: false, error: "Failed to reassign photo" }, { status: 500 });
+  }
+}

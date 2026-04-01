@@ -3,7 +3,7 @@
 // Inspection review screen
 // Summary card, problems at top, section-by-section breakdown, findings, sign-off
 
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { apiUrl } from "@/lib/api-url";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -107,7 +107,7 @@ interface Props {
   photos?: PhotoData[];
 }
 
-export default function ReviewScreen({ session, component, unassignedCount, isReconciling, photoItemIds = [], photos = [] }: Props) {
+export default function ReviewScreen({ session, component, unassignedCount, isReconciling, photoItemIds = [], photos: initialPhotos = [] }: Props) {
   const router = useRouter();
   const template = session.inspectionTemplate;
   const progress = session.inspectionProgress || [];
@@ -122,6 +122,31 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [zippingPhotos, setZippingPhotos] = useState(false);
   const [zipError, setZipError] = useState<string | null>(null);
+
+  // Live evidence polling — update photos when session is still in progress
+  const isSessionActive = !isSignedOff && session.inspectionProgress.some((p) => p.status === "pending");
+  const [livePhotos, setLivePhotos] = useState<PhotoData[]>(initialPhotos);
+  const photoCountRef = useRef(initialPhotos.length);
+  const photos = isSessionActive ? livePhotos : initialPhotos;
+
+  const pollForPhotos = useCallback(async () => {
+    try {
+      const res = await fetch(apiUrl(`/api/inspect/sessions/${session.id}/photos`));
+      const data = await res.json();
+      if (res.ok && data.success && Array.isArray(data.data)) {
+        if (data.data.length !== photoCountRef.current) {
+          setLivePhotos(data.data);
+          photoCountRef.current = data.data.length;
+        }
+      }
+    } catch { /* non-critical */ }
+  }, [session.id]);
+
+  useEffect(() => {
+    if (!isSessionActive) return;
+    const interval = setInterval(pollForPhotos, 5000);
+    return () => clearInterval(interval);
+  }, [isSessionActive, pollForPhotos]);
 
   // Build progress map with composite key (handles multi-instance items)
   const progressMap = new Map<string, ProgressRecord>();
@@ -291,9 +316,17 @@ export default function ReviewScreen({ session, component, unassignedCount, isRe
           <CardTitle className="text-white flex items-center gap-2">
             <FileCheck className="h-5 w-5" />
             Inspection Review
-            {isSignedOff && (
+            {isSignedOff ? (
               <Badge variant="outline" className="border-yellow-500/50 text-yellow-500 ml-2">
                 <Lock className="h-3 w-3 mr-1" /> Signed Off
+              </Badge>
+            ) : isSessionActive ? (
+              <Badge variant="outline" className="border-green-500/50 text-green-400 ml-2 animate-pulse">
+                Live — updating
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="border-white/30 text-white/50 ml-2">
+                Complete
               </Badge>
             )}
           </CardTitle>

@@ -11,6 +11,7 @@ import {
   matchMeasurementToItem,
   type CandidateItem,
 } from "@/lib/inspect/match-measurement-to-item";
+import { matchPhotoToItem } from "@/lib/ai/photo-item-matching";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -77,7 +78,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     if (body.type === "measurement") {
       return handleMeasurement(body, session, sessionId, authResult.user.id);
     } else if (body.type === "photo") {
-      return handlePhoto(body, session, sessionId);
+      return handlePhoto(body, session as Parameters<typeof handlePhoto>[1], sessionId);
     } else {
       return NextResponse.json({ success: false, error: "Invalid type. Expected 'measurement' or 'photo'" }, { status: 400 });
     }
@@ -261,7 +262,24 @@ async function handleMeasurement(
 // Handle a photo from the glasses
 async function handlePhoto(
   body: { imageUrl: string; timestamp?: string; inspectionItemId?: string; instanceIndex?: number },
-  session: { id: string; organizationId: string },
+  session: {
+    id: string;
+    organizationId: string;
+    inspectionTemplate: {
+      sections: Array<{
+        id: string;
+        items: Array<{
+          id: string;
+          parameterName: string;
+          specUnit: string | null;
+          specValueLow: number | null;
+          specValueHigh: number | null;
+          itemCallout: string | null;
+          itemType: string;
+        }>;
+      }>;
+    } | null;
+  },
   sessionId: string
 ) {
   if (!body.imageUrl) {
@@ -283,6 +301,35 @@ async function handlePhoto(
   const ext = parsedUrl.pathname.split(".").pop()?.toLowerCase();
   const mimeType = ext === "png" ? "image/png" : ext === "heic" ? "image/heic" : "image/jpeg";
 
+  // Determine item assignment — use provided ID or run AI vision matching
+  let assignedItemId = body.inspectionItemId || null;
+  let matchConfidence = assignedItemId ? 1.0 : 0;
+
+  // AI vision matching: if no itemId was provided and we have template items, analyze the photo
+  if (!assignedItemId && session.inspectionTemplate?.sections) {
+    const items = session.inspectionTemplate.sections.flatMap((s) =>
+      s.items.map((item) => ({
+        id: item.id,
+        parameterName: item.parameterName,
+        itemCallout: item.itemCallout,
+        itemType: item.itemType,
+        sectionTitle: "", // Section title not needed for matching
+      }))
+    );
+
+    if (items.length > 0) {
+      console.log(`[glasses-capture] Running AI vision matching for photo against ${items.length} items...`);
+      const t0 = Date.now();
+      const match = await matchPhotoToItem(body.imageUrl, items);
+      console.log(`[glasses-capture] Vision match done in ${Date.now() - t0}ms: itemId=${match.inspectionItemId}, confidence=${match.confidence}`);
+
+      if (match.inspectionItemId && match.confidence >= HIGH_CONFIDENCE) {
+        assignedItemId = match.inspectionItemId;
+        matchConfidence = match.confidence;
+      }
+    }
+  }
+
   const evidence = await prisma.captureEvidence.create({
     data: {
       sessionId,
@@ -290,7 +337,7 @@ async function handlePhoto(
       fileUrl: body.imageUrl,
       mimeType,
       capturedAt: body.timestamp ? new Date(body.timestamp) : new Date(),
-      inspectionItemId: body.inspectionItemId || null,
+      inspectionItemId: assignedItemId,
       instanceIndex: body.instanceIndex ?? null,
     },
   });
@@ -300,6 +347,8 @@ async function handlePhoto(
     data: {
       evidenceId: evidence.id,
       type: "photo",
+      assignedToItemId: assignedItemId,
+      matchConfidence,
     },
   });
 }
